@@ -1,0 +1,61 @@
+# requirements.txt
+
+# 핵심 딥러닝 패키지
+torch>=2.1.0
+torchvision>=0.16.0
+torchaudio>=2.1.0
+
+# Transformers 생태계
+transformers>=4.35.0
+tokenizers>=0.15.0
+accelerate>=0.24.0
+safetensors>=0.4.0
+
+# GPU 메모리 최적화 - Windows용 bitsandbytes
+# Linux/Mac의 경우: bitsandbytes>=0.41.1
+https://github.com/jllllll/bitsandbytes-windows-webui/releases/download/wheels/bitsandbytes-0.41.1-py3-none-win_amd64.whl
+
+# 데이터 처리 및 분석
+pandas>=2.0.0
+numpy>=1.24.0
+scipy>=1.11.0
+
+# 프로그레스 바 및 유틸리티
+tqdm>=4.65.0
+psutil>=5.9.0
+
+# 텍스트 처리
+regex>=2023.8.8
+sentencepiece>=0.1.99
+
+# 머신러닝 유틸리티 (선택적이지만 transformers 호환성을 위해 포함)
+scikit-learn>=1.3.0
+datasets>=2.14.0
+
+# 환경 설정
+python-dotenv>=1.0.0
+
+# CUDA 모니터링 (선택적)
+nvidia-ml-py3>=7.352.0
+
+# 개발 및 디버깅 도구
+ipython>=8.10.0
+jupyter>=1.0.0
+
+# Hugging Face Hub 연동
+huggingface-hub>=0.19.0
+
+# 패키지 버전 고정 (안정성을 위해)
+protobuf>=3.20.0,<5.0.0
+packaging>=21.0
+filelock>=3.12.0
+pyyaml>=6.0
+
+# 타입 힌팅 지원
+typing-extensions>=4.5.0
+
+# 개별설치
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# bitsandbytes 최신 업그레이드
+# pip install --upgrade bitsandbytes

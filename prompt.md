@@ -1,0 +1,49 @@
+2025 금융 AI Challenge: 금융보안 특화 AI 모델 경쟁
+대회 목표: FSKU 평가지표(1,000개 금융보안 문항)에서 높은 정확도로 객관식/주관식 답변 생성
+
+데이터 구조:
+- test.csv: ID, Question (515개 문항)
+- sample_submission.csv: ID, Answer (정수 또는 텍스트)
+
+핵심 제약:
+- 단일 LLM만 사용 (앙상블 불가)
+- API 사용 금지 (로컬 실행만)
+- RTX 4090 24GB에서 4시간 30분 내 완료
+- 생성형 AI 필수 (룰 기반 불가)
+
+성능 목표:
+- 현재 1위: 0.64706
+- 베이스라인: 0.42475  
+- 본선 진출: 상위 12팀 (약 0.61+)
+
+2025 금융 AI Challenge: 금융보안 특화 AI 모델 경쟁
+
+대회 목표: FSKU 평가지표(1,000개 금융보안 문항)에서 높은 정확도로 객관식/주관식 답변 생성
+
+데이터 구조:
+- test.csv: ID, Question (515개 문항)
+- sample_submission.csv: ID, Answer (정수 또는 텍스트)
+
+핵심 제약:
+- 단일 LLM만 사용 (앙상블 불가)
+- API 사용 금지 (로컬 실행만)
+- RTX 4090 24GB에서 4시간 30분 내 완료
+- 생성형 AI 필수 (룰 기반 불가)
+
+성능 목표:
+- 현재 1위: 0.64706
+- 베이스라인: 0.42475  
+- 본선 진출: 상위 12팀 (약 0.61+)
+
+내 환경: RTX 4060ti 16GB, RAM 64GB, CPU 5600X
+
+현재 모델: SOLAR-10.7B (4bit 양자화)
+
+코드 구조:
+- main.py: 개발/테스트용 실행 파일
+- inference.py: 최종 제출용 실행 파일  
+- model_handler.py: 모델 로딩/추론
+- prompt_engineering.py: 금융보안 특화 프롬프트
+- data_processor.py: 전처리/후처리
+
+결과물: final_submission.csv (515개 답변)
