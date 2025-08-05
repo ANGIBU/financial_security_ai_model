@@ -1,6 +1,6 @@
 # inference.py
 """
-실행 파일 - Windows 호환 버전
+실행 파일 - 크로스 플랫폼 호환 버전
 """
 
 import os
@@ -15,7 +15,13 @@ import gc
 from typing import List, Dict, Tuple, Optional
 import threading
 import psutil
+import platform
 warnings.filterwarnings("ignore")
+
+# 플랫폼별 시그널 처리
+IS_WINDOWS = platform.system() == "Windows"
+if not IS_WINDOWS:
+    import signal
 
 # 현재 디렉토리를 Python 경로에 추가
 current_dir = Path(__file__).parent.absolute()
@@ -30,25 +36,40 @@ from advanced_optimizer import AdvancedOptimizer, ResponseValidator, Performance
 class TimeoutException(Exception):
     pass
 
-class TimeoutContext:
-    """Windows 호환 타임아웃 컨텍스트"""
+def timeout_handler(signum, frame):
+    """Unix 시그널 핸들러"""
+    raise TimeoutException("작업 시간 초과")
+
+class CrossPlatformTimeout:
+    """크로스 플랫폼 타임아웃 관리자"""
     def __init__(self, timeout_seconds):
         self.timeout_seconds = timeout_seconds
+        self.is_windows = IS_WINDOWS
         self.timer = None
         self.timed_out = False
     
     def __enter__(self):
-        self.timer = threading.Timer(self.timeout_seconds, self._timeout)
-        self.timer.start()
+        if self.is_windows:
+            # Windows: threading.Timer 사용
+            self.timer = threading.Timer(self.timeout_seconds, self._timeout)
+            self.timer.start()
+        else:
+            # Linux: signal.alarm 사용
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(int(self.timeout_seconds))
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.timer:
-            self.timer.cancel()
-        if self.timed_out:
-            raise TimeoutException("작업 시간 초과")
+        if self.is_windows:
+            if self.timer:
+                self.timer.cancel()
+            if self.timed_out:
+                raise TimeoutException("작업 시간 초과")
+        else:
+            signal.alarm(0)  # 타임아웃 해제
     
     def _timeout(self):
+        """Windows용 타임아웃 콜백"""
         self.timed_out = True
 
 class HighPerformanceInferenceEngine:
@@ -252,7 +273,7 @@ class HighPerformanceInferenceEngine:
     def _process_complex_adaptive(self, complex_questions: List[Dict],
                                 original_questions: List[str],
                                 predictions: List[str]):
-        """복잡한 문제 적응형 처리 - Windows 호환"""
+        """복잡한 문제 적응형 처리 - 크로스 플랫폼"""
         
         with tqdm(total=len(complex_questions), desc="개별 처리") as pbar:
             for q_info in complex_questions:
@@ -272,8 +293,8 @@ class HighPerformanceInferenceEngine:
                              q_info["difficulty"].recommended_attempts
                 
                 try:
-                    # Windows 호환 타임아웃 사용
-                    with TimeoutContext(timeout):
+                    # 크로스 플랫폼 타임아웃 사용
+                    with CrossPlatformTimeout(timeout):
                         # 전략 선택
                         if q_info["kb_analysis"].get("relevant_laws"):
                             strategy = "law_focused"
@@ -453,6 +474,8 @@ class HighPerformanceInferenceEngine:
 def main():
     """메인 함수"""
     
+    print(f"실행 환경: {platform.system()}")
+    
     # GPU 확인
     if not torch.cuda.is_available():
         print("오류: CUDA 사용 불가")
@@ -469,7 +492,7 @@ def main():
         print("오류: 데이터 파일 없음")
         sys.exit(1)
     
-    # 모델 설정
+    # 모델 설정 (RTX 4090 24GB)
     model_config = {
         "model_name": "upstage/SOLAR-10.7B-Instruct-v1.0",
         "device": "cuda",
@@ -484,7 +507,7 @@ def main():
         results = engine.execute_inference(test_file, submission_file)
         
         if results["success"]:
-            print("\n✅ 추론 완료!")
+            print("\n✅ 추론 성공적으로 완료!")
             print(f"평균 신뢰도: {results['avg_confidence']:.3f}")
         
     except KeyboardInterrupt:
