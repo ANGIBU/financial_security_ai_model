@@ -4,10 +4,10 @@
 """
 
 import re
-from typing import Dict, List, Tuple, Optional
-from dataclasses import dataclass
 import hashlib
 import json
+from typing import Dict, List, Tuple, Optional
+from dataclasses import dataclass
 
 @dataclass
 class FinancialConcept:
@@ -31,14 +31,14 @@ class LegalArticle:
     practical_impact: str
 
 class FinancialSecurityKnowledgeBase:
-    """고성능 금융보안 지식 베이스"""
+    """금융보안 지식 베이스"""
     
     def __init__(self):
-        self.concepts = self._build_comprehensive_concept_database()
-        self.laws = self._build_detailed_law_database()
+        self.concepts = self._build_concept_database()
+        self.laws = self._build_law_database()
         self.legal_articles = self._build_legal_articles_database()
-        self.question_patterns = self._build_advanced_question_patterns()
-        self.domain_keywords = self._build_comprehensive_domain_keywords()
+        self.question_patterns = self._build_question_patterns()
+        self.domain_keywords = self._build_domain_keywords()
         self.case_studies = self._build_case_studies()
         
         # 성능 최적화 캐시
@@ -57,7 +57,7 @@ class FinancialSecurityKnowledgeBase:
             "cache_performance": {"hits": 0, "misses": 0}
         }
     
-    def _build_comprehensive_concept_database(self) -> Dict[str, FinancialConcept]:
+    def _build_concept_database(self) -> Dict[str, FinancialConcept]:
         """포괄적 금융보안 개념 데이터베이스"""
         concepts = {}
         
@@ -204,7 +204,7 @@ class FinancialSecurityKnowledgeBase:
         
         return concepts
     
-    def _build_detailed_law_database(self) -> Dict[str, Dict]:
+    def _build_law_database(self) -> Dict[str, Dict]:
         """상세 법령 데이터베이스"""
         laws = {}
         
@@ -308,8 +308,8 @@ class FinancialSecurityKnowledgeBase:
         
         return articles
     
-    def _build_advanced_question_patterns(self) -> Dict[str, List[str]]:
-        """고급 문제 패턴 분석"""
+    def _build_question_patterns(self) -> Dict[str, List[str]]:
+        """문제 패턴 분석"""
         patterns = {
             "정의_문제": [
                 r"정의로\s*(?:가장\s*)?적절한",
@@ -363,7 +363,7 @@ class FinancialSecurityKnowledgeBase:
         }
         return patterns
     
-    def _build_comprehensive_domain_keywords(self) -> Dict[str, List[str]]:
+    def _build_domain_keywords(self) -> Dict[str, List[str]]:
         """포괄적 도메인 키워드"""
         return {
             "개인정보보호": [
@@ -435,7 +435,7 @@ class FinancialSecurityKnowledgeBase:
         return compiled
     
     def analyze_question(self, question: str) -> Dict:
-        """고급 문제 분석"""
+        """문제 분석"""
         
         # 캐시 확인
         q_hash = hashlib.md5(question.encode()).hexdigest()[:16]
@@ -446,13 +446,13 @@ class FinancialSecurityKnowledgeBase:
         self.usage_stats["cache_performance"]["misses"] += 1
         
         analysis = {
-            "question_type": self._classify_question_type_advanced(question),
-            "domain": self._identify_domain_comprehensive(question),
-            "complexity": self._assess_complexity_detailed(question),
-            "related_concepts": self._extract_related_concepts_advanced(question),
-            "relevant_laws": self._extract_relevant_laws_comprehensive(question),
+            "question_type": self._classify_question_type(question),
+            "domain": self._identify_domain(question),
+            "complexity": self._assess_complexity(question),
+            "related_concepts": self._extract_related_concepts(question),
+            "relevant_laws": self._extract_relevant_laws(question),
             "key_hints": self._generate_key_hints(question),
-            "negative_question": self._is_negative_question_advanced(question),
+            "negative_question": self._is_negative_question(question),
             "legal_articles": self._find_relevant_articles(question),
             "difficulty_indicators": self._identify_difficulty_indicators(question)
         }
@@ -465,8 +465,8 @@ class FinancialSecurityKnowledgeBase:
         
         return analysis
     
-    def _classify_question_type_advanced(self, question: str) -> str:
-        """고급 문제 유형 분류"""
+    def _classify_question_type(self, question: str) -> str:
+        """문제 유형 분류"""
         for pattern_type, compiled_patterns in self.compiled_patterns.items():
             for pattern in compiled_patterns:
                 if pattern.search(question):
@@ -475,8 +475,8 @@ class FinancialSecurityKnowledgeBase:
                     return pattern_type
         return "일반_문제"
     
-    def _identify_domain_comprehensive(self, question: str) -> List[str]:
-        """포괄적 도메인 식별"""
+    def _identify_domain(self, question: str) -> List[str]:
+        """도메인 식별"""
         domains = []
         question_lower = question.lower()
         
@@ -491,7 +491,7 @@ class FinancialSecurityKnowledgeBase:
                     matched_keywords.append(keyword)
             
             if score > 0:
-                # 키워드 밀도 계산 (매칭된 키워드 수 / 전체 키워드 수)
+                # 키워드 밀도 계산
                 density = score / len(keywords)
                 domain_scores[domain] = {
                     "score": score,
@@ -504,31 +504,31 @@ class FinancialSecurityKnowledgeBase:
                               key=lambda x: (x[1]["score"], x[1]["density"]), 
                               reverse=True)
         
-        # 상위 도메인들 선택 (점수가 2 이상이거나 밀도가 0.1 이상)
+        # 상위 도메인들 선택
         for domain, info in sorted_domains:
             if info["score"] >= 2 or info["density"] >= 0.1:
                 domains.append(domain)
         
         return domains if domains else ["일반"]
     
-    def _assess_complexity_detailed(self, question: str) -> float:
-        """상세한 복잡도 평가"""
+    def _assess_complexity(self, question: str) -> float:
+        """복잡도 평가"""
         complexity_score = 0.0
         
-        # 길이 기반 복잡도 (0-0.25)
+        # 길이 기반 복잡도
         length = len(question)
         complexity_score += min(length / 2000, 0.25)
         
-        # 구조적 복잡도 (0-0.2)
+        # 구조적 복잡도
         line_count = question.count('\n')
         choice_count = len(re.findall(r'^\s*[1-5]\s*[.)]', question, re.MULTILINE))
         complexity_score += min((line_count + choice_count) / 15, 0.2)
         
-        # 법령 관련 복잡도 (0-0.2)
+        # 법령 관련 복잡도
         law_references = len(re.findall(r'법|조|항|규정|시행령', question))
         complexity_score += min(law_references / 8, 0.2)
         
-        # 전문 용어 복잡도 (0-0.15)
+        # 전문 용어 복잡도
         all_keywords = []
         for keywords in self.domain_keywords.values():
             all_keywords.extend(keywords)
@@ -536,19 +536,19 @@ class FinancialSecurityKnowledgeBase:
         term_count = sum(1 for term in all_keywords if term in question)
         complexity_score += min(term_count / 10, 0.15)
         
-        # 숫자 및 특수 문자 복잡도 (0-0.1)
+        # 숫자 및 특수 문자 복잡도
         numbers = len(re.findall(r'\d+', question))
         special_chars = len(re.findall(r'[%@#$&*()]', question))
         complexity_score += min((numbers + special_chars) / 20, 0.1)
         
-        # 부정형 보너스 (0-0.1)
-        if self._is_negative_question_advanced(question):
+        # 부정형 보너스
+        if self._is_negative_question(question):
             complexity_score += 0.1
         
         return min(complexity_score, 1.0)
     
-    def _extract_related_concepts_advanced(self, question: str) -> List[str]:
-        """고급 관련 개념 추출"""
+    def _extract_related_concepts(self, question: str) -> List[str]:
+        """관련 개념 추출"""
         related = []
         question_lower = question.lower()
         
@@ -573,8 +573,8 @@ class FinancialSecurityKnowledgeBase:
         
         return related
     
-    def _extract_relevant_laws_comprehensive(self, question: str) -> List[str]:
-        """포괄적 관련 법령 추출"""
+    def _extract_relevant_laws(self, question: str) -> List[str]:
+        """관련 법령 추출"""
         relevant = []
         question_lower = question.lower()
         
@@ -604,7 +604,7 @@ class FinancialSecurityKnowledgeBase:
         hints = []
         
         # 부정형 문제 힌트
-        if self._is_negative_question_advanced(question):
+        if self._is_negative_question(question):
             hints.append("부정형 문제: 틀린 것 또는 해당하지 않는 것을 찾으세요")
         
         # 정의 문제 힌트
@@ -645,7 +645,7 @@ class FinancialSecurityKnowledgeBase:
         """난이도 지표 식별"""
         indicators = []
         
-        # 고난이도 지표
+        # 난이도 지표
         if len(question) > 500:
             indicators.append("긴 문제")
         
@@ -663,8 +663,8 @@ class FinancialSecurityKnowledgeBase:
         
         return indicators
     
-    def _is_negative_question_advanced(self, question: str) -> bool:
-        """고급 부정형 질문 판별"""
+    def _is_negative_question(self, question: str) -> bool:
+        """부정형 질문 판별"""
         negative_indicators = [
             r"해당하지\s*않는", r"적절하지\s*않은", r"옳지\s*않은",
             r"틀린\s*것", r"잘못된\s*것", r"부적절한", 
@@ -679,7 +679,7 @@ class FinancialSecurityKnowledgeBase:
         return False
     
     def get_expert_knowledge(self, concept: str) -> Optional[FinancialConcept]:
-        """전문 지식 조회 with 캐시"""
+        """전문 지식 조회"""
         cache_key = f"concept_{concept}"
         
         if cache_key in self.concept_cache:

@@ -10,13 +10,14 @@ import torch
 import pandas as pd
 import subprocess
 import psutil
-from pathlib import Path
 import platform
 import json
 import hashlib
+import re
+from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
-class UltraHighPerformanceSystemChecker:
+class SystemChecker:
     """시스템 체크"""
     
     def __init__(self):
@@ -32,40 +33,40 @@ class UltraHighPerformanceSystemChecker:
         }
         self.start_time = time.time()
         
-    def run_comprehensive_checks(self):
+    def run_checks(self):
         """포괄적 시스템 검사"""
-        print("=== 고성능 시스템 검증 시작 ===\n")
+        print("=== 시스템 검증 시작 ===\n")
         
         # 1. 환경 체크
-        self.check_environment_advanced()
+        self.check_environment()
         
         # 2. 파일 체크
-        self.check_files_comprehensive()
+        self.check_files()
         
         # 3. 모델 체크
-        self.check_model_capabilities()
+        self.check_model()
         
-        # 4. GPU 심층 분석
-        self.analyze_gpu_performance()
+        # 4. GPU 분석
+        self.analyze_gpu()
         
         # 5. 메모리 최적화 분석
-        self.analyze_memory_optimization()
+        self.analyze_memory()
         
         # 6. 성능 예측
-        self.estimate_performance_advanced()
+        self.estimate_performance()
         
         # 7. 최적화 기능 검증
-        self.verify_optimization_features()
+        self.verify_optimization()
         
         # 8. 대회 규정 준수 체크
-        self.check_compliance_advanced()
+        self.check_compliance()
         
         # 최종 보고서
-        self.generate_comprehensive_report()
+        self.generate_report()
     
-    def check_environment_advanced(self):
-        """고급 환경 검사"""
-        print("1. 고급 환경 검사 중...")
+    def check_environment(self):
+        """환경 검사"""
+        print("1. 환경 검사 중...")
         
         # 기본 정보
         self.check_results["environment"]["platform"] = platform.system()
@@ -94,7 +95,7 @@ class UltraHighPerformanceSystemChecker:
                     optimization_mode = "최고 성능 모드"
                 elif gpu_props.total_memory / (1024**3) >= 12:
                     performance_tier = "High"
-                    optimization_mode = "고성능 모드"
+                    optimization_mode = "성능 모드"
                 elif gpu_props.total_memory / (1024**3) >= 8:
                     performance_tier = "Medium"
                     optimization_mode = "균형 모드"
@@ -112,7 +113,7 @@ class UltraHighPerformanceSystemChecker:
             self.check_results["environment"]["mixed_precision"] = torch.cuda.amp.autocast().__class__.__name__ == 'autocast'
             
         else:
-            self.check_results["environment"]["gpu_status"] = "❌ CUDA 사용 불가"
+            self.check_results["environment"]["gpu_status"] = "CUDA 사용 불가"
         
         # CPU 정보
         cpu_info = {
@@ -127,7 +128,7 @@ class UltraHighPerformanceSystemChecker:
         self.check_results["environment"]["ram_gb"] = memory.total / (1024**3)
         self.check_results["environment"]["available_ram_gb"] = memory.available / (1024**3)
         
-        print("✅ 고급 환경 검사 완료\n")
+        print("환경 검사 완료\n")
     
     def _check_tensor_cores(self) -> bool:
         """Tensor Core 지원 확인"""
@@ -139,18 +140,18 @@ class UltraHighPerformanceSystemChecker:
         except:
             return False
     
-    def check_files_comprehensive(self):
-        """포괄적 파일 검사"""
-        print("2. 포괄적 파일 검사 중...")
+    def check_files(self):
+        """파일 검사"""
+        print("2. 파일 검사 중...")
         
         required_files = {
             "core_files": {
                 "inference.py": "메인 추론 실행 파일",
-                "model_handler.py": "고성능 모델 핸들러",
-                "data_processor.py": "지능형 데이터 처리",
-                "prompt_engineering.py": "고급 프롬프트 엔지니어링",
+                "model_handler.py": "모델 핸들러",
+                "data_processor.py": "데이터 처리",
+                "prompt_engineering.py": "프롬프트 엔지니어링",
                 "knowledge_base.py": "전문 지식 베이스",
-                "advanced_optimizer.py": "초고성능 최적화",
+                "advanced_optimizer.py": "시스템 최적화",
                 "pattern_learner.py": "패턴 학습 시스템"
             },
             "data_files": {
@@ -178,18 +179,18 @@ class UltraHighPerformanceSystemChecker:
                     quality_info = self._analyze_file_quality(filename)
                     
                     self.check_results["files"][category][filename] = {
-                        "status": "✅ 존재",
+                        "status": "존재",
                         "size_mb": round(size_mb, 2),
                         "quality": quality_info
                     }
                 else:
                     self.check_results["files"][category][filename] = {
-                        "status": "❌ 없음",
+                        "status": "없음",
                         "size_mb": 0,
                         "quality": {}
                     }
                     all_present = False
-                    print(f"  ⚠️ {filename} 파일이 없습니다!")
+                    print(f"  {filename} 파일이 없습니다!")
         
         self.check_results["files"]["all_present"] = all_present
         self.check_results["files"]["total_size_mb"] = round(total_size, 2)
@@ -200,7 +201,7 @@ class UltraHighPerformanceSystemChecker:
             data_quality = self._analyze_data_quality(test_df)
             self.check_results["files"]["data_quality"] = data_quality
         
-        print("✅ 포괄적 파일 검사 완료\n")
+        print("파일 검사 완료\n")
     
     def _analyze_file_quality(self, filename: str) -> Dict:
         """파일 품질 분석"""
@@ -227,7 +228,7 @@ class UltraHighPerformanceSystemChecker:
                     quality["functions"] = functions
                     quality["classes"] = classes
                     
-                    # 고급 기능 검사
+                    # 기능 검사
                     advanced_features = {
                         "async_support": "async def" in content,
                         "type_hints": "from typing import" in content,
@@ -256,7 +257,7 @@ class UltraHighPerformanceSystemChecker:
             "sample_questions": df['Question'].head(3).tolist() if 'Question' in df.columns else []
         }
     
-    def check_model_capabilities(self):
+    def check_model(self):
         """모델 기능 검사"""
         print("3. 모델 기능 검사 중...")
         
@@ -293,16 +294,16 @@ class UltraHighPerformanceSystemChecker:
             
         except Exception as e:
             self.check_results["model"]["error"] = str(e)
-            print(f"  ⚠️ 모델 체크 오류: {e}")
+            print(f"  모델 체크 오류: {e}")
         
-        print("✅ 모델 기능 검사 완료\n")
+        print("모델 기능 검사 완료\n")
     
-    def analyze_gpu_performance(self):
-        """GPU 성능 심층 분석"""
-        print("4. GPU 성능 심층 분석 중...")
+    def analyze_gpu(self):
+        """GPU 성능 분석"""
+        print("4. GPU 성능 분석 중...")
         
         if not torch.cuda.is_available():
-            self.check_results["gpu_analysis"]["status"] = "❌ CUDA 불가"
+            self.check_results["gpu_analysis"]["status"] = "CUDA 불가"
             return
         
         gpu_analysis = {}
@@ -319,12 +320,12 @@ class UltraHighPerformanceSystemChecker:
                     elements = int(size_gb * 1024**3 / 4)  # float32 기준
                     test_tensor = torch.randn(elements, device='cuda', dtype=torch.float32)
                     
-                    memory_results[f"{size_gb}GB"] = "✅ 성공"
+                    memory_results[f"{size_gb}GB"] = "성공"
                     del test_tensor
                     torch.cuda.empty_cache()
                     
                 except RuntimeError as e:
-                    memory_results[f"{size_gb}GB"] = f"❌ 실패: {str(e)[:50]}"
+                    memory_results[f"{size_gb}GB"] = f"실패: {str(e)[:50]}"
                     torch.cuda.empty_cache()
                     break
             
@@ -344,7 +345,7 @@ class UltraHighPerformanceSystemChecker:
         
         self.check_results["gpu_analysis"] = gpu_analysis
         
-        print("✅ GPU 성능 분석 완료\n")
+        print("GPU 성능 분석 완료\n")
     
     def _run_gpu_performance_tests(self) -> Dict:
         """GPU 성능 테스트 실행"""
@@ -401,7 +402,7 @@ class UltraHighPerformanceSystemChecker:
         
         return tests
     
-    def analyze_memory_optimization(self):
+    def analyze_memory(self):
         """메모리 최적화 분석"""
         print("5. 메모리 최적화 분석 중...")
         
@@ -429,7 +430,7 @@ class UltraHighPerformanceSystemChecker:
         
         self.check_results["memory"] = memory_analysis
         
-        print("✅ 메모리 최적화 분석 완료\n")
+        print("메모리 최적화 분석 완료\n")
     
     def _get_memory_optimization_strategies(self, gpu_memory_gb: float) -> List[str]:
         """메모리 최적화 전략"""
@@ -439,7 +440,7 @@ class UltraHighPerformanceSystemChecker:
             strategies.extend([
                 "대용량 배치 처리 가능",
                 "모델 컴파일 최적화 활성화",
-                "고해상도 Mixed Precision 사용",
+                "Mixed Precision 사용",
                 "캐시 크기 확대"
             ])
         elif gpu_memory_gb >= 12:
@@ -468,21 +469,21 @@ class UltraHighPerformanceSystemChecker:
             gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
             
             if gpu_memory < 12:
-                recommendations.append("⚠️ GPU 메모리 부족 - 배치 크기 축소 필요")
-                recommendations.append("💡 메모리 절약을 위한 quantization 고려")
+                recommendations.append("GPU 메모리 부족 - 배치 크기 축소 필요")
+                recommendations.append("메모리 절약을 위한 quantization 고려")
             else:
-                recommendations.append("✅ 충분한 GPU 메모리")
+                recommendations.append("충분한 GPU 메모리")
         
         # 시스템 메모리 체크
         system_memory = psutil.virtual_memory()
         if system_memory.available / (1024**3) < 8:
-            recommendations.append("⚠️ 시스템 메모리 부족 - 백그라운드 프로세스 정리 권장")
+            recommendations.append("시스템 메모리 부족 - 백그라운드 프로세스 정리 권장")
         
         return recommendations
     
-    def estimate_performance_advanced(self):
-        """고급 성능 예측"""
-        print("6. 고급 성능 예측 중...")
+    def estimate_performance(self):
+        """성능 예측"""
+        print("6. 성능 예측 중...")
         
         total_questions = 515
         
@@ -496,16 +497,16 @@ class UltraHighPerformanceSystemChecker:
         
         # 성능 계층별 처리 시간 추정
         if performance_tier == "Ultra High":
-            base_time_per_question = 3  # 초고성능
+            base_time_per_question = 3  # 초
             batch_efficiency = 0.8
         elif performance_tier == "High":
-            base_time_per_question = 5  # 고성능
+            base_time_per_question = 5  
             batch_efficiency = 0.7
         elif performance_tier == "Medium":
-            base_time_per_question = 8  # 중성능
+            base_time_per_question = 8  
             batch_efficiency = 0.6
         else:
-            base_time_per_question = 12  # 기본
+            base_time_per_question = 12  
             batch_efficiency = 0.5
         
         # 문제 유형별 분포 추정
@@ -574,9 +575,9 @@ class UltraHighPerformanceSystemChecker:
         
         self.check_results["performance"] = performance_results
         
-        print("✅ 고급 성능 예측 완료\n")
+        print("성능 예측 완료\n")
     
-    def verify_optimization_features(self):
+    def verify_optimization(self):
         """최적화 기능 검증"""
         print("7. 최적화 기능 검증 중...")
         
@@ -618,7 +619,7 @@ class UltraHighPerformanceSystemChecker:
         
         self.check_results["optimization"] = optimization_features
         
-        print("✅ 최적화 기능 검증 완료\n")
+        print("최적화 기능 검증 완료\n")
     
     def _test_caching_performance(self) -> Dict:
         """캐싱 성능 테스트"""
@@ -643,19 +644,19 @@ class UltraHighPerformanceSystemChecker:
         
         return cache_test
     
-    def check_compliance_advanced(self):
-        """고급 대회 규정 준수 체크"""
-        print("8. 고급 대회 규정 준수 검사 중...")
+    def check_compliance(self):
+        """대회 규정 준수 체크"""
+        print("8. 대회 규정 준수 검사 중...")
         
         compliance = {}
         
         # 단일 모델 사용 확인
         compliance["single_model"] = {
-            "status": "✅ SOLAR-10.7B-Instruct-v1.0 단일 모델 사용",
+            "status": "SOLAR-10.7B-Instruct-v1.0 단일 모델 사용",
             "verified": True
         }
         
-        # 외부 API 사용 검사 (더 엄격한 검사)
+        # 외부 API 사용 검사
         api_keywords = [
             "requests.get", "requests.post", "urllib.request", "http.client",
             "api_key", "openai", "anthropic", "google.api", "azure.openai",
@@ -675,7 +676,7 @@ class UltraHighPerformanceSystemChecker:
                 continue
         
         compliance["no_external_api"] = {
-            "status": "✅ 외부 API 사용 없음" if not api_violations else "⚠️ 의심스러운 API 코드 발견",
+            "status": "외부 API 사용 없음" if not api_violations else "의심스러운 API 코드 발견",
             "violations": api_violations
         }
         
@@ -702,7 +703,7 @@ class UltraHighPerformanceSystemChecker:
                 continue
         
         compliance["no_ensemble"] = {
-            "status": "✅ 앙상블 방법 없음" if not ensemble_violations else "⚠️ 앙상블 관련 코드 발견",
+            "status": "앙상블 방법 없음" if not ensemble_violations else "앙상블 관련 코드 발견",
             "violations": ensemble_violations
         }
         
@@ -725,7 +726,7 @@ class UltraHighPerformanceSystemChecker:
                 continue
         
         compliance["generative_ai_usage"] = {
-            "status": "✅ 생성형 AI 사용 확인됨",
+            "status": "생성형 AI 사용 확인됨",
             "features_found": list(set(generative_usage))
         }
         
@@ -740,18 +741,18 @@ class UltraHighPerformanceSystemChecker:
         
         self.check_results["compliance"] = compliance
         
-        print("✅ 고급 대회 규정 준수 검사 완료\n")
+        print("대회 규정 준수 검사 완료\n")
     
-    def generate_comprehensive_report(self):
-        """포괄적 보고서 생성"""
+    def generate_report(self):
+        """종합 보고서 생성"""
         print("\n" + "="*60)
-        print("고성능 시스템 검증 종합 보고서")
+        print("시스템 검증 종합 보고서")
         print("="*60)
         
         total_check_time = time.time() - self.start_time
         
         # 시스템 요약
-        print(f"\n📊 시스템 요약")
+        print(f"\n시스템 요약")
         print(f"검증 시간: {total_check_time:.1f}초")
         print(f"플랫폼: {self.check_results['environment']['platform']}")
         print(f"Python: {self.check_results['environment']['python_version']}")
@@ -760,23 +761,23 @@ class UltraHighPerformanceSystemChecker:
         # GPU 분석 요약
         if "gpu_0" in self.check_results["environment"]:
             gpu_info = self.check_results["environment"]["gpu_0"]
-            print(f"\n🚀 GPU 분석")
+            print(f"\nGPU 분석")
             print(f"GPU: {gpu_info['name']}")
             print(f"메모리: {gpu_info['memory_gb']:.1f}GB")
             print(f"성능 등급: {gpu_info['performance_tier']}")
             print(f"권장 모드: {gpu_info['recommended_mode']}")
         
         # 파일 상태
-        print(f"\n📁 파일 상태")
+        print(f"\n파일 상태")
         all_files_ok = self.check_results["files"]["all_present"]
         if all_files_ok:
-            print("✅ 모든 필수 파일 존재")
+            print("모든 필수 파일 존재")
             print(f"총 파일 크기: {self.check_results['files']['total_size_mb']:.1f}MB")
         else:
-            print("❌ 일부 파일 누락")
+            print("일부 파일 누락")
         
         # 성능 예측
-        print(f"\n⚡ 성능 예측")
+        print(f"\n성능 예측")
         performance = self.check_results.get("performance", {})
         if performance:
             print(f"예상 처리 시간: {performance['total_processing_time_min']}분")
@@ -787,20 +788,20 @@ class UltraHighPerformanceSystemChecker:
             time_safe = performance.get("time_safety", False)
             memory_safe = performance.get("memory_requirements", {}).get("memory_safety", False)
             
-            print(f"시간 여유: {'✅ 충분' if time_safe else '⚠️ 부족'}")
-            print(f"메모리 여유: {'✅ 충분' if memory_safe else '⚠️ 부족'}")
+            print(f"시간 여유: {'충분' if time_safe else '부족'}")
+            print(f"메모리 여유: {'충분' if memory_safe else '부족'}")
         
         # 최적화 기능
-        print(f"\n🔧 최적화 기능")
+        print(f"\n최적화 기능")
         optimization = self.check_results.get("optimization", {})
         if optimization:
-            print(f"Torch Compile: {'✅ 지원' if optimization.get('torch_compile', {}).get('available') else '❌ 미지원'}")
-            print(f"Mixed Precision: {'✅ 지원' if optimization.get('mixed_precision', {}).get('available') else '❌ 미지원'}")
-            print(f"Flash Attention: {'✅ 지원' if optimization.get('flash_attention', {}).get('available') else '❌ 미지원'}")
-            print(f"SDPA: {'✅ 지원' if optimization.get('sdpa', {}).get('available') else '❌ 미지원'}")
+            print(f"Torch Compile: {'지원' if optimization.get('torch_compile', {}).get('available') else '미지원'}")
+            print(f"Mixed Precision: {'지원' if optimization.get('mixed_precision', {}).get('available') else '미지원'}")
+            print(f"Flash Attention: {'지원' if optimization.get('flash_attention', {}).get('available') else '미지원'}")
+            print(f"SDPA: {'지원' if optimization.get('sdpa', {}).get('available') else '미지원'}")
         
         # 규정 준수
-        print(f"\n📋 대회 규정 준수")
+        print(f"\n대회 규정 준수")
         compliance = self.check_results.get("compliance", {})
         if compliance:
             for check_name, check_info in compliance.items():
@@ -820,21 +821,21 @@ class UltraHighPerformanceSystemChecker:
         
         overall_score = sum(scores.values()) / len(scores)
         
-        print(f"🎯 종합 점수: {overall_score:.0f}/100")
+        print(f"종합 점수: {overall_score:.0f}/100")
         
         if overall_score >= 90:
-            print("🏆 우수: 시스템이 최적 상태입니다!")
-            print("💡 실행 명령: python inference.py")
+            print("우수: 시스템이 최적 상태입니다!")
+            print("실행 명령: python inference.py")
         elif overall_score >= 80:
-            print("✅ 양호: 시스템 준비가 잘 되어 있습니다.")
-            print("💡 실행 명령: python inference.py")
+            print("양호: 시스템 준비가 잘 되어 있습니다.")
+            print("실행 명령: python inference.py")
         elif overall_score >= 70:
-            print("⚠️ 주의: 일부 개선이 필요합니다.")
+            print("주의: 일부 개선이 필요합니다.")
         else:
-            print("❌ 불량: 시스템 점검이 필요합니다.")
+            print("불량: 시스템 점검이 필요합니다.")
         
         # 성능 향상 권장사항
-        print(f"\n💡 성능 향상 권장사항:")
+        print(f"\n성능 향상 권장사항:")
         recommendations = self._generate_performance_recommendations()
         for rec in recommendations:
             print(f"  • {rec}")
@@ -854,7 +855,7 @@ class UltraHighPerformanceSystemChecker:
                 recommendations.append("최고 성능 GPU 감지 - 대용량 배치 처리 활성화")
                 recommendations.append("Torch Compile 및 Flash Attention 사용 권장")
             elif tier == "High":
-                recommendations.append("고성능 GPU 감지 - 적극적인 최적화 활성화")
+                recommendations.append("GPU 감지 - 적극적인 최적화 활성화")
             elif tier == "Medium":
                 recommendations.append("메모리 효율적 처리 모드 사용 권장")
             else:
@@ -877,7 +878,7 @@ class UltraHighPerformanceSystemChecker:
 
 def run_mini_inference_test(sample_size: int = 3):
     """소규모 추론 테스트"""
-    print(f"\n🧪 소규모 추론 테스트 ({sample_size}개 샘플)...")
+    print(f"\n소규모 추론 테스트 ({sample_size}개 샘플)...")
     
     try:
         start_time = time.time()
@@ -893,7 +894,7 @@ def run_mini_inference_test(sample_size: int = 3):
         elapsed = time.time() - start_time
         
         if result.returncode == 0:
-            print(f"✅ 테스트 성공 ({elapsed:.1f}초)")
+            print(f"테스트 성공 ({elapsed:.1f}초)")
             print(f"예상 전체 처리 시간: {(elapsed/sample_size*515)/60:.1f}분")
             
             # 출력에서 유용한 정보 추출
@@ -904,7 +905,7 @@ def run_mini_inference_test(sample_size: int = 3):
                     print(f"  {line.strip()}")
                     
         else:
-            print(f"❌ 테스트 실패")
+            print(f"테스트 실패")
             print("오류 정보:")
             error_lines = result.stderr.split('\n')[-5:]
             for line in error_lines:
@@ -912,24 +913,24 @@ def run_mini_inference_test(sample_size: int = 3):
                     print(f"  {line.strip()}")
             
     except subprocess.TimeoutExpired:
-        print("❌ 테스트 타임아웃 (3분 초과)")
+        print("테스트 타임아웃 (3분 초과)")
     except Exception as e:
-        print(f"❌ 테스트 오류: {e}")
+        print(f"테스트 오류: {e}")
 
 def main():
     """메인 함수"""
-    print("🚀 고성능 금융 AI Challenge 시스템 검증\n")
+    print("금융 AI Challenge 시스템 검증\n")
     
     # 포괄적 시스템 체크
-    checker = UltraHighPerformanceSystemChecker()
-    checker.run_comprehensive_checks()
+    checker = SystemChecker()
+    checker.run_checks()
     
     # 선택적 미니 테스트
     response = input("\n소규모 추론 테스트를 실행하시겠습니까? (y/n): ")
     if response.lower() == 'y':
         run_mini_inference_test(3)
     
-    print("\n🎉 고성능 시스템 검증 완료!")
+    print("\n시스템 검증 완료!")
 
 if __name__ == "__main__":
     main()

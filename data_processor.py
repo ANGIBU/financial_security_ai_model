@@ -5,11 +5,11 @@
 
 import re
 import pandas as pd
+import hashlib
+import numpy as np
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 from knowledge_base import FinancialSecurityKnowledgeBase
-import hashlib
-import numpy as np
 
 @dataclass
 class ProcessedAnswer:
@@ -19,26 +19,26 @@ class ProcessedAnswer:
     extraction_method: str
     validation_passed: bool
 
-class IntelligentDataProcessor:
+class DataProcessor:
     """데이터 처리 클래스"""
     
     def __init__(self):
         self.knowledge_base = FinancialSecurityKnowledgeBase()
-        self.answer_extraction_patterns = self._build_advanced_extraction_patterns()
-        self.validation_rules = self._build_enhanced_validation_rules()
+        self.answer_extraction_patterns = self._build_extraction_patterns()
+        self.validation_rules = self._build_validation_rules()
         
         # 성능 캐시
         self.structure_cache = {}
         self.pattern_cache = {}
         
-        # 컴파일된 정규식 (성능 향상)
+        # 컴파일된 정규식
         self.compiled_patterns = self._compile_all_patterns()
         
         # 통계적 학습 데이터
         self.answer_statistics = self._initialize_statistics()
         
-    def _build_advanced_extraction_patterns(self) -> Dict[str, List[str]]:
-        """고급 답변 추출 패턴"""
+    def _build_extraction_patterns(self) -> Dict[str, List[str]]:
+        """답변 추출 패턴"""
         patterns = {
             "explicit_answer": [
                 r'정답[:\s]*([1-5])',
@@ -98,8 +98,8 @@ class IntelligentDataProcessor:
             "pattern_success_rate": {}
         }
     
-    def _build_enhanced_validation_rules(self) -> Dict[str, callable]:
-        """강화된 검증 규칙"""
+    def _build_validation_rules(self) -> Dict[str, callable]:
+        """검증 규칙"""
         rules = {
             "choice_range": lambda x: x.isdigit() and 1 <= int(x) <= 5,
             "length_appropriate": lambda x: 1 <= len(x) <= 3000,
@@ -112,7 +112,7 @@ class IntelligentDataProcessor:
         return rules
     
     def analyze_question_structure(self, question: str) -> Dict:
-        """고급 질문 구조 분석"""
+        """질문 구조 분석"""
         
         # 캐시 확인
         q_hash = hashlib.md5(question.encode()).hexdigest()[:12]
@@ -134,7 +134,7 @@ class IntelligentDataProcessor:
         question_parts = []
         choices = []
         
-        # 고급 선택지 패턴
+        # 선택지 패턴
         choice_patterns = [
             re.compile(r"^\s*([1-5])\s+(.+)"),
             re.compile(r"^\s*([1-5])[.)]\s*(.+)"),
@@ -167,9 +167,9 @@ class IntelligentDataProcessor:
         structure["choices"] = choices
         structure["choice_count"] = len(choices)
         structure["question_type"] = "multiple_choice" if len(choices) >= 2 else "subjective"
-        structure["has_negative"] = self._detect_negative_question_advanced(structure["question_text"])
+        structure["has_negative"] = self._detect_negative_question(structure["question_text"])
         
-        # 고급 분석
+        # 분석
         structure["complexity_score"] = self._calculate_complexity_score(question)
         structure["domain_hints"] = self._extract_domain_hints(question)
         structure["structural_features"] = self._analyze_structural_features(question, choices)
@@ -179,8 +179,8 @@ class IntelligentDataProcessor:
         
         return structure
     
-    def _detect_negative_question_advanced(self, question_text: str) -> bool:
-        """고급 부정형 질문 감지"""
+    def _detect_negative_question(self, question_text: str) -> bool:
+        """부정형 질문 감지"""
         negative_patterns = [
             r"해당하지\s*않는",
             r"적절하지\s*않은",
@@ -203,23 +203,23 @@ class IntelligentDataProcessor:
         """복잡도 점수 계산"""
         score = 0.0
         
-        # 길이 기반 (0-0.3)
+        # 길이 기반
         length = len(question)
         score += min(length / 2000, 0.3)
         
-        # 구조 복잡도 (0-0.2)
+        # 구조 복잡도
         line_count = question.count('\n')
         score += min(line_count / 15, 0.2)
         
-        # 법령 관련성 (0-0.2)
+        # 법령 관련성
         law_terms = len(re.findall(r'법|조|항|규정|시행령|시행규칙', question))
         score += min(law_terms * 0.05, 0.2)
         
-        # 전문 용어 밀도 (0-0.15)
+        # 전문 용어 밀도
         tech_terms = len(re.findall(r'암호화|인증|해시|PKI|SSL|접근제어|보안|시스템', question))
         score += min(tech_terms * 0.03, 0.15)
         
-        # 숫자 및 기호 복잡도 (0-0.15)
+        # 숫자 및 기호 복잡도
         numbers = len(re.findall(r'\d+', question))
         symbols = len(re.findall(r'[%@#$&*()]', question))
         score += min((numbers + symbols) * 0.01, 0.15)
@@ -278,7 +278,7 @@ class IntelligentDataProcessor:
         return features
     
     def extract_mc_answer_fast(self, response: str) -> str:
-        """초고속 객관식 답변 추출"""
+        """빠른 객관식 답변 추출"""
         # 캐시 확인
         response_hash = hash(response[:100])
         if response_hash in self.pattern_cache:
@@ -300,7 +300,7 @@ class IntelligentDataProcessor:
         # 위치 기반 숫자 검색
         numbers = re.findall(r'[1-5]', response)
         if numbers:
-            # 마지막 숫자 우선 (일반적으로 결론 부분)
+            # 마지막 숫자 우선
             answer = numbers[-1]
             self.pattern_cache[response_hash] = answer
             return answer
@@ -313,12 +313,12 @@ class IntelligentDataProcessor:
         question_structure = self.analyze_question_structure(question)
         
         if question_structure["question_type"] == "multiple_choice":
-            return self._extract_mc_answer_ultra_optimized(response, question_structure)
+            return self._extract_mc_answer_optimized(response, question_structure)
         else:
             return self._extract_subjective_answer_optimized(response, question_structure)
     
-    def _extract_mc_answer_ultra_optimized(self, response: str, question_structure: Dict) -> ProcessedAnswer:
-        """초최적화 객관식 답변 추출"""
+    def _extract_mc_answer_optimized(self, response: str, question_structure: Dict) -> ProcessedAnswer:
+        """최적화 객관식 답변 추출"""
         extraction_results = []
         
         # 가중치 기반 패턴 매칭
@@ -338,10 +338,10 @@ class IntelligentDataProcessor:
                 for match in matches:
                     answer = match.group(1)
                     if self.validation_rules["choice_range"](answer):
-                        # 위치 기반 보너스 (뒤쪽일수록 높음)
+                        # 위치 기반 보너스
                         position_bonus = match.start() / len(response) * 0.2
                         
-                        # 패턴 순서 보너스 (앞쪽 패턴일수록 높음)
+                        # 패턴 순서 보너스
                         pattern_bonus = (len(patterns) - i) / len(patterns) * 0.1
                         
                         confidence = weight + position_bonus + pattern_bonus
@@ -359,7 +359,7 @@ class IntelligentDataProcessor:
             
             # 부정형 문제 보정
             if question_structure.get("has_negative", False):
-                best_result["confidence"] *= 0.9  # 부정형은 다소 신뢰도 감소
+                best_result["confidence"] *= 0.9
             
             return ProcessedAnswer(
                 final_answer=best_result["answer"],
@@ -395,14 +395,14 @@ class IntelligentDataProcessor:
         
         # 부정형 문제 처리
         if question_structure.get("has_negative", False):
-            return "1"  # 부정형은 보통 첫 번째가 틀린 경우가 많음
+            return "1"
         
-        # 기본값 (통계적 최적값)
+        # 기본값
         return "3"
     
     def _extract_subjective_answer_optimized(self, response: str, 
                                           question_structure: Dict) -> ProcessedAnswer:
-        """최적화된 주관식 답변 추출"""
+        """최적화 주관식 답변 추출"""
         
         # 접두사 제거
         cleaned_response = re.sub(
@@ -411,26 +411,26 @@ class IntelligentDataProcessor:
             flags=re.IGNORECASE
         )
         
-        # 고급 구조화
-        cleaned_response = self._structure_subjective_answer_advanced(
+        # 구조화
+        cleaned_response = self._structure_subjective_answer(
             cleaned_response, question_structure
         )
         
-        # 고급 품질 평가
-        confidence = self._evaluate_subjective_quality_advanced(
+        # 품질 평가
+        confidence = self._evaluate_subjective_quality(
             cleaned_response, question_structure
         )
         
         return ProcessedAnswer(
             final_answer=cleaned_response.strip(),
             confidence=confidence,
-            extraction_method="advanced_subjective_processing",
+            extraction_method="subjective_processing",
             validation_passed=confidence > 0.4
         )
     
-    def _structure_subjective_answer_advanced(self, response: str, 
+    def _structure_subjective_answer(self, response: str, 
                                            question_structure: Dict) -> str:
-        """고급 주관식 답변 구조화"""
+        """주관식 답변 구조화"""
         
         # 문장 분리 및 중복 제거
         sentences = re.split(r'[.!?]\s+', response)
@@ -440,7 +440,7 @@ class IntelligentDataProcessor:
         for sentence in sentences:
             sentence = sentence.strip()
             if sentence and len(sentence) > 15:
-                # 의미적 중복 체크 (앞 30자 기준)
+                # 의미적 중복 체크
                 key = sentence[:30].lower()
                 if key not in seen_keys:
                     unique_sentences.append(sentence)
@@ -481,12 +481,12 @@ class IntelligentDataProcessor:
         
         return structured_response
     
-    def _evaluate_subjective_quality_advanced(self, response: str, 
+    def _evaluate_subjective_quality(self, response: str, 
                                             question_structure: Dict) -> float:
-        """고급 주관식 품질 평가"""
+        """주관식 품질 평가"""
         confidence = 0.4  # 기본값
         
-        # 길이 평가 (개선된 범위)
+        # 길이 평가
         length = len(response)
         if 150 <= length <= 800:
             confidence += 0.25
@@ -548,7 +548,7 @@ class IntelligentDataProcessor:
         if question_type == "multiple_choice":
             # 빠른 추출 시도
             quick_answer = self.extract_mc_answer_fast(raw_response)
-            if quick_answer and quick_answer != "3":  # 기본값이 아닌 경우
+            if quick_answer and quick_answer != "3":
                 return quick_answer
             
             # 상세 추출
@@ -561,7 +561,7 @@ class IntelligentDataProcessor:
             if self.validate_final_answer(processed, question, question_type):
                 return processed.final_answer
             else:
-                # 고급 폴백
+                # 폴백
                 return self._generate_domain_specific_fallback(question)
     
     def _generate_domain_specific_fallback(self, question: str) -> str:
@@ -580,7 +580,7 @@ class IntelligentDataProcessor:
     
     def validate_final_answer(self, processed_answer: ProcessedAnswer,
                             question: str, question_type: str) -> bool:
-        """고급 최종 답변 검증"""
+        """최종 답변 검증"""
         
         answer = processed_answer.final_answer
         
@@ -591,7 +591,7 @@ class IntelligentDataProcessor:
         if question_type == "multiple_choice":
             return self.validation_rules["choice_range"](answer)
         else:
-            # 주관식 고급 검증
+            # 주관식 검증
             validations = [
                 self.validation_rules["length_appropriate"](answer),
                 self.validation_rules["meaningful_content"](answer),

@@ -7,13 +7,14 @@ import re
 import time
 import torch
 import numpy as np
-from typing import List, Dict, Tuple, Optional
-from dataclasses import dataclass
 import hashlib
 import json
 import threading
-from concurrent.futures import ThreadPoolExecutor
 import psutil
+import multiprocessing as mp
+from typing import List, Dict, Tuple, Optional
+from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
 
 @dataclass
 class QuestionDifficulty:
@@ -34,8 +35,8 @@ class SystemPerformanceMetrics:
     cache_efficiency: float
     thermal_status: str
 
-class UltraHighPerformanceOptimizer:
-    """초고성능 최적화 클래스"""
+class SystemOptimizer:
+    """시스템 최적화 클래스"""
     
     def __init__(self):
         # 문제 난이도 캐시
@@ -46,12 +47,12 @@ class UltraHighPerformanceOptimizer:
         self.gpu_memory_total = torch.cuda.get_device_properties(0).total_memory / (1024**3)
         self.gpu_memory_available = self.gpu_memory_total
         
-        # 고급 정답 패턴 학습
-        self.answer_patterns = self._initialize_advanced_patterns()
+        # 정답 패턴 학습
+        self.answer_patterns = self._initialize_patterns()
         
         # 동적 시간 할당 전략
         self.dynamic_time_strategy = {
-            "lightning": 3,    # 초고속 처리
+            "lightning": 3,    # 빠른 처리
             "fast": 6,         # 고속 처리
             "normal": 12,      # 표준 처리
             "careful": 20,     # 신중한 처리
@@ -66,31 +67,31 @@ class UltraHighPerformanceOptimizer:
         self.max_workers = min(mp.cpu_count(), 8)
         self.processing_queue = []
         
-    def _initialize_advanced_patterns(self) -> Dict:
-        """고급 답변 패턴 초기화"""
+    def _initialize_patterns(self) -> Dict:
+        """패턴 초기화"""
         return {
-            "개인정보_정의_고급": {
+            "개인정보_정의": {
                 "patterns": ["개인정보", "정의", "의미", "개념", "식별가능"],
                 "preferred_answers": {"2": 0.70, "1": 0.18, "3": 0.08, "4": 0.02, "5": 0.02},
                 "confidence": 0.82,
                 "context_multipliers": {"법령": 1.15, "제2조": 1.2, "개인정보보호법": 1.1},
                 "domain_boost": 0.15
             },
-            "전자금융_정의_고급": {
+            "전자금융_정의": {
                 "patterns": ["전자금융거래", "전자적장치", "금융상품", "서비스제공"],
                 "preferred_answers": {"2": 0.68, "1": 0.20, "3": 0.08, "4": 0.02, "5": 0.02},
                 "confidence": 0.78,
                 "context_multipliers": {"전자금융거래법": 1.2, "제2조": 1.15, "전자적": 1.1},
                 "domain_boost": 0.12
             },
-            "유출_신고_고급": {
+            "유출_신고": {
                 "patterns": ["개인정보유출", "신고", "지체없이", "통지", "개인정보보호위원회"],
                 "preferred_answers": {"1": 0.75, "2": 0.12, "3": 0.08, "4": 0.03, "5": 0.02},
                 "confidence": 0.85,
                 "context_multipliers": {"즉시": 1.3, "지체없이": 1.25, "신고의무": 1.2},
                 "domain_boost": 0.18
             },
-            "접근매체_관리_고급": {
+            "접근매체_관리": {
                 "patterns": ["접근매체", "안전", "신뢰", "선정", "관리"],
                 "preferred_answers": {"1": 0.72, "2": 0.15, "3": 0.08, "4": 0.03, "5": 0.02},
                 "confidence": 0.80,
@@ -104,21 +105,21 @@ class UltraHighPerformanceOptimizer:
                 "context_multipliers": {"제외": 1.2, "예외": 1.15, "아닌": 1.1},
                 "domain_boost": 0.10
             },
-            "암호화_보안_고급": {
+            "암호화_보안": {
                 "patterns": ["암호화", "안전성확보조치", "기술적조치", "개인정보보호"],
                 "preferred_answers": {"1": 0.48, "2": 0.32, "3": 0.12, "4": 0.05, "5": 0.03},
                 "confidence": 0.65,
                 "context_multipliers": {"필수": 1.2, "의무": 1.15, "반드시": 1.1},
                 "domain_boost": 0.12
             },
-            "법령_조항_전문가": {
+            "법령_조항": {
                 "patterns": ["법", "조", "항", "규정", "시행령", "기준"],
                 "preferred_answers": {"2": 0.38, "3": 0.32, "1": 0.18, "4": 0.08, "5": 0.04},
                 "confidence": 0.60,
                 "context_multipliers": {"따르면": 1.15, "의하면": 1.15, "규정하고있다": 1.1},
                 "domain_boost": 0.08
             },
-            "ISMS_관리체계_고급": {
+            "ISMS_관리체계": {
                 "patterns": ["정보보호관리체계", "ISMS", "위험관리", "지속적개선"],
                 "preferred_answers": {"3": 0.50, "2": 0.28, "1": 0.15, "4": 0.05, "5": 0.02},
                 "confidence": 0.75,
@@ -127,44 +128,44 @@ class UltraHighPerformanceOptimizer:
             }
         }
     
-    def evaluate_question_difficulty_advanced(self, question: str, structure: Dict) -> QuestionDifficulty:
-        """고급 문제 난이도 평가"""
+    def evaluate_question_difficulty(self, question: str, structure: Dict) -> QuestionDifficulty:
+        """문제 난이도 평가"""
         
-        # 고성능 캐시 확인
+        # 캐시 확인
         q_hash = hashlib.md5(question.encode()).hexdigest()[:12]
         if q_hash in self.difficulty_cache:
             return self.difficulty_cache[q_hash]
         
         factors = {}
         
-        # 1. 텍스트 복잡도 (가중치: 0.2)
+        # 텍스트 복잡도 (가중치: 0.2)
         length = len(question)
         char_diversity = len(set(question)) / max(len(question), 1)
         factors["text_complexity"] = min((length / 2000) * (1 + char_diversity), 0.2)
         
-        # 2. 구조적 복잡도 (가중치: 0.15)
+        # 구조적 복잡도 (가중치: 0.15)
         line_count = question.count('\n')
         choice_indicators = len(re.findall(r'[①②③④⑤]|\b[1-5]\s*[.)]', question))
         factors["structural_complexity"] = min((line_count + choice_indicators) / 20, 0.15)
         
-        # 3. 부정형 복잡도 (가중치: 0.25)
+        # 부정형 복잡도 (가중치: 0.25)
         if structure.get("has_negative", False):
             negative_intensity = len(re.findall(r'해당하지\s*않는|적절하지\s*않은|옳지\s*않은', question))
             factors["negative_complexity"] = min(0.2 + (negative_intensity * 0.05), 0.25)
         else:
             factors["negative_complexity"] = 0.0
         
-        # 4. 법령 복잡도 (가중치: 0.2)
+        # 법령 복잡도 (가중치: 0.2)
         law_references = len(re.findall(r'법|조|항|규정|시행령|시행규칙', question))
         specific_articles = len(re.findall(r'제\d+조|제\d+항', question))
         factors["legal_complexity"] = min((law_references + specific_articles * 2) / 15, 0.2)
         
-        # 5. 도메인 전문성 (가중치: 0.1)
+        # 도메인 전문성 (가중치: 0.1)
         domain_keywords = ['개인정보보호', '전자금융거래', 'ISMS', '정보보호관리체계', '암호화']
         domain_matches = sum(1 for kw in domain_keywords if kw in question)
         factors["domain_expertise"] = min(domain_matches / 10, 0.1)
         
-        # 6. 기술적 복잡도 (가중치: 0.1)
+        # 기술적 복잡도 (가중치: 0.1)
         tech_terms = ['PKI', 'SSL', 'TLS', 'AES', 'RSA', 'SHA', 'API', 'DB', '시스템']
         tech_count = sum(1 for term in tech_terms if term in question)
         factors["technical_complexity"] = min(tech_count / 15, 0.1)
@@ -208,17 +209,17 @@ class UltraHighPerformanceOptimizer:
             memory_requirement=memory_req
         )
         
-        # 고성능 캐시 저장
+        # 캐시 저장
         self.difficulty_cache[q_hash] = difficulty
         
         return difficulty
     
-    def get_ultra_smart_answer_hint(self, question: str, structure: Dict) -> Tuple[str, float]:
-        """초지능형 답변 힌트"""
+    def get_smart_answer_hint(self, question: str, structure: Dict) -> Tuple[str, float]:
+        """지능형 답변 힌트"""
         
         question_normalized = re.sub(r'\s+', '', question.lower())
         
-        # 고급 패턴 매칭
+        # 패턴 매칭
         best_match = None
         best_score = 0
         
@@ -264,11 +265,11 @@ class UltraHighPerformanceOptimizer:
             
             return best_answer[0], adjusted_confidence
         
-        # 통계적 폴백 (고급)
-        return self._statistical_fallback_advanced(question, structure)
+        # 통계적 폴백
+        return self._statistical_fallback(question, structure)
     
-    def _statistical_fallback_advanced(self, question: str, structure: Dict) -> Tuple[str, float]:
-        """고급 통계적 폴백"""
+    def _statistical_fallback(self, question: str, structure: Dict) -> Tuple[str, float]:
+        """통계적 폴백"""
         
         # 문제 특성 분석
         question_length = len(question)
@@ -329,7 +330,7 @@ class UltraHighPerformanceOptimizer:
             structure = data.get("structure", {})
             
             # 난이도 평가
-            difficulty = self.evaluate_question_difficulty_advanced(question, structure)
+            difficulty = self.evaluate_question_difficulty(question, structure)
             data["difficulty"] = difficulty
             
             # 처리 점수 계산 (낮을수록 먼저 처리)
@@ -358,7 +359,7 @@ class UltraHighPerformanceOptimizer:
             base_score -= 0.2
         
         # 높은 신뢰도 예상 문제 우선
-        hint_answer, hint_confidence = self.get_ultra_smart_answer_hint(
+        hint_answer, hint_confidence = self.get_smart_answer_hint(
             data["question"], structure
         )
         if hint_confidence > 0.7:
@@ -506,13 +507,13 @@ class PerformanceMonitor:
         # GPU 메모리 경고
         if metrics.memory_usage > self.alert_thresholds["gpu_memory"]:
             if current_time - self.last_alert_time.get("memory", 0) > 60:  # 1분 간격
-                print(f"⚠️ GPU 메모리 사용률 높음: {metrics.memory_usage:.1%}")
+                print(f"GPU 메모리 사용률 높음: {metrics.memory_usage:.1%}")
                 self.last_alert_time["memory"] = current_time
         
         # 열 상태 경고
         if metrics.thermal_status == "high":
             if current_time - self.last_alert_time.get("thermal", 0) > 120:  # 2분 간격
-                print(f"🔥 GPU 온도 주의: {metrics.thermal_status}")
+                print(f"GPU 온도 주의: {metrics.thermal_status}")
                 self.last_alert_time["thermal"] = current_time
     
     def get_performance_summary(self) -> Dict:
@@ -614,14 +615,14 @@ class AdaptiveController:
         }
 
 class ResponseValidator:
-    """고급 응답 검증기"""
+    """응답 검증기"""
     
     def __init__(self):
-        self.validation_rules = self._build_advanced_validation_rules()
+        self.validation_rules = self._build_validation_rules()
         self.quality_metrics = {}
         
-    def _build_advanced_validation_rules(self) -> Dict[str, callable]:
-        """고급 검증 규칙"""
+    def _build_validation_rules(self) -> Dict[str, callable]:
+        """검증 규칙"""
         return {
             "mc_has_valid_number": lambda r: bool(re.search(r'[1-5]', r)),
             "mc_single_clear_answer": lambda r: len(set(re.findall(r'[1-5]', r))) == 1,
@@ -690,9 +691,9 @@ class ResponseValidator:
         
         return is_valid, issues, quality_score
     
-    def improve_response_advanced(self, response: str, issues: List[str], 
+    def improve_response(self, response: str, issues: List[str], 
                                 question_type: str, structure: Dict) -> str:
-        """고급 응답 개선"""
+        """응답 개선"""
         
         improved_response = response
         

@@ -6,6 +6,7 @@
 import os
 import sys
 import time
+import re
 import pandas as pd
 import torch
 from pathlib import Path
@@ -16,7 +17,6 @@ from typing import List, Dict, Tuple, Optional
 import threading
 import psutil
 import platform
-import re
 warnings.filterwarnings("ignore")
 
 # 플랫폼별 시그널 처리
@@ -67,7 +67,7 @@ class CrossPlatformTimeout:
     def _timeout(self):
         self.timed_out = True
 
-class OptimizedSOLARInference:
+class SOLARInference:
     """추론 엔진"""
     
     def __init__(self, model_name: str = "upstage/SOLAR-10.7B-Instruct-v1.0"):
@@ -118,7 +118,7 @@ class OptimizedSOLARInference:
             gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
             
             if gpu_memory < 12:  # 8GB GPU 최적화
-                print(f"GPU 메모리 {gpu_memory:.1f}GB - 메모리 최적화 모드")
+                print(f"GPU 메모리 {gpu_memory:.1f}GB - 메모리 절약 모드")
                 device_map = {"": 0}  # 단일 GPU에 모든 레이어
                 max_memory = {0: f"{int(gpu_memory * 0.85)}GB"}
                 torch_dtype = torch.float16
@@ -138,9 +138,9 @@ class OptimizedSOLARInference:
                 low_cpu_mem_usage=True
             )
             
-            # Generation Config 설정 (속도 최적화)
+            # Generation Config 설정
             self.generation_config = GenerationConfig(
-                max_new_tokens=128,  # 객관식용으로 크게 단축
+                max_new_tokens=128,
                 temperature=0.1,
                 top_p=0.9,
                 do_sample=True,
@@ -155,7 +155,7 @@ class OptimizedSOLARInference:
             raise
     
     def analyze_question(self, question: str) -> Dict:
-        """문제 분석 개선"""
+        """문제 분석"""
         analysis = {
             "is_multiple_choice": self._detect_multiple_choice(question),
             "has_negative": "않" in question or "없" in question or "틀린" in question,
@@ -165,25 +165,23 @@ class OptimizedSOLARInference:
         return analysis
     
     def _detect_multiple_choice(self, question: str) -> bool:
-        """객관식 감지 개선"""
-        # 더 넓은 범위의 패턴으로 객관식 감지
+        """객관식 감지"""
         patterns = [
-            r'[①②③④⑤]',                    # 원 번호
-            r'\b[1-5]\s*[.)]',               # 1. 1) 형태
-            r'^\s*[1-5]\s+[가-힣]',         # 줄 시작 숫자 + 텍스트
-            r'\n\s*[1-5]\s',                # 개행 후 숫자
-            r'[1-5]번',                      # 1번, 2번 등
-            r'선택지',                       # 선택지 단어
-            r'다음.*중.*(?:맞|옳|적절|해당)', # 다음 중에서 패턴
+            r'[①②③④⑤]',
+            r'\b[1-5]\s*[.)]',
+            r'^\s*[1-5]\s+[가-힣]',
+            r'\n\s*[1-5]\s',
+            r'[1-5]번',
+            r'선택지',
+            r'다음.*중.*(?:맞|옳|적절|해당)',
         ]
         
         for pattern in patterns:
             if re.search(pattern, question, re.MULTILINE):
                 return True
         
-        # 숫자 개수로도 판단 (1-5가 여러 개 있으면 객관식)
         numbers = re.findall(r'\b[1-5]\b', question)
-        if len(set(numbers)) >= 3:  # 3개 이상 다른 숫자
+        if len(set(numbers)) >= 3:
             return True
             
         return False
@@ -217,7 +215,7 @@ class OptimizedSOLARInference:
             return self._create_open_prompt(question, analysis)
     
     def _create_mc_prompt(self, question: str, analysis: Dict) -> str:
-        """객관식 프롬프트 간소화"""
+        """객관식 프롬프트"""
         if analysis["has_negative"]:
             system_msg = "다음 객관식 문제에서 틀린 것 또는 해당하지 않는 것을 찾으세요."
         else:
@@ -232,7 +230,7 @@ class OptimizedSOLARInference:
         return prompt
     
     def _create_open_prompt(self, question: str, analysis: Dict) -> str:
-        """주관식 프롬프트 간소화"""
+        """주관식 프롬프트"""
         prompt = f"""다음 질문에 대해 간결하고 정확하게 답변하세요.
 
 {question}
@@ -241,16 +239,17 @@ class OptimizedSOLARInference:
         
         return prompt
     
-    def generate_response(self, prompt: str, timeout: int = 10) -> str:  # 타임아웃 대폭 단축
-        """응답 생성 최적화"""
+    def generate_response(self, prompt: str, timeout: int = 10) -> str:
+        """응답 생성"""
+        
         try:
             # 캐시 확인
-            cache_key = hash(prompt)
+            cache_key = hash(prompt[:100])
             if cache_key in self.cache:
-                self.stats["cache_hits"] += 1
+                self.cache_hits += 1
                 return self.cache[cache_key]
             
-            # 강화된 타임아웃 적용
+            # 타임아웃 적용
             with CrossPlatformTimeout(timeout):
                 # 대화 템플릿 적용
                 conversation = [{'role': 'user', 'content': prompt}]
@@ -260,15 +259,15 @@ class OptimizedSOLARInference:
                     add_generation_prompt=True
                 )
                 
-                # 토크나이징 (길이 제한)
+                # 토크나이징
                 inputs = self.tokenizer(
                     formatted_prompt, 
                     return_tensors="pt", 
                     truncation=True, 
-                    max_length=1024  # 입력 길이 제한
+                    max_length=1024
                 ).to(self.model.device)
                 
-                # 생성 (더 빠른 설정)
+                # 생성
                 with torch.no_grad():
                     outputs = self.model.generate(
                         **inputs,
@@ -309,10 +308,10 @@ class OptimizedSOLARInference:
     
     def extract_answer(self, response: str, is_multiple_choice: bool) -> str:
         if is_multiple_choice:
-            # 숫자 추출 개선
+            # 숫자 추출
             numbers = re.findall(r'\b([1-5])\b', response)
             if numbers:
-                return numbers[-1]  # 마지막 숫자 선택
+                return numbers[-1]
             
             # 원 번호 추출
             circle_match = re.search(r'[①②③④⑤]', response)
@@ -326,7 +325,7 @@ class OptimizedSOLARInference:
             cleaned = response.replace("답변:", "").strip()
             if len(cleaned) < 10:
                 return self._get_fallback_answer("")
-            return cleaned[:300]  # 길이 제한
+            return cleaned[:300]
     
     def cleanup(self):
         try:
@@ -346,12 +345,12 @@ class OptimizedSOLARInference:
         except Exception as e:
             print(f"정리 중 오류: {e}")
 
-class HighPerformanceInferenceEngine:
+class InferenceEngine:
     """추론 엔진"""
     
     def __init__(self):
         self.start_time = time.time()
-        self.model_handler = OptimizedSOLARInference()
+        self.model_handler = SOLARInference()
         
         print("초기화 완료")
     
@@ -388,9 +387,9 @@ class HighPerformanceInferenceEngine:
         print(f"객관식: {mc_count}개")
         print(f"주관식: {open_count}개")
         
-        # 객관식 우선 처리 (빠른 처리)
+        # 객관식 우선 처리
         analyzed_questions.sort(key=lambda x: (
-            not x["analysis"]["is_multiple_choice"],  # 객관식 먼저
+            not x["analysis"]["is_multiple_choice"],
             x["analysis"]["complexity"] == "hard",
             len(x["question"])
         ))
@@ -404,11 +403,11 @@ class HighPerformanceInferenceEngine:
             question = q_info["question"]
             analysis = q_info["analysis"]
             
-            # 타임아웃 설정 (대폭 단축)
+            # 타임아웃 설정
             if analysis["is_multiple_choice"]:
-                timeout = 8  # 객관식은 8초
+                timeout = 8
             else:
-                timeout = 15  # 주관식은 15초
+                timeout = 15
             
             # 프롬프트 생성
             prompt = self.model_handler.create_prompt(question, analysis)
@@ -422,7 +421,7 @@ class HighPerformanceInferenceEngine:
             
             self.model_handler.stats["total_processed"] += 1
             
-            # 메모리 정리 (20개마다)
+            # 메모리 정리
             if idx % 20 == 0:
                 torch.cuda.empty_cache()
                 gc.collect()
@@ -493,7 +492,7 @@ def main():
     # 추론 실행
     engine = None
     try:
-        engine = HighPerformanceInferenceEngine()
+        engine = InferenceEngine()
         results = engine.execute_inference(test_file, submission_file)
         
         if results["success"]:

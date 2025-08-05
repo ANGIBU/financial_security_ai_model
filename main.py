@@ -8,44 +8,44 @@ import pandas as pd
 import torch
 import time
 import argparse
-from tqdm import tqdm
 import warnings
 import numpy as np
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import psutil
+from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
 warnings.filterwarnings("ignore")
 
-from model_handler import OptimizedModelHandler
-from data_processor import IntelligentDataProcessor
-from prompt_engineering import AdvancedPromptEngineer
+from model_handler import ModelHandler
+from data_processor import DataProcessor
+from prompt_engineering import PromptEngineer
 from knowledge_base import FinancialSecurityKnowledgeBase
-from advanced_optimizer import UltraHighPerformanceOptimizer, PerformanceMonitor
+from advanced_optimizer import SystemOptimizer, PerformanceMonitor
 from pattern_learner import AnswerPatternLearner, SmartAnswerSelector
 
-class UltraHighPerformanceTester:
+class SystemTester:
     """개발 및 테스트 클래스"""
     
     def __init__(self, model_config: dict):
-        print("개발 시스템 초기화...")
+        print("시스템 초기화...")
         
         # 성능 모니터링 시작
         self.performance_monitor = PerformanceMonitor()
         self.start_time = time.time()
         
         # 컴포넌트 초기화
-        self.model_handler = OptimizedModelHandler(**model_config)
-        self.data_processor = IntelligentDataProcessor()
-        self.prompt_engineer = AdvancedPromptEngineer()
+        self.model_handler = ModelHandler(**model_config)
+        self.data_processor = DataProcessor()
+        self.prompt_engineer = PromptEngineer()
         self.knowledge_base = FinancialSecurityKnowledgeBase()
-        self.optimizer = UltraHighPerformanceOptimizer()
+        self.optimizer = SystemOptimizer()
         self.pattern_learner = AnswerPatternLearner()
         self.answer_selector = SmartAnswerSelector()
         
         # 시스템 성능 정보
         self.system_info = self._collect_system_info()
         
-        print("✅ 고성능 초기화 완료")
+        print("초기화 완료")
         self._print_system_summary()
     
     def _collect_system_info(self) -> dict:
@@ -74,19 +74,19 @@ class UltraHighPerformanceTester:
     
     def _print_system_summary(self):
         """시스템 요약 출력"""
-        print(f"\n📊 시스템 정보")
+        print(f"\n시스템 정보")
         if torch.cuda.is_available():
             print(f"GPU: {self.system_info['gpu_name']} ({self.system_info['gpu_memory_gb']:.1f}GB)")
         print(f"CPU: {self.system_info['cpu_cores']}코어")
         print(f"RAM: {self.system_info['ram_gb']:.1f}GB")
         print(f"성능 등급: {self.system_info['performance_tier']}")
     
-    def run_comprehensive_accuracy_test(self, sample_size: int = 30):
-        """포괄적 정확도 테스트"""
+    def run_accuracy_test(self, sample_size: int = 30):
+        """정확도 테스트"""
         
         test_df = pd.read_csv('./test.csv')
         
-        print(f"\n🎯 포괄적 정확도 테스트: {sample_size}개 문항")
+        print(f"\n정확도 테스트: {sample_size}개 문항")
         
         # 지능형 샘플 선택
         sample_indices = self._select_intelligent_samples(test_df, sample_size)
@@ -103,10 +103,10 @@ class UltraHighPerformanceTester:
             question = test_df.iloc[idx]['Question']
             question_id = test_df.iloc[idx]['ID']
             
-            # 고급 문제 분석
+            # 문제 분석
             structure = self.data_processor.analyze_question_structure(question)
             analysis = self.knowledge_base.analyze_question(question)
-            difficulty = self.optimizer.evaluate_question_difficulty_advanced(question, structure)
+            difficulty = self.optimizer.evaluate_question_difficulty(question, structure)
             
             # 적응형 전략 선택
             strategies = self._select_adaptive_strategies(difficulty, structure)
@@ -118,7 +118,7 @@ class UltraHighPerformanceTester:
             # 다중 전략 테스트
             for strategy in strategies:
                 try:
-                    # 고급 프롬프트 생성
+                    # 프롬프트 생성
                     prompt = self.prompt_engineer.create_adaptive_prompt(
                         question, structure["question_type"], analysis, strategy
                     )
@@ -129,7 +129,7 @@ class UltraHighPerformanceTester:
                     )
                     
                     # 추론 실행
-                    result = self.model_handler.generate_expert_response(
+                    result = self.model_handler.generate_response(
                         optimized_prompt, structure["question_type"], max_attempts=1
                     )
                     
@@ -177,17 +177,17 @@ class UltraHighPerformanceTester:
             self.performance_monitor.update(processing_time, best_confidence)
         
         # 상세 결과 분석
-        self._analyze_comprehensive_accuracy_results(results, confidence_scores, 
+        self._analyze_accuracy_results(results, confidence_scores, 
                                                     processing_times, answer_distribution)
         
         return results
     
-    def run_ultra_speed_test(self, sample_size: int = 100):
-        """초고속 테스트"""
+    def run_speed_test(self, sample_size: int = 100):
+        """속도 테스트"""
         
         test_df = pd.read_csv('./test.csv')
         
-        print(f"\n⚡ 초고속 테스트: {sample_size}개 문항")
+        print(f"\n속도 테스트: {sample_size}개 문항")
         
         # 빠른 처리용 샘플 선택 (쉬운 문제 위주)
         sample_indices = self._select_speed_optimized_samples(test_df, sample_size)
@@ -204,7 +204,7 @@ class UltraHighPerformanceTester:
         else:
             batch_size = 10
         
-        print(f"🔧 최적화된 배치 크기: {batch_size}")
+        print(f"최적화된 배치 크기: {batch_size}")
         
         # 배치별 병렬 처리
         batch_results = []
@@ -235,7 +235,7 @@ class UltraHighPerformanceTester:
     def run_stress_test(self, duration_minutes: int = 10):
         """스트레스 테스트"""
         
-        print(f"\n🔥 시스템 스트레스 테스트: {duration_minutes}분")
+        print(f"\n시스템 스트레스 테스트: {duration_minutes}분")
         
         test_df = pd.read_csv('./test.csv')
         end_time = time.time() + (duration_minutes * 60)
@@ -258,7 +258,7 @@ class UltraHighPerformanceTester:
                     question, structure["question_type"], {}, "simple"
                 )
                 
-                result = self.model_handler.generate_expert_response(
+                result = self.model_handler.generate_response(
                     prompt, structure["question_type"], max_attempts=1
                 )
                 
@@ -274,7 +274,7 @@ class UltraHighPerformanceTester:
                 
                 processed_count += 1
                 
-                # 진행 상황 출력 (10초마다)
+                # 진행 상황 출력 (10개마다)
                 if processed_count % 10 == 0:
                     elapsed = time.time() - (end_time - duration_minutes * 60)
                     remaining = (end_time - time.time()) / 60
@@ -284,7 +284,7 @@ class UltraHighPerformanceTester:
             except Exception as e:
                 error_count += 1
                 if error_count > 10:  # 너무 많은 오류 발생 시 중단
-                    print(f"⚠️ 과도한 오류 발생 ({error_count}개), 테스트 중단")
+                    print(f"과도한 오류 발생 ({error_count}개), 테스트 중단")
                     break
         
         # 스트레스 테스트 분석
@@ -362,6 +362,7 @@ class UltraHighPerformanceTester:
             return False
         
         # 특수문자가 너무 많은 문제 제외
+        import re
         special_char_ratio = len(re.findall(r'[^\w\s가-힣]', question)) / len(question)
         if special_char_ratio > 0.3:
             return False
@@ -399,6 +400,7 @@ class UltraHighPerformanceTester:
         for i, question in enumerate(questions):
             try:
                 # 최소한의 분석
+                import re
                 is_mc = bool(re.search(r'[①②③④⑤]|\b[1-5]\s*[.)]', question))
                 
                 # 빠른 프롬프트 생성
@@ -413,7 +415,7 @@ class UltraHighPerformanceTester:
                 )
                 
                 # 빠른 생성 (타임아웃 단축)
-                result = self.model_handler.generate_expert_response(
+                result = self.model_handler.generate_response(
                     optimized_prompt, "multiple_choice" if is_mc else "subjective", 
                     max_attempts=1
                 )
@@ -442,11 +444,11 @@ class UltraHighPerformanceTester:
         
         return batch_results
     
-    def _analyze_comprehensive_accuracy_results(self, results: list, confidence_scores: list, 
+    def _analyze_accuracy_results(self, results: list, confidence_scores: list, 
                                               processing_times: list, answer_distribution: dict):
-        """포괄적 정확도 결과 분석"""
+        """정확도 결과 분석"""
         
-        print(f"\n🎯 정확도 분석 결과")
+        print(f"\n정확도 분석 결과")
         print(f"{'='*50}")
         
         # 기본 통계
@@ -462,9 +464,9 @@ class UltraHighPerformanceTester:
             avg_confidence = np.mean(confidence_scores)
             high_conf_count = len([c for c in confidence_scores if c >= 0.7])
             
-            print(f"\n📊 신뢰도 분석")
+            print(f"\n신뢰도 분석")
             print(f"평균 신뢰도: {avg_confidence:.3f}")
-            print(f"고신뢰도 (≥0.7): {high_conf_count}개 ({high_conf_count/len(results)*100:.1f}%)")
+            print(f"신뢰도 (≥0.7): {high_conf_count}개 ({high_conf_count/len(results)*100:.1f}%)")
         
         # 처리 시간 분석
         if processing_times:
@@ -472,14 +474,14 @@ class UltraHighPerformanceTester:
             min_time = np.min(processing_times)
             max_time = np.max(processing_times)
             
-            print(f"\n⏱️ 처리 시간 분석")
+            print(f"\n처리 시간 분석")
             print(f"평균 처리 시간: {avg_time:.2f}초")
             print(f"최소/최대: {min_time:.2f}초 / {max_time:.2f}초")
             print(f"예상 전체 시간: {(avg_time * 515) / 60:.1f}분")
         
         # 답변 분포 분석 (객관식)
         if mc_results:
-            print(f"\n📈 객관식 답변 분포")
+            print(f"\n객관식 답변 분포")
             total_mc = len(mc_results)
             for choice in sorted(answer_distribution.keys()):
                 count = answer_distribution[choice]
@@ -490,9 +492,9 @@ class UltraHighPerformanceTester:
             max_choice = max(answer_distribution, key=answer_distribution.get)
             max_pct = (answer_distribution[max_choice] / total_mc) * 100
             if max_pct > 50:
-                print(f"⚠️ 답변 편향 감지: {max_choice}번 {max_pct:.1f}%")
+                print(f"답변 편향 감지: {max_choice}번 {max_pct:.1f}%")
             else:
-                print("✅ 답변 분포 균형적")
+                print("답변 분포 균형적")
         
         # 난이도별 분석
         difficulty_stats = {}
@@ -510,7 +512,7 @@ class UltraHighPerformanceTester:
             difficulty_stats[category]["count"] += 1
             difficulty_stats[category]["avg_conf"].append(result["confidence"])
         
-        print(f"\n📊 난이도별 분석")
+        print(f"\n난이도별 분석")
         for category, stats in difficulty_stats.items():
             avg_conf = np.mean(stats["avg_conf"]) if stats["avg_conf"] else 0
             print(f"  {category}: {stats['count']}개, 평균신뢰도 {avg_conf:.3f}")
@@ -518,7 +520,7 @@ class UltraHighPerformanceTester:
     def _analyze_speed_results(self, results: list, total_time: float, sample_size: int):
         """속도 결과 분석"""
         
-        print(f"\n⚡ 속도 분석 결과")
+        print(f"\n속도 분석 결과")
         print(f"{'='*50}")
         
         print(f"총 처리 시간: {total_time:.1f}초")
@@ -532,13 +534,13 @@ class UltraHighPerformanceTester:
         # 성능 등급 평가
         questions_per_minute = sample_size / (total_time / 60)
         if questions_per_minute > 30:
-            performance_grade = "S급 (초고속)"
+            performance_grade = "S급"
         elif questions_per_minute > 20:
-            performance_grade = "A급 (고속)"
+            performance_grade = "A급"
         elif questions_per_minute > 10:
-            performance_grade = "B급 (보통)"
+            performance_grade = "B급"
         else:
-            performance_grade = "C급 (개선필요)"
+            performance_grade = "C급"
         
         print(f"성능 등급: {performance_grade}")
         
@@ -548,17 +550,17 @@ class UltraHighPerformanceTester:
         print(f"시간 여유: {safety_margin:.1f}분")
         
         if safety_margin > 60:
-            print("✅ 충분한 시간 여유")
+            print("충분한 시간 여유")
         elif safety_margin > 30:
-            print("⚠️ 적당한 시간 여유")
+            print("적당한 시간 여유")
         else:
-            print("❌ 시간 부족 위험")
+            print("시간 부족 위험")
     
     def _analyze_stress_test_results(self, processed_count: int, error_count: int, 
                                    performance_history: list, duration_minutes: int):
         """스트레스 테스트 결과 분석"""
         
-        print(f"\n🔥 스트레스 테스트 결과")
+        print(f"\n스트레스 테스트 결과")
         print(f"{'='*50}")
         
         print(f"테스트 시간: {duration_minutes}분")
@@ -571,7 +573,7 @@ class UltraHighPerformanceTester:
             processing_times = [p["processing_time"] for p in performance_history]
             confidences = [p["confidence"] for p in performance_history]
             
-            print(f"\n📈 성능 추이")
+            print(f"\n성능 추이")
             print(f"평균 처리 시간: {np.mean(processing_times):.2f}초")
             print(f"처리 시간 표준편차: {np.std(processing_times):.2f}초")
             print(f"평균 신뢰도: {np.mean(confidences):.3f}")
@@ -594,17 +596,17 @@ class UltraHighPerformanceTester:
         
         print(f"시스템 안정성: {stability_grade}")
     
-    def run_comprehensive_benchmark(self):
+    def run_benchmark(self):
         """종합 벤치마크"""
         
-        print(f"\n🏆 종합 벤치마크 시작")
+        print(f"\n종합 벤치마크 시작")
         print(f"{'='*60}")
         
         benchmark_results = {}
         
         # 1. 정확도 테스트
-        print("\n1️⃣ 정확도 테스트 (20개 샘플)")
-        accuracy_results = self.run_comprehensive_accuracy_test(20)
+        print("\n1. 정확도 테스트 (20개 샘플)")
+        accuracy_results = self.run_accuracy_test(20)
         benchmark_results["accuracy"] = {
             "sample_count": len(accuracy_results),
             "avg_confidence": np.mean([r["confidence"] for r in accuracy_results]),
@@ -612,8 +614,8 @@ class UltraHighPerformanceTester:
         }
         
         # 2. 속도 테스트
-        print("\n2️⃣ 속도 테스트 (50개 샘플)")
-        speed_results = self.run_ultra_speed_test(50)
+        print("\n2. 속도 테스트 (50개 샘플)")
+        speed_results = self.run_speed_test(50)
         benchmark_results["speed"] = {
             "sample_count": len(speed_results),
             "avg_time": np.mean([r["time"] for r in speed_results]),
@@ -621,7 +623,7 @@ class UltraHighPerformanceTester:
         }
         
         # 3. 메모리 효율성 테스트
-        print("\n3️⃣ 메모리 효율성 테스트")
+        print("\n3. 메모리 효율성 테스트")
         memory_results = self._test_memory_efficiency()
         benchmark_results["memory"] = memory_results
         
@@ -724,7 +726,7 @@ class UltraHighPerformanceTester:
     def _generate_benchmark_report(self, results: dict, total_score: float):
         """벤치마크 보고서 생성"""
         
-        print(f"\n🏆 종합 벤치마크 보고서")
+        print(f"\n종합 벤치마크 보고서")
         print(f"{'='*60}")
         
         print(f"총점: {total_score:.1f}/100")
@@ -732,25 +734,25 @@ class UltraHighPerformanceTester:
         # 등급 판정
         if total_score >= 90:
             grade = "S급 (최우수)"
-            comment = "🥇 최적의 성능! 대회 준비 완료"
+            comment = "최적의 성능! 대회 준비 완료"
         elif total_score >= 80:
             grade = "A급 (우수)"
-            comment = "🥈 우수한 성능! 약간의 조정으로 완벽"
+            comment = "우수한 성능! 약간의 조정으로 완벽"
         elif total_score >= 70:
             grade = "B급 (양호)"
-            comment = "🥉 양호한 성능! 일부 개선 권장"
+            comment = "양호한 성능! 일부 개선 권장"
         elif total_score >= 60:
             grade = "C급 (보통)"
-            comment = "⚠️ 보통 성능, 최적화 필요"
+            comment = "보통 성능, 최적화 필요"
         else:
             grade = "D급 (개선필요)"
-            comment = "❌ 성능 개선 필요"
+            comment = "성능 개선 필요"
         
         print(f"성능 등급: {grade}")
         print(f"평가: {comment}")
         
         # 세부 점수
-        print(f"\n📊 세부 점수")
+        print(f"\n세부 점수")
         if "accuracy" in results:
             print(f"정확도: {results['accuracy']['avg_confidence']:.3f} (신뢰도)")
         if "speed" in results:
@@ -759,7 +761,7 @@ class UltraHighPerformanceTester:
             print(f"메모리 효율성: {results['memory']['memory_efficiency']:.3f}")
         
         # 권장사항
-        print(f"\n💡 성능 개선 권장사항")
+        print(f"\n성능 개선 권장사항")
         recommendations = self._generate_improvement_recommendations(results, total_score)
         for rec in recommendations:
             print(f"  • {rec}")
@@ -806,7 +808,7 @@ class UltraHighPerformanceTester:
     
     def cleanup(self):
         """리소스 정리"""
-        print(f"\n🧹 리소스 정리 중...")
+        print(f"\n리소스 정리 중...")
         
         # 컴포넌트 정리
         if hasattr(self, 'model_handler'):
@@ -842,15 +844,15 @@ def main():
     
     # 시스템 요구사항 확인
     if not torch.cuda.is_available():
-        print("❌ CUDA 없음 - GPU 추론 불가능")
+        print("CUDA 없음 - GPU 추론 불가능")
         return
     
     gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-    print(f"🚀 GPU: {torch.cuda.get_device_name(0)} ({gpu_memory:.1f}GB)")
+    print(f"GPU: {torch.cuda.get_device_name(0)} ({gpu_memory:.1f}GB)")
     
     # 데이터 파일 확인
     if not os.path.exists('./test.csv') or not os.path.exists('./sample_submission.csv'):
-        print("❌ 데이터 파일 없음")
+        print("데이터 파일 없음")
         return
     
     # 모델 설정 (동적 최적화)
@@ -861,7 +863,7 @@ def main():
             "load_in_4bit": False,
             "max_memory_gb": int(gpu_memory * 0.9)
         }
-        print("🎯 초고성능 모드 설정")
+        print("모드 설정")
     elif gpu_memory >= 12:
         model_config = {
             "model_name": "upstage/SOLAR-10.7B-Instruct-v1.0",
@@ -869,7 +871,7 @@ def main():
             "load_in_4bit": False,
             "max_memory_gb": int(gpu_memory * 0.85)
         }
-        print("🎯 고성능 모드 설정")
+        print("모드 설정")
     else:
         model_config = {
             "model_name": "upstage/SOLAR-10.7B-Instruct-v1.0",
@@ -877,33 +879,33 @@ def main():
             "load_in_4bit": True,  # 메모리 절약
             "max_memory_gb": int(gpu_memory * 0.8)
         }
-        print("🎯 효율성 모드 설정")
+        print("모드 설정")
     
     # 테스터 초기화 및 실행
     tester = None
     try:
-        tester = UltraHighPerformanceTester(model_config)
+        tester = SystemTester(model_config)
         
         if args.test_type == 'accuracy':
-            tester.run_comprehensive_accuracy_test(args.sample_size)
+            tester.run_accuracy_test(args.sample_size)
         elif args.test_type == 'speed':
-            tester.run_ultra_speed_test(args.sample_size)
+            tester.run_speed_test(args.sample_size)
         elif args.test_type == 'stress':
             tester.run_stress_test(args.duration)
         elif args.test_type == 'benchmark':
-            tester.run_comprehensive_benchmark()
+            tester.run_benchmark()
         elif args.test_type == 'all':
-            print("🔥 전체 테스트 실행")
-            tester.run_comprehensive_accuracy_test(20)
-            tester.run_ultra_speed_test(30)
+            print("전체 테스트 실행")
+            tester.run_accuracy_test(20)
+            tester.run_speed_test(30)
             tester.run_stress_test(3)
         
-        print("\n✅ 테스트 완료")
+        print("\n테스트 완료")
         
     except KeyboardInterrupt:
-        print("\n⚠️ 테스트 중단됨")
+        print("\n테스트 중단됨")
     except Exception as e:
-        print(f"❌ 오류 발생: {e}")
+        print(f"오류 발생: {e}")
         import traceback
         traceback.print_exc()
     finally:

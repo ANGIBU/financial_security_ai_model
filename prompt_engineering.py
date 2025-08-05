@@ -5,18 +5,18 @@
 
 import re
 import random
-from typing import Dict, List, Tuple, Optional
-from knowledge_base import FinancialSecurityKnowledgeBase
 import hashlib
 import json
+from typing import Dict, List, Tuple, Optional
+from knowledge_base import FinancialSecurityKnowledgeBase
 
-class AdvancedPromptEngineer:
+class PromptEngineer:
     """프롬프트 엔지니어링 클래스"""
     
     def __init__(self):
         self.knowledge_base = FinancialSecurityKnowledgeBase()
-        self.expert_examples = self._build_comprehensive_examples()
-        self.adaptive_templates = self._build_adaptive_templates()
+        self.expert_examples = self._build_examples()
+        self.adaptive_templates = self._build_templates()
         self.domain_contexts = self._build_domain_contexts()
         
         # 성능 캐시
@@ -31,8 +31,8 @@ class AdvancedPromptEngineer:
             "performance_metrics": []
         }
         
-    def _build_comprehensive_examples(self) -> Dict[str, List[Dict]]:
-        """포괄적 전문가 예시"""
+    def _build_examples(self) -> Dict[str, List[Dict]]:
+        """전문가 예시"""
         examples = {
             "multiple_choice": [
                 {
@@ -93,7 +93,7 @@ class AdvancedPromptEngineer:
         }
         return examples
     
-    def _build_adaptive_templates(self) -> Dict[str, str]:
+    def _build_templates(self) -> Dict[str, str]:
         """적응형 템플릿 구축"""
         templates = {}
         
@@ -117,7 +117,7 @@ class AdvancedPromptEngineer:
 
 정답:"""
 
-        templates["mc_negative"] = """⚠️ 부정형 문제 ⚠️
+        templates["mc_negative"] = """부정형 문제
 
 문제: {question}
 

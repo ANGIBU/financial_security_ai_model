@@ -4,19 +4,19 @@
 """
 
 import torch
+import re
+import time
+import gc
+import threading
+from typing import List, Dict, Optional, Tuple
+from dataclasses import dataclass
+from queue import Queue
 from transformers import (
     AutoTokenizer, 
     AutoModelForCausalLM, 
     BitsAndBytesConfig,
     pipeline
 )
-import gc
-import re
-import time
-from typing import List, Dict, Optional, Tuple
-from dataclasses import dataclass
-import threading
-from queue import Queue
 
 @dataclass
 class InferenceResult:
@@ -27,7 +27,7 @@ class InferenceResult:
     analysis_depth: int
     inference_time: float = 0.0
 
-class OptimizedModelHandler:
+class ModelHandler:
     """모델 핸들러"""
     
     def __init__(self, model_name: str, device: str = "cuda", 
@@ -101,7 +101,7 @@ class OptimizedModelHandler:
         
         print("모델 로딩 완료")
     
-    def generate_expert_response(self, prompt: str, question_type: str,
+    def generate_response(self, prompt: str, question_type: str,
                                 max_attempts: int = 2) -> InferenceResult:
         """응답 생성"""
         
@@ -121,7 +121,7 @@ class OptimizedModelHandler:
         for attempt in range(max_attempts):
             try:
                 # 시도별 파라미터 조정
-                generation_params = self._get_optimized_params(question_type, attempt)
+                generation_params = self._get_params(question_type, attempt)
                 
                 # 추론 실행
                 with torch.no_grad():
@@ -130,7 +130,7 @@ class OptimizedModelHandler:
                         response = outputs[0]["generated_text"].strip()
                 
                 # 응답 품질 평가
-                result = self._evaluate_response_quality(response, question_type)
+                result = self._evaluate_response(response, question_type)
                 result.inference_time = time.time() - start_time
                 
                 # 최고 품질 응답 선택
@@ -171,7 +171,7 @@ class OptimizedModelHandler:
         
         return best_result
     
-    def _get_optimized_params(self, question_type: str, attempt: int) -> Dict:
+    def _get_params(self, question_type: str, attempt: int) -> Dict:
         """생성 파라미터"""
         
         if question_type == "multiple_choice":
@@ -240,7 +240,7 @@ class OptimizedModelHandler:
                 
                 try:
                     # 배치 추론
-                    batch_results = self._process_batch_fast(batch_prompts, q_type)
+                    batch_results = self._process_batch(batch_prompts, q_type)
                     
                     # 결과를 원래 순서대로 저장
                     for j, result in enumerate(batch_results):
@@ -252,7 +252,7 @@ class OptimizedModelHandler:
                     # 실패한 배치는 개별 처리
                     for j, prompt in enumerate(batch_prompts):
                         original_idx = indices[i+j]
-                        result = self.generate_expert_response(prompt, q_type, max_attempts=1)
+                        result = self.generate_response(prompt, q_type, max_attempts=1)
                         results.append((original_idx, result))
                 
                 # 메모리 정리
@@ -263,9 +263,9 @@ class OptimizedModelHandler:
         results.sort(key=lambda x: x[0])
         return [r[1] for r in results]
     
-    def _process_batch_fast(self, prompts: List[str], question_type: str) -> List[InferenceResult]:
-        """빠른 배치 처리"""
-        generation_params = self._get_optimized_params(question_type, 0)
+    def _process_batch(self, prompts: List[str], question_type: str) -> List[InferenceResult]:
+        """배치 처리"""
+        generation_params = self._get_params(question_type, 0)
         
         # 토큰화
         inputs = self.tokenizer(
@@ -294,20 +294,20 @@ class OptimizedModelHandler:
         # 결과 평가
         results = []
         for response in responses:
-            result = self._evaluate_response_quality(response.strip(), question_type)
+            result = self._evaluate_response(response.strip(), question_type)
             results.append(result)
         
         return results
     
-    def _evaluate_response_quality(self, response: str, question_type: str) -> InferenceResult:
+    def _evaluate_response(self, response: str, question_type: str) -> InferenceResult:
         """응답 품질 평가"""
         
         if question_type == "multiple_choice":
-            return self._evaluate_mc_response_fast(response)
+            return self._evaluate_mc_response(response)
         else:
-            return self._evaluate_subjective_response_fast(response)
+            return self._evaluate_subjective_response(response)
     
-    def _evaluate_mc_response_fast(self, response: str) -> InferenceResult:
+    def _evaluate_mc_response(self, response: str) -> InferenceResult:
         """객관식 응답 평가"""
         confidence = 0.5
         reasoning_quality = 0.5
@@ -340,7 +340,7 @@ class OptimizedModelHandler:
             analysis_depth=2
         )
     
-    def _evaluate_subjective_response_fast(self, response: str) -> InferenceResult:
+    def _evaluate_subjective_response(self, response: str) -> InferenceResult:
         """주관식 응답 평가"""
         confidence = 0.5
         reasoning_quality = 0.5

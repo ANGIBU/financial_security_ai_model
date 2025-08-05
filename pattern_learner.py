@@ -6,13 +6,13 @@
 import re
 import json
 import pickle
+import hashlib
+import numpy as np
 from typing import Dict, List, Tuple, Optional
 from collections import defaultdict, Counter
-import numpy as np
-import hashlib
 
 class AnswerPatternLearner:
-    """고성능 답변 패턴 학습 클래스"""
+    """답변 패턴 학습 클래스"""
     
     def __init__(self):
         self.patterns = {
@@ -25,8 +25,8 @@ class AnswerPatternLearner:
             "question_type_patterns": defaultdict(Counter)
         }
         
-        # 고급 학습 규칙
-        self.learned_rules = self._initialize_comprehensive_rules()
+        # 학습 규칙
+        self.learned_rules = self._initialize_rules()
         
         # 패턴 성능 추적
         self.pattern_performance = {
@@ -39,8 +39,8 @@ class AnswerPatternLearner:
         self.prediction_cache = {}
         self.pattern_cache = {}
         
-    def _initialize_comprehensive_rules(self) -> Dict:
-        """포괄적 초기 규칙 설정"""
+    def _initialize_rules(self) -> Dict:
+        """초기 규칙 설정"""
         return {
             "개인정보_정의": {
                 "keywords": ["개인정보", "정의", "의미", "개념"],
@@ -105,7 +105,7 @@ class AnswerPatternLearner:
         }
     
     def analyze_question_pattern(self, question: str) -> Dict:
-        """고급 문제 패턴 분석"""
+        """문제 패턴 분석"""
         
         # 캐시 확인
         q_hash = hashlib.md5(question.encode()).hexdigest()[:12]
@@ -161,7 +161,7 @@ class AnswerPatternLearner:
         return None
     
     def predict_answer(self, question: str, structure: Dict) -> Tuple[str, float]:
-        """고성능 패턴 기반 답변 예측"""
+        """패턴 기반 답변 예측"""
         
         # 캐시 확인
         cache_key = hashlib.md5(f"{question}{structure}".encode()).hexdigest()[:16]
@@ -170,7 +170,7 @@ class AnswerPatternLearner:
         
         # 부정형 문제 특별 처리
         if structure.get("has_negative", False):
-            result = self._predict_negative_answer_advanced(question, structure)
+            result = self._predict_negative_answer(question, structure)
             self.prediction_cache[cache_key] = result
             return result
         
@@ -205,12 +205,12 @@ class AnswerPatternLearner:
             return result
         
         # 통계적 예측으로 폴백
-        result = self._statistical_prediction_advanced(question, structure)
+        result = self._statistical_prediction(question, structure)
         self.prediction_cache[cache_key] = result
         return result
     
-    def _predict_negative_answer_advanced(self, question: str, structure: Dict) -> Tuple[str, float]:
-        """고급 부정형 문제 예측"""
+    def _predict_negative_answer(self, question: str, structure: Dict) -> Tuple[str, float]:
+        """부정형 문제 예측"""
         question_lower = question.lower()
         
         # 특정 부정형 패턴 분석
@@ -277,8 +277,8 @@ class AnswerPatternLearner:
         
         return len(matched_domains) * 0.05  # 도메인 매칭당 5% 부스트
     
-    def _statistical_prediction_advanced(self, question: str, structure: Dict) -> Tuple[str, float]:
-        """고급 통계 기반 예측"""
+    def _statistical_prediction(self, question: str, structure: Dict) -> Tuple[str, float]:
+        """통계 기반 예측"""
         
         if structure["question_type"] == "multiple_choice":
             # 길이 기반 예측 개선
@@ -470,8 +470,8 @@ class AnswerPatternLearner:
                         self.learned_rules[rule_name]["confidence"] = min(current_confidence * 1.05, 0.95)
                         print(f"규칙 {rule_name} 신뢰도 증가: 성공률 {success_rate:.2%}")
     
-    def save_patterns(self, filepath: str = "./learned_patterns_advanced.pkl"):
-        """고급 패턴 저장"""
+    def save_patterns(self, filepath: str = "./learned_patterns.pkl"):
+        """패턴 저장"""
         save_data = {
             "patterns": dict(self.patterns),
             "rules": self.learned_rules,
@@ -485,8 +485,8 @@ class AnswerPatternLearner:
         with open(filepath, 'wb') as f:
             pickle.dump(save_data, f)
     
-    def load_patterns(self, filepath: str = "./learned_patterns_advanced.pkl"):
-        """고급 패턴 로드"""
+    def load_patterns(self, filepath: str = "./learned_patterns.pkl"):
+        """패턴 로드"""
         try:
             with open(filepath, 'rb') as f:
                 data = pickle.load(f)
@@ -523,7 +523,7 @@ class AnswerPatternLearner:
         self.pattern_cache.clear()
 
 class SmartAnswerSelector:
-    """고성능 답변 선택기"""
+    """답변 선택기"""
     
     def __init__(self):
         self.pattern_learner = AnswerPatternLearner()
@@ -542,7 +542,7 @@ class SmartAnswerSelector:
         self.selection_stats["total_selections"] += 1
         
         # 1. 모델 응답에서 답변 추출
-        extracted_answers = self._extract_all_possible_answers_advanced(model_response)
+        extracted_answers = self._extract_all_possible_answers(model_response)
         
         if not extracted_answers:
             # 패턴 기반 예측
@@ -599,8 +599,8 @@ class SmartAnswerSelector:
         # 4. 폴백
         return "3", 0.25
     
-    def _extract_all_possible_answers_advanced(self, response: str) -> List[str]:
-        """고급 답변 추출"""
+    def _extract_all_possible_answers(self, response: str) -> List[str]:
+        """답변 추출"""
         answers = []
         
         # 우선순위별 패턴
