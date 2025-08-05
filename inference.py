@@ -1,6 +1,6 @@
 # inference.py
 """
-실행 파일 - 크로스 플랫폼 호환 버전
+실행 파일 - SOLAR 모델 최적화 버전
 """
 
 import os
@@ -16,6 +16,7 @@ from typing import List, Dict, Tuple, Optional
 import threading
 import psutil
 import platform
+import re
 warnings.filterwarnings("ignore")
 
 # 플랫폼별 시그널 처리
@@ -27,11 +28,10 @@ if not IS_WINDOWS:
 current_dir = Path(__file__).parent.absolute()
 sys.path.append(str(current_dir))
 
-from model_handler import OptimizedModelHandler
-from data_processor import IntelligentDataProcessor
-from prompt_engineering import AdvancedPromptEngineer
-from knowledge_base import FinancialSecurityKnowledgeBase
-from advanced_optimizer import AdvancedOptimizer, ResponseValidator, PerformanceMonitor
+# Transformers 관련 import
+from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
+from transformers.utils import logging
+logging.set_verbosity_error()
 
 class TimeoutException(Exception):
     pass
@@ -72,404 +72,399 @@ class CrossPlatformTimeout:
         """Windows용 타임아웃 콜백"""
         self.timed_out = True
 
-class HighPerformanceInferenceEngine:
-    """추론 엔진"""
+class OptimizedSOLARInference:
+    """SOLAR 모델 최적화 추론 엔진"""
     
-    def __init__(self, model_config: Dict):
-        self.model_config = model_config
-        self.start_time = time.time()
-        self.time_limit = 4.25 * 3600  # 4시간 15분 (여유 15분)
+    def __init__(self, model_name: str = "upstage/SOLAR-10.7B-Instruct-v1.0"):
+        self.model_name = model_name
+        self.model = None
+        self.tokenizer = None
+        self.generation_config = None
         
-        print("시스템 초기화 중...")
-        
-        # 핵심 컴포넌트
-        self.model_handler = OptimizedModelHandler(**model_config)
-        self.data_processor = IntelligentDataProcessor()
-        self.prompt_engineer = AdvancedPromptEngineer()
-        self.knowledge_base = FinancialSecurityKnowledgeBase()
-        
-        # 고급 최적화 컴포넌트
-        self.optimizer = AdvancedOptimizer()
-        self.validator = ResponseValidator()
-        self.monitor = PerformanceMonitor()
-        
-        # 성능 추적
-        self.performance_stats = {
-            "total_questions": 0,
-            "successful": 0,
-            "failed": 0,
+        # 성능 통계
+        self.cache = {}  # 간단한 캐시
+        self.stats = {
+            "total_processed": 0,
             "cache_hits": 0,
-            "batch_success": 0,
-            "confidence_sum": 0
+            "successful": 0,
+            "failed": 0
         }
+        
+        print(f"모델 로딩: {model_name}")
+        self._load_model()
+        print("모델 로딩 완료")
+    
+    def _load_model(self):
+        """모델 로드"""
+        try:
+            # 토크나이저 로드
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_name,
+                trust_remote_code=True,
+                use_fast=True
+            )
+            
+            # 패딩 토큰 설정
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+            
+            # Flash Attention 2 사용 가능 여부 확인
+            try:
+                import flash_attn
+                attn_implementation = "flash_attention_2"
+                print("Flash Attention 2 사용")
+            except ImportError:
+                # PyTorch 2.0+ SDPA 사용 (더 효율적)
+                if hasattr(torch.nn.functional, 'scaled_dot_product_attention'):
+                    attn_implementation = "sdpa"
+                    print("Scaled Dot Product Attention 사용")
+                else:
+                    attn_implementation = "eager"
+                    print("Standard Attention 사용")
+            
+            # 모델 로드
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_name,
+                device_map="auto",
+                torch_dtype=torch.float16,
+                trust_remote_code=True,
+                attn_implementation=attn_implementation
+            )
+            
+            # Generation Config 설정
+            self.generation_config = GenerationConfig(
+                max_new_tokens=512,
+                temperature=0.1,
+                top_p=0.9,
+                do_sample=True,
+                pad_token_id=self.tokenizer.pad_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,
+                repetition_penalty=1.1,
+                no_repeat_ngram_size=3
+            )
+            
+        except Exception as e:
+            print(f"모델 로딩 실패: {e}")
+            raise
+    
+    def analyze_question(self, question: str) -> Dict:
+        """문제 분석"""
+        analysis = {
+            "is_multiple_choice": bool(re.search(r'[①②③④⑤]|\b[1-5]\s*[.)]', question)),
+            "has_negative": "않" in question or "없" in question or "틀린" in question,
+            "keywords": self._extract_keywords(question),
+            "complexity": self._estimate_complexity(question)
+        }
+        return analysis
+    
+    def _extract_keywords(self, question: str) -> List[str]:
+        """키워드 추출"""
+        financial_keywords = [
+            "금융", "보안", "개인정보", "암호화", "인증", "전자금융",
+            "피싱", "스미싱", "파밍", "보이스피싱", "사기", "해킹",
+            "전자서명", "공인인증서", "OTP", "생체인증", "블록체인"
+        ]
+        
+        found_keywords = []
+        for keyword in financial_keywords:
+            if keyword in question:
+                found_keywords.append(keyword)
+        
+        return found_keywords
+    
+    def _estimate_complexity(self, question: str) -> str:
+        """복잡도 추정"""
+        if len(question) < 100:
+            return "easy"
+        elif len(question) < 200:
+            return "medium"
+        else:
+            return "hard"
+    
+    def create_prompt(self, question: str, analysis: Dict) -> str:
+        """프롬프트 생성"""
+        if analysis["is_multiple_choice"]:
+            return self._create_mc_prompt(question, analysis)
+        else:
+            return self._create_open_prompt(question, analysis)
+    
+    def _create_mc_prompt(self, question: str, analysis: Dict) -> str:
+        """객관식 프롬프트"""
+        system_msg = """당신은 금융보안 전문가입니다. 주어진 객관식 문제를 정확히 분석하고 올바른 답을 선택하세요."""
+        
+        if analysis["has_negative"]:
+            system_msg += " 이 문제는 '틀린 것' 또는 '옳지 않은 것'을 찾는 문제입니다. 주의 깊게 읽어보세요."
+        
+        prompt = f"""### 지시사항:
+{system_msg}
+
+### 문제:
+{question}
+
+### 답변 형식:
+정답 번호만 출력하세요 (1, 2, 3, 4, 5 중 하나).
+
+### 답변:"""
+        
+        return prompt
+    
+    def _create_open_prompt(self, question: str, analysis: Dict) -> str:
+        """주관식 프롬프트"""
+        domain_context = ""
+        if "개인정보" in analysis["keywords"]:
+            domain_context = "개인정보보호법과 관련 규정을 고려하여"
+        elif "전자금융" in analysis["keywords"]:
+            domain_context = "전자금융거래법과 관련 규정을 고려하여"
+        elif "보안" in analysis["keywords"]:
+            domain_context = "정보보안 관련 법규와 표준을 고려하여"
+        
+        prompt = f"""### 지시사항:
+당신은 금융보안 전문가입니다. {domain_context} 다음 질문에 대해 전문적이고 구체적인 답변을 제공하세요.
+
+### 질문:
+{question}
+
+### 답변 가이드:
+- 법적 근거가 있다면 명시하세요
+- 구체적인 방법이나 절차를 제시하세요
+- 실무적인 관점에서 답변하세요
+
+### 답변:"""
+        
+        return prompt
+    
+    def generate_response(self, prompt: str, timeout: int = 30) -> str:
+        """응답 생성"""
+        try:
+            # 캐시 확인
+            cache_key = hash(prompt)
+            if cache_key in self.cache:
+                self.stats["cache_hits"] += 1
+                return self.cache[cache_key]
+            
+            # 타임아웃 적용하여 생성
+            with CrossPlatformTimeout(timeout):
+                # 대화 템플릿 적용
+                conversation = [{'role': 'user', 'content': prompt}]
+                formatted_prompt = self.tokenizer.apply_chat_template(
+                    conversation, 
+                    tokenize=False, 
+                    add_generation_prompt=True
+                )
+                
+                # 토크나이징
+                inputs = self.tokenizer(
+                    formatted_prompt, 
+                    return_tensors="pt", 
+                    truncation=True, 
+                    max_length=2048
+                ).to(self.model.device)
+                
+                # 생성
+                with torch.no_grad():
+                    outputs = self.model.generate(
+                        **inputs,
+                        generation_config=self.generation_config,
+                        use_cache=True
+                    )
+                
+                # 디코딩
+                response = self.tokenizer.decode(
+                    outputs[0][inputs['input_ids'].shape[1]:], 
+                    skip_special_tokens=True
+                ).strip()
+                
+                # 캐시 저장
+                self.cache[cache_key] = response
+                self.stats["successful"] += 1
+                
+                return response
+                
+        except TimeoutException:
+            self.stats["failed"] += 1
+            return self._get_fallback_answer(prompt)
+        except Exception as e:
+            print(f"생성 오류: {e}")
+            self.stats["failed"] += 1
+            return self._get_fallback_answer(prompt)
+    
+    def _get_fallback_answer(self, prompt: str) -> str:
+        """폴백 답변"""
+        if "①" in prompt or "1)" in prompt:
+            # 객관식인 경우 - 통계적으로 가장 흔한 답
+            return "3"
+        else:
+            # 주관식인 경우
+            if "개인정보" in prompt:
+                return "개인정보보호법에 따른 안전성 확보조치가 필요하며, 개인정보처리방침을 수립하고 기술적·관리적·물리적 보호조치를 시행해야 합니다."
+            elif "전자금융" in prompt:
+                return "전자금융거래법에 따른 보안대책을 수립하고, 전자적 전송 및 처리 과정에서의 보안성을 확보해야 합니다."
+            else:
+                return "금융보안 관련 법규에 따른 체계적인 보안관리체계 구축이 필요합니다."
+    
+    def extract_answer(self, response: str, is_multiple_choice: bool) -> str:
+        """답변 추출"""
+        if is_multiple_choice:
+            # 숫자 추출
+            numbers = re.findall(r'\b([1-5])\b', response)
+            if numbers:
+                return numbers[0]
+            
+            # 원 번호 추출
+            circle_match = re.search(r'[①②③④⑤]', response)
+            if circle_match:
+                circle_to_num = {'①': '1', '②': '2', '③': '3', '④': '4', '⑤': '5'}
+                return circle_to_num[circle_match.group()]
+            
+            # 기본값
+            return "3"
+        else:
+            # 주관식 - 응답 정리
+            cleaned = response.replace("### 답변:", "").strip()
+            if len(cleaned) < 10:  # 너무 짧은 경우
+                return self._get_fallback_answer("")
+            return cleaned[:500]  # 길이 제한
+    
+    def cleanup(self):
+        """리소스 정리"""
+        try:
+            if self.model:
+                del self.model
+            if self.tokenizer:
+                del self.tokenizer
+            torch.cuda.empty_cache()
+            gc.collect()
+            
+            print(f"\n성능 통계:")
+            print(f"- 총 처리: {self.stats['total_processed']}개")
+            print(f"- 성공: {self.stats['successful']}개")
+            print(f"- 실패: {self.stats['failed']}개") 
+            print(f"- 캐시 히트: {self.stats['cache_hits']}개")
+            
+        except Exception as e:
+            print(f"정리 중 오류: {e}")
+
+class HighPerformanceInferenceEngine:
+    """고성능 추론 엔진"""
+    
+    def __init__(self):
+        self.start_time = time.time()
+        self.model_handler = OptimizedSOLARInference()
         
         print("초기화 완료")
     
     def execute_inference(self, test_file: str, submission_file: str, 
                          output_file: str = "./final_submission.csv") -> Dict:
-        """메인 추론 실행 - 고급 최적화"""
+        """메인 추론 실행"""
         
         # 데이터 로드
-        test_df, sample_submission = self._load_data(test_file, submission_file)
+        test_df = pd.read_csv(test_file)
+        sample_submission = pd.read_csv(submission_file)
+        
         questions = test_df['Question'].tolist()
         question_ids = test_df['ID'].tolist()
         
-        # 고급 문제 분석
-        analyzed_questions = self._advanced_question_analysis(questions)
+        print(f"데이터 로드 완료: {len(questions)}개 문항")
+        
+        # 문제 분석
+        print("문제 분석 중...")
+        analyzed_questions = []
+        for i, question in enumerate(tqdm(questions, desc="분석")):
+            analysis = self.model_handler.analyze_question(question)
+            analyzed_questions.append({
+                "index": i,
+                "question": question,
+                "analysis": analysis
+            })
+        
+        # 통계 출력
+        mc_count = sum(1 for q in analyzed_questions if q["analysis"]["is_multiple_choice"])
+        open_count = len(analyzed_questions) - mc_count
         
         print(f"\n=== 문제 분석 완료 ===")
         print(f"총 문항: {len(questions)}")
-        print(f"쉬움: {sum(1 for q in analyzed_questions if q['difficulty'].score < 0.3)}개")
-        print(f"보통: {sum(1 for q in analyzed_questions if 0.3 <= q['difficulty'].score < 0.6)}개")
-        print(f"어려움: {sum(1 for q in analyzed_questions if q['difficulty'].score >= 0.6)}개")
+        print(f"객관식: {mc_count}개")
+        print(f"주관식: {open_count}개")
         
-        # 우선순위 재정렬
-        prioritized_questions = self.optimizer.prioritize_questions(analyzed_questions)
+        # 우선순위 정렬 (쉬운 것부터)
+        analyzed_questions.sort(key=lambda x: (
+            x["analysis"]["complexity"] == "hard",
+            x["analysis"]["complexity"] == "medium",
+            len(x["question"])
+        ))
         
         # 추론 실행
         predictions = [""] * len(questions)
-        self._execute_adaptive_inference(prioritized_questions, questions, predictions)
         
-        # 결과 검증 및 개선
-        self._validate_and_improve_predictions(predictions, questions)
+        print("\n추론 실행 중...")
+        for q_info in tqdm(analyzed_questions, desc="추론"):
+            idx = q_info["index"]
+            question = q_info["question"]
+            analysis = q_info["analysis"]
+            
+            # 타임아웃 설정
+            timeout = 60 if analysis["complexity"] == "hard" else 30
+            
+            # 프롬프트 생성
+            prompt = self.model_handler.create_prompt(question, analysis)
+            
+            # 응답 생성
+            response = self.model_handler.generate_response(prompt, timeout)
+            
+            # 답변 추출
+            answer = self.model_handler.extract_answer(response, analysis["is_multiple_choice"])
+            predictions[idx] = answer
+            
+            self.model_handler.stats["total_processed"] += 1
+            
+            # 메모리 정리 (50개마다)
+            if idx % 50 == 0:
+                torch.cuda.empty_cache()
+                gc.collect()
         
         # 결과 저장
-        results = self._save_results(predictions, sample_submission, output_file)
+        sample_submission['Answer'] = predictions
+        sample_submission.to_csv(output_file, index=False, encoding='utf-8-sig')
+        
+        # 통계 계산
+        total_time = time.time() - self.start_time
+        mc_answers = [p for p in predictions if p.strip().isdigit()]
+        
+        # 분포 계산
+        distribution = {}
+        for answer in mc_answers:
+            distribution[answer] = distribution.get(answer, 0) + 1
+        
+        results = {
+            "output_file": output_file,
+            "total_questions": len(predictions),
+            "total_time_minutes": total_time / 60,
+            "mc_count": mc_count,
+            "open_count": open_count,
+            "answer_distribution": distribution,
+            "success": True
+        }
+        
+        # 결과 출력
+        print("\n=== 최종 결과 ===")
+        print(f"총 처리: {len(predictions)}개")
+        print(f"소요 시간: {total_time/60:.1f}분")
+        print(f"객관식 {mc_count}개, 주관식 {open_count}개")
+        
+        if mc_answers:
+            print("\n객관식 답변 분포:")
+            for choice in sorted(distribution.keys()):
+                count = distribution[choice]
+                pct = (count / len(mc_answers)) * 100
+                print(f"  {choice}번: {count}개 ({pct:.1f}%)")
+        
+        print(f"\n최종 제출 파일: {output_file}")
         
         return results
     
-    def _load_data(self, test_file: str, submission_file: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """데이터 로드"""
-        try:
-            test_df = pd.read_csv(test_file)
-            sample_submission = pd.read_csv(submission_file)
-            
-            print(f"데이터 로드 완료: {len(test_df)}개 문항")
-            return test_df, sample_submission
-            
-        except Exception as e:
-            print(f"데이터 로딩 오류: {e}")
-            sys.exit(1)
-    
-    def _advanced_question_analysis(self, questions: List[str]) -> List[Dict]:
-        """고급 문제 분석"""
-        analyzed = []
-        
-        print("고급 문제 분석 중...")
-        for idx, question in enumerate(tqdm(questions, desc="분석")):
-            # 구조 분석
-            structure = self.data_processor.analyze_question_structure(question)
-            
-            # 난이도 평가
-            difficulty = self.optimizer.evaluate_question_difficulty(question, structure)
-            
-            # 지식베이스 분석
-            kb_analysis = self.knowledge_base.analyze_question(question)
-            
-            # 답변 힌트
-            hint_answer, hint_confidence = self.optimizer.get_smart_answer_hint(question, structure)
-            
-            analyzed.append({
-                "index": idx,
-                "question": question,
-                "type": structure["question_type"],
-                "structure": structure,
-                "difficulty": difficulty,
-                "kb_analysis": kb_analysis,
-                "hint_answer": hint_answer,
-                "hint_confidence": hint_confidence,
-                "priority_score": 0  # 나중에 설정
-            })
-        
-        return analyzed
-    
-    def _execute_adaptive_inference(self, prioritized_questions: List[Dict],
-                                  original_questions: List[str],
-                                  predictions: List[str]):
-        """적응형 추론 실행"""
-        
-        # 배치 처리 가능한 쉬운 문제들
-        easy_mc = [q for q in prioritized_questions 
-                  if q["type"] == "multiple_choice" and q["difficulty"].score < 0.4]
-        
-        # 개별 처리 필요한 문제들
-        complex_questions = [q for q in prioritized_questions 
-                           if q not in easy_mc]
-        
-        print(f"\n배치 처리: {len(easy_mc)}개, 개별 처리: {len(complex_questions)}개")
-        
-        # 1단계: 쉬운 문제 배치 처리
-        if easy_mc:
-            self._process_easy_batch_advanced(easy_mc, predictions)
-        
-        # 2단계: 복잡한 문제 개별 처리
-        self._process_complex_adaptive(complex_questions, original_questions, predictions)
-        
-        # 3단계: 미처리 문제 긴급 처리
-        self._emergency_process_remaining(predictions, original_questions)
-    
-    def _process_easy_batch_advanced(self, easy_questions: List[Dict],
-                                   predictions: List[str]):
-        """쉬운 문제 고급 배치 처리"""
-        
-        # 동적 배치 크기
-        available_memory = psutil.virtual_memory().available / (1024**3)  # GB
-        question_lengths = [len(q["question"]) for q in easy_questions]
-        batch_size = self.optimizer.optimize_batch_size(available_memory, question_lengths)
-        
-        print(f"동적 배치 크기: {batch_size}")
-        
-        with tqdm(total=len(easy_questions), desc="배치 처리") as pbar:
-            for i in range(0, len(easy_questions), batch_size):
-                batch = easy_questions[i:i+batch_size]
-                
-                # 높은 확신도 힌트가 있는 경우 바로 사용
-                for q in batch:
-                    if q["hint_confidence"] > 0.7:
-                        predictions[q["index"]] = q["hint_answer"]
-                        self.performance_stats["cache_hits"] += 1
-                        pbar.update(1)
-                        continue
-                
-                # 나머지는 배치 추론
-                remaining_batch = [q for q in batch if predictions[q["index"]] == ""]
-                if remaining_batch:
-                    try:
-                        prompts = []
-                        for q in remaining_batch:
-                            prompt = self.prompt_engineer.create_simple_mc_prompt(q["question"])
-                            optimized = self.prompt_engineer.optimize_for_model(
-                                prompt, self.model_config["model_name"]
-                            )
-                            prompts.append(optimized)
-                        
-                        # 배치 추론
-                        results = self.model_handler.generate_batch_responses(
-                            prompts,
-                            ["multiple_choice"] * len(prompts),
-                            batch_size=len(prompts)
-                        )
-                        
-                        # 결과 저장
-                        for q, result in zip(remaining_batch, results):
-                            answer = self.data_processor.extract_mc_answer_fast(result.response)
-                            predictions[q["index"]] = answer
-                            self.performance_stats["batch_success"] += 1
-                            self.monitor.update(result.inference_time, result.confidence)
-                        
-                        pbar.update(len(remaining_batch))
-                        
-                    except Exception as e:
-                        # 실패 시 힌트 사용
-                        for q in remaining_batch:
-                            predictions[q["index"]] = q["hint_answer"]
-                        pbar.update(len(remaining_batch))
-                
-                # 메모리 정리
-                if i % (batch_size * 5) == 0:
-                    torch.cuda.empty_cache()
-                    gc.collect()
-    
-    def _process_complex_adaptive(self, complex_questions: List[Dict],
-                                original_questions: List[str],
-                                predictions: List[str]):
-        """복잡한 문제 적응형 처리 - 크로스 플랫폼"""
-        
-        with tqdm(total=len(complex_questions), desc="개별 처리") as pbar:
-            for q_info in complex_questions:
-                idx = q_info["index"]
-                
-                # 이미 처리된 경우 스킵
-                if predictions[idx] != "":
-                    pbar.update(1)
-                    continue
-                
-                # 적응형 타임아웃
-                timeout = self.monitor.get_adaptive_timeout()
-                timeout = min(timeout, q_info["difficulty"].recommended_time)
-                
-                # 재시도 여부 결정
-                max_attempts = 1 if self.monitor.should_skip_retries() else \
-                             q_info["difficulty"].recommended_attempts
-                
-                try:
-                    # 크로스 플랫폼 타임아웃 사용
-                    with CrossPlatformTimeout(timeout):
-                        # 전략 선택
-                        if q_info["kb_analysis"].get("relevant_laws"):
-                            strategy = "law_focused"
-                        elif q_info["structure"].get("has_negative"):
-                            strategy = "negative_specialized"
-                        else:
-                            strategy = "balanced"
-                        
-                        # 프롬프트 생성
-                        prompt = self.prompt_engineer.create_expert_prompt(
-                            q_info["question"], q_info["type"], strategy
-                        )
-                        optimized_prompt = self.prompt_engineer.optimize_for_model(
-                            prompt, self.model_config["model_name"]
-                        )
-                        
-                        # 추론 실행
-                        start_time = time.time()
-                        result = self.model_handler.generate_expert_response(
-                            optimized_prompt,
-                            q_info["type"],
-                            max_attempts=max_attempts
-                        )
-                        inference_time = time.time() - start_time
-                        
-                        # 응답 검증
-                        is_valid, issues = self.validator.validate_response(
-                            result.response, q_info["type"]
-                        )
-                        
-                        if not is_valid:
-                            # 응답 개선
-                            improved = self.validator.improve_response(
-                                result.response, issues, q_info["type"]
-                            )
-                            final_answer = improved
-                        else:
-                            # 후처리
-                            final_answer = self.data_processor.post_process_answer(
-                                result.response, q_info["question"], q_info["type"]
-                            )
-                        
-                        predictions[idx] = final_answer
-                        self.performance_stats["successful"] += 1
-                        self.monitor.update(inference_time, result.confidence)
-                    
-                except TimeoutException:
-                    # 힌트 사용
-                    predictions[idx] = q_info["hint_answer"] if q_info["type"] == "multiple_choice" \
-                                     else "해당 사항에 대한 전문적 검토가 필요합니다."
-                    self.performance_stats["failed"] += 1
-                    
-                except Exception as e:
-                    predictions[idx] = self._get_emergency_answer(q_info)
-                    self.performance_stats["failed"] += 1
-                
-                pbar.update(1)
-    
-    def _emergency_process_remaining(self, predictions: List[str], 
-                                   questions: List[str]):
-        """미처리 문제 긴급 처리"""
-        
-        remaining = predictions.count("")
-        if remaining == 0:
-            return
-        
-        print(f"\n긴급 처리 모드: {remaining}개 남음")
-        
-        for i, pred in enumerate(predictions):
-            if pred == "":
-                structure = self.data_processor.analyze_question_structure(questions[i])
-                hint_answer, _ = self.optimizer.get_smart_answer_hint(questions[i], structure)
-                
-                if structure["question_type"] == "multiple_choice":
-                    predictions[i] = hint_answer
-                else:
-                    predictions[i] = "금융보안 정책에 따른 체계적 관리가 필요합니다."
-    
-    def _validate_and_improve_predictions(self, predictions: List[str], 
-                                        questions: List[str]):
-        """예측 결과 검증 및 개선"""
-        
-        print("\n최종 검증 중...")
-        improved_count = 0
-        
-        for i, (pred, question) in enumerate(zip(predictions, questions)):
-            structure = self.data_processor.analyze_question_structure(question)
-            is_valid, issues = self.validator.validate_response(pred, structure["question_type"])
-            
-            if not is_valid:
-                improved = self.validator.improve_response(pred, issues, structure["question_type"])
-                predictions[i] = improved
-                improved_count += 1
-        
-        if improved_count > 0:
-            print(f"개선된 답변: {improved_count}개")
-    
-    def _get_emergency_answer(self, q_info: Dict) -> str:
-        """긴급 답변 생성"""
-        if q_info["type"] == "multiple_choice":
-            return q_info["hint_answer"]
-        else:
-            domain = q_info["kb_analysis"].get("domain", ["일반"])[0]
-            if domain == "개인정보보호":
-                return "개인정보보호법에 따른 안전성 확보조치가 필요합니다."
-            elif domain == "전자금융":
-                return "전자금융거래법에 따른 보안 대책 수립이 필요합니다."
-            else:
-                return "금융보안 규정에 따른 종합적인 대책이 필요합니다."
-    
-    def _save_results(self, predictions: List[str], 
-                    sample_submission: pd.DataFrame, 
-                    output_file: str) -> Dict:
-        """결과 저장 및 분석"""
-        
-        try:
-            # 결과 저장
-            sample_submission['Answer'] = predictions
-            sample_submission.to_csv(output_file, index=False, encoding='utf-8-sig')
-            
-            # 통계 계산
-            total_time = time.time() - self.start_time
-            mc_answers = [p for p in predictions if p.strip().isdigit()]
-            
-            # 분포 계산
-            distribution = {}
-            for answer in mc_answers:
-                distribution[answer] = distribution.get(answer, 0) + 1
-            
-            results = {
-                "output_file": output_file,
-                "total_questions": len(predictions),
-                "total_time_minutes": total_time / 60,
-                "successful": self.performance_stats["successful"],
-                "failed": self.performance_stats["failed"],
-                "cache_hits": self.performance_stats["cache_hits"],
-                "batch_success": self.performance_stats["batch_success"],
-                "answer_distribution": distribution,
-                "avg_confidence": self.monitor.stats["avg_confidence"],
-                "success": True
-            }
-            
-            # 결과 출력
-            print("\n=== 최종 결과 ===")
-            print(f"총 처리: {len(predictions)}개")
-            print(f"소요 시간: {total_time/60:.1f}분")
-            print(f"성공: {self.performance_stats['successful']}개")
-            print(f"캐시 히트: {self.performance_stats['cache_hits']}개")
-            print(f"배치 성공: {self.performance_stats['batch_success']}개")
-            print(f"평균 신뢰도: {self.monitor.stats['avg_confidence']:.3f}")
-            
-            if mc_answers:
-                print("\n객관식 답변 분포:")
-                for choice in sorted(distribution.keys()):
-                    count = distribution[choice]
-                    pct = (count / len(mc_answers)) * 100
-                    print(f"  {choice}번: {count}개 ({pct:.1f}%)")
-            
-            print(f"\n최종 제출 파일: {output_file}")
-            
-            return results
-            
-        except Exception as e:
-            print(f"결과 저장 오류: {e}")
-            return {"success": False, "error": str(e)}
-    
     def cleanup(self):
         """리소스 정리"""
-        try:
-            print(f"\n캐시 히트율: {self.model_handler.cache_hits}회")
-            self.model_handler.cleanup()
-            torch.cuda.empty_cache()
-            gc.collect()
-        except Exception as e:
-            print(f"정리 중 오류: {e}")
+        self.model_handler.cleanup()
 
 def main():
     """메인 함수"""
@@ -478,11 +473,10 @@ def main():
     
     # GPU 확인
     if not torch.cuda.is_available():
-        print("오류: CUDA 사용 불가")
-        sys.exit(1)
-    
-    gpu_info = torch.cuda.get_device_properties(0)
-    print(f"GPU: {gpu_info.name} ({gpu_info.total_memory / (1024**3):.1f}GB)")
+        print("경고: CUDA 사용 불가, CPU로 실행")
+    else:
+        gpu_info = torch.cuda.get_device_properties(0)
+        print(f"GPU: {gpu_info.name} ({gpu_info.total_memory / (1024**3):.1f}GB)")
     
     # 파일 확인
     test_file = "./test.csv"
@@ -490,25 +484,17 @@ def main():
     
     if not os.path.exists(test_file) or not os.path.exists(submission_file):
         print("오류: 데이터 파일 없음")
+        print(f"확인 필요: {test_file}, {submission_file}")
         sys.exit(1)
-    
-    # 모델 설정 (RTX 4090 24GB)
-    model_config = {
-        "model_name": "upstage/SOLAR-10.7B-Instruct-v1.0",
-        "device": "cuda",
-        "load_in_4bit": False,
-        "max_memory_gb": 22
-    }
     
     # 추론 실행
     engine = None
     try:
-        engine = HighPerformanceInferenceEngine(model_config)
+        engine = HighPerformanceInferenceEngine()
         results = engine.execute_inference(test_file, submission_file)
         
         if results["success"]:
             print("\n✅ 추론 성공적으로 완료!")
-            print(f"평균 신뢰도: {results['avg_confidence']:.3f}")
         
     except KeyboardInterrupt:
         print("\n추론 중단")
