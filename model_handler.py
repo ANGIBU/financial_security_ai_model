@@ -1,6 +1,6 @@
 # model_handler.py
 """
-최적화된 모델 핸들러 - 성능 개선 버전
+모델 핸들러
 """
 
 import torch
@@ -28,7 +28,7 @@ class InferenceResult:
     inference_time: float = 0.0
 
 class OptimizedModelHandler:
-    """최적화된 모델 핸들러"""
+    """모델 핸들러"""
     
     def __init__(self, model_name: str, device: str = "cuda", 
                  load_in_4bit: bool = False, max_memory_gb: int = 22):
@@ -59,7 +59,7 @@ class OptimizedModelHandler:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         
-        # 모델 로딩 (RTX 4090 24GB 최적화)
+        # 모델 로딩
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
             quantization_config=quantization_config,
@@ -71,12 +71,12 @@ class OptimizedModelHandler:
             use_safetensors=True,
         )
         
-        # 추론 최적화 설정
+        # 추론 설정
         self.model.eval()
         if hasattr(self.model.config, "use_cache"):
             self.model.config.use_cache = True
         
-        # 최적화: torch.compile 사용 (PyTorch 2.0+)
+        # torch.compile 사용
         if hasattr(torch, 'compile'):
             try:
                 self.model = torch.compile(self.model, mode="reduce-overhead")
@@ -103,16 +103,16 @@ class OptimizedModelHandler:
     
     def generate_expert_response(self, prompt: str, question_type: str,
                                 max_attempts: int = 2) -> InferenceResult:
-        """전문가급 응답 생성 - 최적화 버전"""
+        """응답 생성"""
         
         start_time = time.time()
         
         # 캐시 확인
-        cache_key = hash(prompt[:100])  # 프롬프트 앞부분으로 키 생성
+        cache_key = hash(prompt[:100])
         if cache_key in self.response_cache:
             self.cache_hits += 1
             cached_result = self.response_cache[cache_key]
-            cached_result.inference_time = 0.01  # 캐시 히트
+            cached_result.inference_time = 0.01
             return cached_result
         
         best_result = None
@@ -120,12 +120,12 @@ class OptimizedModelHandler:
         
         for attempt in range(max_attempts):
             try:
-                # 시도별 파라미터 조정 (빠른 첫 시도)
+                # 시도별 파라미터 조정
                 generation_params = self._get_optimized_params(question_type, attempt)
                 
                 # 추론 실행
                 with torch.no_grad():
-                    with torch.cuda.amp.autocast():  # Mixed precision
+                    with torch.cuda.amp.autocast():
                         outputs = self.pipe(prompt, **generation_params)
                         response = outputs[0]["generated_text"].strip()
                 
@@ -165,20 +165,20 @@ class OptimizedModelHandler:
                     inference_time=time.time() - start_time
                 )
         
-        # 캐시 저장 (고품질 응답만)
+        # 캐시 저장
         if best_score > 0.6:
             self.response_cache[cache_key] = best_result
         
         return best_result
     
     def _get_optimized_params(self, question_type: str, attempt: int) -> Dict:
-        """최적화된 생성 파라미터"""
+        """생성 파라미터"""
         
         if question_type == "multiple_choice":
             # 객관식: 빠르고 정확한 생성
-            if attempt == 0:  # 첫 시도는 빠르게
+            if attempt == 0:
                 base_params = {
-                    "max_new_tokens": 256,  # 짧게
+                    "max_new_tokens": 256,
                     "temperature": 0.1,
                     "top_p": 0.8,
                     "top_k": 30,
@@ -186,7 +186,7 @@ class OptimizedModelHandler:
                     "repetition_penalty": 1.05,
                     "no_repeat_ngram_size": 2,
                 }
-            else:  # 재시도는 더 정확하게
+            else:
                 base_params = {
                     "max_new_tokens": 512,
                     "temperature": 0.2,
@@ -219,7 +219,7 @@ class OptimizedModelHandler:
     
     def generate_batch_responses(self, prompts: List[str], question_types: List[str], 
                                batch_size: int = 10) -> List[InferenceResult]:
-        """최적화된 배치 추론"""
+        """배치 추론"""
         results = []
         
         # 동일 타입끼리 그룹화
@@ -300,7 +300,7 @@ class OptimizedModelHandler:
         return results
     
     def _evaluate_response_quality(self, response: str, question_type: str) -> InferenceResult:
-        """빠른 응답 품질 평가"""
+        """응답 품질 평가"""
         
         if question_type == "multiple_choice":
             return self._evaluate_mc_response_fast(response)
@@ -308,8 +308,8 @@ class OptimizedModelHandler:
             return self._evaluate_subjective_response_fast(response)
     
     def _evaluate_mc_response_fast(self, response: str) -> InferenceResult:
-        """객관식 응답 빠른 평가"""
-        confidence = 0.5  # 기본값
+        """객관식 응답 평가"""
+        confidence = 0.5
         reasoning_quality = 0.5
         
         # 답변 번호 추출 가능성
@@ -341,7 +341,7 @@ class OptimizedModelHandler:
         )
     
     def _evaluate_subjective_response_fast(self, response: str) -> InferenceResult:
-        """주관식 응답 빠른 평가"""
+        """주관식 응답 평가"""
         confidence = 0.5
         reasoning_quality = 0.5
         
