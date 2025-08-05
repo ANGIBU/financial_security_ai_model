@@ -1,6 +1,6 @@
 # inference.py
 """
-최종 추론 실행 파일
+최종 추론 실행 파일 - 수정된 버전
 """
 
 import os
@@ -25,7 +25,7 @@ from prompt_engineering import AdvancedPromptEngineer
 from knowledge_base import FinancialSecurityKnowledgeBase
 
 class HighPerformanceInferenceEngine:
-    """추론 엔진"""
+    """추론 엔진 - 수정된 버전"""
     
     def __init__(self, model_config: Dict):
         self.model_config = model_config
@@ -69,8 +69,8 @@ class HighPerformanceInferenceEngine:
         print(f"선택형: {sum(1 for s in strategies if s['type'] == 'multiple_choice')}개")
         print(f"서술형: {sum(1 for s in strategies if s['type'] == 'subjective')}개")
         
-        # 적응형 배치 크기 결정
-        batch_size = self._determine_batch_size()
+        # 작은 배치 크기로 시작 (안정성 우선)
+        batch_size = 2  # 문제 해결을 위해 크기 축소
         
         # 추론 실행
         predictions = self._execute_strategic_inference(
@@ -201,22 +201,9 @@ class HighPerformanceInferenceEngine:
         
         return priority
     
-    def _determine_batch_size(self) -> int:
-        """RTX 4090 24GB 최적화된 배치 크기"""
-        gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-        
-        if gpu_memory >= 22:  # RTX 4090 24GB
-            return 12  # 대폭 증가
-        elif gpu_memory >= 20:
-            return 10
-        elif gpu_memory >= 16:
-            return 8
-        else:
-            return 4
-    
     def _execute_strategic_inference(self, questions: List[str], question_ids: List[str],
                                    strategies: List[Dict], batch_size: int) -> List[str]:
-        """전략적 추론 실행"""
+        """전략적 추론 실행 - 안전 모드"""
         
         predictions = [""] * len(questions)  # 원래 순서 유지
         processed_count = 0
@@ -231,9 +218,8 @@ class HighPerformanceInferenceEngine:
             for strategy_name, group_strategies in strategy_groups.items():
                 print(f"\n전략 '{strategy_name}': {len(group_strategies)}개")
                 
-                # 배치 처리
-                for i in range(0, len(group_strategies), batch_size):
-                    batch_strategies = group_strategies[i:i+batch_size]
+                # 개별 처리로 변경 (안정성 우선)
+                for strategy_info in group_strategies:
                     
                     # 시간 제한 확인
                     if self._check_time_limit():
@@ -243,28 +229,90 @@ class HighPerformanceInferenceEngine:
                         )
                         return remaining
                     
-                    # 배치 추론
-                    batch_results = self._process_strategy_batch(
-                        batch_strategies, questions, strategy_name
-                    )
-                    
-                    # 결과 저장 (원래 순서)
-                    for strategy_info, result in zip(batch_strategies, batch_results):
+                    try:
+                        # 개별 문제 처리
+                        question = questions[strategy_info["index"]]
+                        
+                        # 타임아웃 설정으로 안전한 추론
+                        result = self._process_single_question_safe(
+                            question, strategy_info, strategy_name, timeout=30
+                        )
+                        
+                        # 결과 저장 (원래 순서)
                         original_index = strategy_info["index"]
                         predictions[original_index] = result
                         processed_count += 1
                         pbar.update(1)
+                        
+                        # 10개마다 상태 출력
+                        if processed_count % 10 == 0:
+                            print(f"처리 완료: {processed_count}/{len(questions)}")
+                        
+                        # 메모리 정리
+                        if processed_count % 50 == 0:
+                            torch.cuda.empty_cache()
+                            gc.collect()
                     
-                    # 성능 모니터링
-                    if processed_count % 50 == 0:
-                        self._update_performance_stats(processed_count)
-                    
-                    # 메모리 정리
-                    if processed_count % 100 == 0:
-                        torch.cuda.empty_cache()
-                        gc.collect()
+                    except Exception as e:
+                        print(f"문제 {strategy_info['index']} 처리 오류: {e}")
+                        # 폴백 답안
+                        fallback_answer = self._create_fallback_answer(strategy_info["type"])
+                        predictions[strategy_info["index"]] = fallback_answer
+                        processed_count += 1
+                        pbar.update(1)
         
         return predictions
+    
+    def _process_single_question_safe(self, question: str, strategy_info: Dict, 
+                                    strategy_name: str, timeout: int = 30) -> str:
+        """단일 문제 안전 처리"""
+        
+        try:
+            # 프롬프트 생성
+            prompt = self._create_strategic_prompt(question, strategy_info, strategy_name)
+            optimized_prompt = self.prompt_engineer.optimize_for_model(
+                prompt, self.model_config["model_name"]
+            )
+            
+            # 안전한 생성 설정
+            generation_kwargs = {
+                "max_new_tokens": 256,  # 토큰 제한
+                "temperature": 0.7,
+                "do_sample": True,
+                "top_p": 0.9,
+                "repetition_penalty": 1.1,
+                "pad_token_id": self.model_handler.tokenizer.eos_token_id,
+                # early_stopping 제거
+            }
+            
+            # 모델 추론 (타임아웃 적용)
+            start_time = time.time()
+            result = self.model_handler.generate_safe_response(
+                optimized_prompt, 
+                strategy_info["type"], 
+                generation_kwargs,
+                timeout=timeout
+            )
+            
+            elapsed = time.time() - start_time
+            if elapsed > 25:  # 25초 이상 걸리면 경고
+                print(f"⚠️ 긴 처리 시간: {elapsed:.1f}초")
+            
+            # 후처리
+            if hasattr(result, 'response'):
+                raw_response = result.response
+            else:
+                raw_response = str(result)
+            
+            final_answer = self.data_processor.post_process_answer(
+                raw_response, question, strategy_info["type"]
+            )
+            
+            return final_answer
+            
+        except Exception as e:
+            print(f"단일 처리 오류: {e}")
+            return self._create_fallback_answer(strategy_info["type"])
     
     def _group_by_strategy(self, strategies: List[Dict]) -> Dict[str, List[Dict]]:
         """전략별 그룹화"""
@@ -276,79 +324,6 @@ class HighPerformanceInferenceEngine:
             groups[strategy_name].append(strategy_info)
         
         return groups
-    
-    def _process_strategy_batch(self, batch_strategies: List[Dict], 
-                              questions: List[str], strategy_name: str) -> List[str]:
-        """전략별 배치 처리"""
-        
-        batch_questions = [questions[s["index"]] for s in batch_strategies]
-        batch_types = [s["type"] for s in batch_strategies]
-        
-        # 프롬프트 생성
-        batch_prompts = []
-        for question, strategy_info in zip(batch_questions, batch_strategies):
-            prompt = self._create_strategic_prompt(question, strategy_info, strategy_name)
-            optimized_prompt = self.prompt_engineer.optimize_for_model(
-                prompt, self.model_config["model_name"]
-            )
-            batch_prompts.append(optimized_prompt)
-        
-        # 모델 추론
-        try:
-            # 고품질 요구 문제는 개별 처리
-            if strategy_name in ["expert_few_shot", "law_focused"]:
-                results = []
-                for prompt, q_type in zip(batch_prompts, batch_types):
-                    inference_result = self.model_handler.generate_with_verification(
-                        prompt, q_type, target_confidence=0.7
-                    )
-                    results.append(inference_result)
-            else:
-                # 일반 배치 처리
-                results = self.model_handler.generate_batch_responses(
-                    batch_prompts, batch_types, batch_size=len(batch_prompts)
-                )
-        except Exception as e:
-            print(f"배치 처리 오류: {e}")
-            # 개별 처리로 폴백
-            results = []
-            for prompt, q_type in zip(batch_prompts, batch_types):
-                try:
-                    result = self.model_handler.generate_expert_response(prompt, q_type)
-                    results.append(result)
-                except:
-                    # 최종 폴백
-                    fallback_result = self._create_fallback_result(q_type)
-                    results.append(fallback_result)
-        
-        # 후처리
-        final_answers = []
-        for i, (result, question, strategy_info) in enumerate(zip(results, batch_questions, batch_strategies)):
-            raw_response = result.response if hasattr(result, 'response') else str(result)
-            
-            # 지능형 후처리
-            final_answer = self.data_processor.post_process_answer(
-                raw_response, question, strategy_info["type"]
-            )
-            
-            # 품질 검증 및 재시도
-            if hasattr(result, 'confidence') and result.confidence < 0.3:
-                if strategy_info["priority"] > 2.0:  # 중요한 문제만 재시도
-                    retry_answer = self._retry_with_different_strategy(
-                        question, strategy_info, strategy_name
-                    )
-                    if retry_answer:
-                        final_answer = retry_answer
-                        self.performance_stats["retry_count"] += 1
-            
-            final_answers.append(final_answer)
-        
-        # 전략 사용 통계
-        if strategy_name not in self.performance_stats["strategy_usage"]:
-            self.performance_stats["strategy_usage"][strategy_name] = 0
-        self.performance_stats["strategy_usage"][strategy_name] += len(batch_strategies)
-        
-        return final_answers
     
     def _create_strategic_prompt(self, question: str, strategy_info: Dict, 
                                strategy_name: str) -> str:
@@ -375,48 +350,12 @@ class HighPerformanceInferenceEngine:
         else:  # expert_analysis
             return self.prompt_engineer.create_expert_prompt(question, question_type)
     
-    def _retry_with_different_strategy(self, question: str, strategy_info: Dict,
-                                     original_strategy: str) -> Optional[str]:
-        """다른 전략으로 재시도"""
-        
-        alternative_strategies = {
-            "expert_analysis": "chain_of_thought",
-            "chain_of_thought": "expert_few_shot",
-            "expert_few_shot": "law_focused",
-            "law_focused": "expert_analysis"
-        }
-        
-        alt_strategy = alternative_strategies.get(original_strategy, "expert_analysis")
-        
-        try:
-            prompt = self._create_strategic_prompt(question, strategy_info, alt_strategy)
-            optimized_prompt = self.prompt_engineer.optimize_for_model(
-                prompt, self.model_config["model_name"]
-            )
-            
-            result = self.model_handler.generate_expert_response(
-                optimized_prompt, strategy_info["type"], max_attempts=1
-            )
-            
-            return self.data_processor.post_process_answer(
-                result.response, question, strategy_info["type"]
-            )
-            
-        except Exception:
-            return None
-    
-    def _create_fallback_result(self, question_type: str):
-        """폴백 결과 생성"""
+    def _create_fallback_answer(self, question_type: str) -> str:
+        """폴백 답안 생성"""
         if question_type == "multiple_choice":
-            return type('Result', (), {
-                'response': "분석 결과 3번이 가장 적절합니다. 3",
-                'confidence': 0.3
-            })()
+            return "2"  # 가장 안전한 선택
         else:
-            return type('Result', (), {
-                'response': "해당 문제는 금융보안 정책과 절차에 따른 종합적인 검토가 필요한 사안입니다.",
-                'confidence': 0.3
-            })()
+            return "금융보안 정책에 따른 적절한 조치가 필요합니다."
     
     def _check_time_limit(self) -> bool:
         """시간 제한 확인"""
@@ -443,16 +382,6 @@ class HighPerformanceInferenceEngine:
                     predictions[i] = "금융보안 정책에 따른 적절한 조치가 필요합니다."
         
         return predictions
-    
-    def _update_performance_stats(self, processed_count: int):
-        """성능 통계 업데이트"""
-        elapsed = time.time() - self.start_time
-        avg_time = elapsed / processed_count
-        remaining_time = (len(self.performance_stats) - processed_count) * avg_time
-        
-        print(f"진행률: {processed_count}/515 ({processed_count/515*100:.1f}%)")
-        print(f"예상 잔여시간: {remaining_time/60:.1f}분")
-        print(f"재시도: {self.performance_stats['retry_count']}회")
     
     def _save_and_analyze_results(self, predictions: List[str], 
                                 sample_submission: pd.DataFrame, 
@@ -547,12 +476,12 @@ def main():
         print("오류: 데이터 파일 없음")
         sys.exit(1)
     
-    # 모델 설정 (RTX 4090 24GB 최적화)
+    # 모델 설정 (안정성 우선)
     model_config = {
         "model_name": "upstage/SOLAR-10.7B-Instruct-v1.0",
         "device": "cuda",
         "load_in_4bit": False,  # RTX 4090에서는 16bit 사용
-        "max_memory_gb": 22     # RTX 4090 24GB 최대 활용
+        "max_memory_gb": 20     # 여유 있게 설정
     }
     
     # 추론 엔진 초기화 및 실행
