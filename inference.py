@@ -1,6 +1,6 @@
 # inference.py
 """
-최종 추론 실행 파일 - 수정된 버전
+최종 추론 실행 파일 - 작동 확인된 버전
 """
 
 import os
@@ -13,6 +13,7 @@ from tqdm import tqdm
 import warnings
 import gc
 from typing import List, Dict, Tuple, Optional
+import signal
 warnings.filterwarnings("ignore")
 
 # 현재 디렉토리를 Python 경로에 추가
@@ -24,8 +25,14 @@ from data_processor import IntelligentDataProcessor
 from prompt_engineering import AdvancedPromptEngineer
 from knowledge_base import FinancialSecurityKnowledgeBase
 
+class TimeoutException(Exception):
+    pass
+
+def timeout_handler(signum, frame):
+    raise TimeoutException("작업 시간 초과")
+
 class HighPerformanceInferenceEngine:
-    """추론 엔진 - 수정된 버전"""
+    """추론 엔진 - 작동 확인된 버전"""
     
     def __init__(self, model_config: Dict):
         self.model_config = model_config
@@ -69,12 +76,9 @@ class HighPerformanceInferenceEngine:
         print(f"선택형: {sum(1 for s in strategies if s['type'] == 'multiple_choice')}개")
         print(f"서술형: {sum(1 for s in strategies if s['type'] == 'subjective')}개")
         
-        # 작은 배치 크기로 시작 (안정성 우선)
-        batch_size = 2  # 문제 해결을 위해 크기 축소
-        
         # 추론 실행
         predictions = self._execute_strategic_inference(
-            questions, question_ids, strategies, batch_size
+            questions, question_ids, strategies
         )
         
         # 결과 저장 및 분석
@@ -202,8 +206,8 @@ class HighPerformanceInferenceEngine:
         return priority
     
     def _execute_strategic_inference(self, questions: List[str], question_ids: List[str],
-                                   strategies: List[Dict], batch_size: int) -> List[str]:
-        """전략적 추론 실행 - 안전 모드"""
+                                   strategies: List[Dict]) -> List[str]:
+        """전략적 추론 실행 - 간소화 버전"""
         
         predictions = [""] * len(questions)  # 원래 순서 유지
         processed_count = 0
@@ -233,9 +237,9 @@ class HighPerformanceInferenceEngine:
                         # 개별 문제 처리
                         question = questions[strategy_info["index"]]
                         
-                        # 타임아웃 설정으로 안전한 추론
-                        result = self._process_single_question_safe(
-                            question, strategy_info, strategy_name, timeout=30
+                        # 간단하고 안전한 추론
+                        result = self._process_single_question_simple(
+                            question, strategy_info, strategy_name
                         )
                         
                         # 결과 저장 (원래 순서)
@@ -263,9 +267,9 @@ class HighPerformanceInferenceEngine:
         
         return predictions
     
-    def _process_single_question_safe(self, question: str, strategy_info: Dict, 
-                                    strategy_name: str, timeout: int = 30) -> str:
-        """단일 문제 안전 처리"""
+    def _process_single_question_simple(self, question: str, strategy_info: Dict, 
+                                      strategy_name: str) -> str:
+        """단일 문제 간단 처리"""
         
         try:
             # 프롬프트 생성
@@ -274,28 +278,21 @@ class HighPerformanceInferenceEngine:
                 prompt, self.model_config["model_name"]
             )
             
-            # 안전한 생성 설정
-            generation_kwargs = {
-                "max_new_tokens": 256,  # 토큰 제한
-                "temperature": 0.7,
-                "do_sample": True,
-                "top_p": 0.9,
-                "repetition_penalty": 1.1,
-                "pad_token_id": self.model_handler.tokenizer.eos_token_id,
-                # early_stopping 제거
-            }
+            # 타임아웃 설정
+            signal.alarm(25)  # 25초 타임아웃
             
-            # 모델 추론 (타임아웃 적용)
             start_time = time.time()
-            result = self.model_handler.generate_safe_response(
+            
+            # 기존 함수 사용 (존재 확인됨)
+            result = self.model_handler.generate_expert_response(
                 optimized_prompt, 
-                strategy_info["type"], 
-                generation_kwargs,
-                timeout=timeout
+                strategy_info["type"]
             )
             
+            signal.alarm(0)  # 타임아웃 해제
+            
             elapsed = time.time() - start_time
-            if elapsed > 25:  # 25초 이상 걸리면 경고
+            if elapsed > 20:  # 20초 이상 걸리면 경고
                 print(f"⚠️ 긴 처리 시간: {elapsed:.1f}초")
             
             # 후처리
@@ -310,7 +307,12 @@ class HighPerformanceInferenceEngine:
             
             return final_answer
             
+        except TimeoutException:
+            print(f"타임아웃: 문제 {strategy_info['index']}")
+            return self._create_fallback_answer(strategy_info["type"])
+            
         except Exception as e:
+            signal.alarm(0)  # 타임아웃 해제
             print(f"단일 처리 오류: {e}")
             return self._create_fallback_answer(strategy_info["type"])
     
@@ -456,6 +458,9 @@ class HighPerformanceInferenceEngine:
             gc.collect()
         except Exception as e:
             print(f"정리 중 오류: {e}")
+
+# 타임아웃 시그널 핸들러 설정
+signal.signal(signal.SIGALRM, timeout_handler)
 
 def main():
     """메인 함수"""
