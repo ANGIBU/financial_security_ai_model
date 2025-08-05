@@ -1,6 +1,6 @@
 # inference.py
 """
-실행 파일
+실행 파일 - Windows 호환 버전
 """
 
 import os
@@ -13,7 +13,7 @@ from tqdm import tqdm
 import warnings
 import gc
 from typing import List, Dict, Tuple, Optional
-import signal
+import threading
 import psutil
 warnings.filterwarnings("ignore")
 
@@ -30,8 +30,26 @@ from advanced_optimizer import AdvancedOptimizer, ResponseValidator, Performance
 class TimeoutException(Exception):
     pass
 
-def timeout_handler(signum, frame):
-    raise TimeoutException("작업 시간 초과")
+class TimeoutContext:
+    """Windows 호환 타임아웃 컨텍스트"""
+    def __init__(self, timeout_seconds):
+        self.timeout_seconds = timeout_seconds
+        self.timer = None
+        self.timed_out = False
+    
+    def __enter__(self):
+        self.timer = threading.Timer(self.timeout_seconds, self._timeout)
+        self.timer.start()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.timer:
+            self.timer.cancel()
+        if self.timed_out:
+            raise TimeoutException("작업 시간 초과")
+    
+    def _timeout(self):
+        self.timed_out = True
 
 class HighPerformanceInferenceEngine:
     """추론 엔진"""
@@ -234,7 +252,7 @@ class HighPerformanceInferenceEngine:
     def _process_complex_adaptive(self, complex_questions: List[Dict],
                                 original_questions: List[str],
                                 predictions: List[str]):
-        """복잡한 문제 적응형 처리"""
+        """복잡한 문제 적응형 처리 - Windows 호환"""
         
         with tqdm(total=len(complex_questions), desc="개별 처리") as pbar:
             for q_info in complex_questions:
@@ -254,66 +272,61 @@ class HighPerformanceInferenceEngine:
                              q_info["difficulty"].recommended_attempts
                 
                 try:
-                    # 타임아웃 설정
-                    signal.alarm(int(timeout))
-                    
-                    # 전략 선택
-                    if q_info["kb_analysis"].get("relevant_laws"):
-                        strategy = "law_focused"
-                    elif q_info["structure"].get("has_negative"):
-                        strategy = "negative_specialized"
-                    else:
-                        strategy = "balanced"
-                    
-                    # 프롬프트 생성
-                    prompt = self.prompt_engineer.create_expert_prompt(
-                        q_info["question"], q_info["type"], strategy
-                    )
-                    optimized_prompt = self.prompt_engineer.optimize_for_model(
-                        prompt, self.model_config["model_name"]
-                    )
-                    
-                    # 추론 실행
-                    start_time = time.time()
-                    result = self.model_handler.generate_expert_response(
-                        optimized_prompt,
-                        q_info["type"],
-                        max_attempts=max_attempts
-                    )
-                    inference_time = time.time() - start_time
-                    
-                    signal.alarm(0)  # 타임아웃 해제
-                    
-                    # 응답 검증
-                    is_valid, issues = self.validator.validate_response(
-                        result.response, q_info["type"]
-                    )
-                    
-                    if not is_valid:
-                        # 응답 개선
-                        improved = self.validator.improve_response(
-                            result.response, issues, q_info["type"]
+                    # Windows 호환 타임아웃 사용
+                    with TimeoutContext(timeout):
+                        # 전략 선택
+                        if q_info["kb_analysis"].get("relevant_laws"):
+                            strategy = "law_focused"
+                        elif q_info["structure"].get("has_negative"):
+                            strategy = "negative_specialized"
+                        else:
+                            strategy = "balanced"
+                        
+                        # 프롬프트 생성
+                        prompt = self.prompt_engineer.create_expert_prompt(
+                            q_info["question"], q_info["type"], strategy
                         )
-                        final_answer = improved
-                    else:
-                        # 후처리
-                        final_answer = self.data_processor.post_process_answer(
-                            result.response, q_info["question"], q_info["type"]
+                        optimized_prompt = self.prompt_engineer.optimize_for_model(
+                            prompt, self.model_config["model_name"]
                         )
-                    
-                    predictions[idx] = final_answer
-                    self.performance_stats["successful"] += 1
-                    self.monitor.update(inference_time, result.confidence)
+                        
+                        # 추론 실행
+                        start_time = time.time()
+                        result = self.model_handler.generate_expert_response(
+                            optimized_prompt,
+                            q_info["type"],
+                            max_attempts=max_attempts
+                        )
+                        inference_time = time.time() - start_time
+                        
+                        # 응답 검증
+                        is_valid, issues = self.validator.validate_response(
+                            result.response, q_info["type"]
+                        )
+                        
+                        if not is_valid:
+                            # 응답 개선
+                            improved = self.validator.improve_response(
+                                result.response, issues, q_info["type"]
+                            )
+                            final_answer = improved
+                        else:
+                            # 후처리
+                            final_answer = self.data_processor.post_process_answer(
+                                result.response, q_info["question"], q_info["type"]
+                            )
+                        
+                        predictions[idx] = final_answer
+                        self.performance_stats["successful"] += 1
+                        self.monitor.update(inference_time, result.confidence)
                     
                 except TimeoutException:
-                    signal.alarm(0)
                     # 힌트 사용
                     predictions[idx] = q_info["hint_answer"] if q_info["type"] == "multiple_choice" \
                                      else "해당 사항에 대한 전문적 검토가 필요합니다."
                     self.performance_stats["failed"] += 1
                     
                 except Exception as e:
-                    signal.alarm(0)
                     predictions[idx] = self._get_emergency_answer(q_info)
                     self.performance_stats["failed"] += 1
                 
@@ -437,9 +450,6 @@ class HighPerformanceInferenceEngine:
         except Exception as e:
             print(f"정리 중 오류: {e}")
 
-# 시그널 핸들러 설정
-signal.signal(signal.SIGALRM, timeout_handler)
-
 def main():
     """메인 함수"""
     
@@ -459,7 +469,7 @@ def main():
         print("오류: 데이터 파일 없음")
         sys.exit(1)
     
-    # 모델 설정 (RTX 4090 24GB)
+    # 모델 설정
     model_config = {
         "model_name": "upstage/SOLAR-10.7B-Instruct-v1.0",
         "device": "cuda",
@@ -474,7 +484,7 @@ def main():
         results = engine.execute_inference(test_file, submission_file)
         
         if results["success"]:
-            print("\n✅ 추론 성공적으로 완료!")
+            print("\n✅ 추론 완료!")
             print(f"평균 신뢰도: {results['avg_confidence']:.3f}")
         
     except KeyboardInterrupt:
