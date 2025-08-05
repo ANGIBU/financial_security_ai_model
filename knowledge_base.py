@@ -1,6 +1,6 @@
 # knowledge_base.py
 """
-금융보안 특화 지식 베이스 및 문제 분류 시스템
+금융보안 특화 지식 베이스 및 문제 분류 시스템 - 최적화 버전
 FSKU 평가지표 기반 전문 지식 데이터베이스
 """
 
@@ -18,13 +18,16 @@ class FinancialConcept:
     common_mistakes: List[str]
 
 class FinancialSecurityKnowledgeBase:
-    """금융보안 전문 지식 베이스"""
+    """금융보안 전문 지식 베이스 - 최적화 버전"""
     
     def __init__(self):
         self.concepts = self._build_concept_database()
         self.laws = self._build_law_database()
         self.question_patterns = self._build_question_patterns()
-        self.common_answers = self._build_common_answers()
+        self.domain_keywords = self._build_domain_keywords()
+        
+        # 성능 향상을 위한 컴파일된 패턴
+        self.compiled_patterns = self._compile_patterns()
     
     def _build_concept_database(self) -> Dict[str, FinancialConcept]:
         """핵심 금융보안 개념 데이터베이스 구축"""
@@ -39,7 +42,7 @@ class FinancialSecurityKnowledgeBase:
                 "개인정보 처리의 최소화 원칙",
                 "정보주체의 동의 원칙", 
                 "목적 외 이용·제공 금지",
-                "개인정보 유출 시 즉시 신고 의무"
+                "개인정보 유출 시 지체 없이 신고"
             ],
             common_mistakes=[
                 "동의 없는 제3자 제공",
@@ -65,61 +68,44 @@ class FinancialSecurityKnowledgeBase:
             ]
         )
         
-        # 암호화
-        concepts["암호화"] = FinancialConcept(
-            name="암호화",
-            definition="정보를 제3자가 알아볼 수 없도록 변환하는 기술",
+        # 정보보호관리체계
+        concepts["ISMS"] = FinancialConcept(
+            name="정보보호관리체계",
+            definition="정보자산 보호를 위한 정책, 조직, 기술적 대책의 종합 체계",
             related_laws=["정보통신망법", "개인정보보호법"],
             key_points=[
-                "개인정보 전송 시 암호화 필수",
-                "저장 시 암호화 권장",
-                "암호화 알고리즘 선택 중요",
-                "키 관리 체계 필수"
+                "관리체계 수립 및 운영",
+                "위험평가 및 관리",
+                "보호대책 구현",
+                "지속적 개선"
             ],
             common_mistakes=[
-                "약한 암호화 알고리즘 사용",
-                "키 관리 소홀"
+                "일회성 구축으로 끝남",
+                "형식적 운영"
             ]
         )
         
-        # 접근제어
-        concepts["접근제어"] = FinancialConcept(
-            name="접근제어",
-            definition="정보시스템 자원에 대한 접근을 통제하는 보안 기능",
-            related_laws=["정보통신망법"],
+        # 금융보안
+        concepts["금융보안"] = FinancialConcept(
+            name="금융보안",
+            definition="금융거래 및 금융정보의 안전성과 신뢰성 확보를 위한 보안 활동",
+            related_laws=["전자금융거래법", "정보통신망법"],
             key_points=[
-                "사용자 인증 필수",
-                "권한 부여 원칙",
-                "최소권한 원칙",
-                "정기적 권한 검토"
+                "금융거래 안전성 확보",
+                "금융정보 기밀성 유지",
+                "이상거래 탐지",
+                "사고 대응 체계"
             ],
             common_mistakes=[
-                "과도한 권한 부여",
-                "권한 검토 미실시"
-            ]
-        )
-        
-        # 사이버보안
-        concepts["사이버보안"] = FinancialConcept(
-            name="사이버보안",
-            definition="사이버 공간에서의 위협으로부터 정보시스템을 보호하는 활동",
-            related_laws=["정보보호산업법", "국가사이버보안법"],
-            key_points=[
-                "위협 탐지 및 대응",
-                "보안 모니터링",
-                "사고 대응 체계",
-                "보안 교육 및 훈련"
-            ],
-            common_mistakes=[
-                "실시간 모니터링 부족",
-                "사고 대응 지연"
+                "사후 대응만 중시",
+                "기술적 보안만 강조"
             ]
         )
         
         return concepts
     
     def _build_law_database(self) -> Dict[str, Dict]:
-        """주요 법령 데이터베이스 구축"""
+        """주요 법령 데이터베이스 구축 - 간소화"""
         laws = {}
         
         laws["개인정보보호법"] = {
@@ -128,132 +114,111 @@ class FinancialSecurityKnowledgeBase:
                 "제15조": "개인정보의 수집·이용",
                 "제17조": "개인정보의 제공",
                 "제21조": "개인정보의 파기",
-                "제22조의2": "만14세 미만 아동의 개인정보 처리",
-                "제34조": "개인정보 유출 통지"
+                "제34조": "개인정보 유출 통지 - 지체 없이"
             },
-            "벌칙": "5년 이하 징역 또는 5천만원 이하 벌금"
+            "핵심원칙": ["최소수집", "목적명확", "동의필수", "안전관리"]
         }
         
         laws["전자금융거래법"] = {
             "목적": "전자금융거래의 법률관계를 명확히 하고 이용자를 보호",
             "주요조항": {
-                "제2조": "정의",
+                "제2조": "전자금융거래 정의",
                 "제21조": "접근매체의 선정과 사용 및 관리",
-                "제22조": "접근매체의 발급 및 관리",
-                "제24조": "거래내역의 통지",
-                "제44조": "과징금 등"
+                "제24조": "거래내역의 통지"
             },
-            "벌칙": "3년 이하 징역 또는 3천만원 이하 벌금"
-        }
-        
-        laws["정보통신망법"] = {
-            "목적": "정보통신망의 이용촉진 및 정보보호에 관한 법률",
-            "주요조항": {
-                "제28조": "개인정보의 수집제한 등",
-                "제29조": "개인정보의 처리제한",
-                "제45조": "과징금",
-                "제71조": "벌칙"
-            },
-            "벌칙": "5년 이하 징역 또는 5천만원 이하 벌금"
+            "핵심원칙": ["전자적 장치", "안전성", "이용자 보호"]
         }
         
         return laws
     
     def _build_question_patterns(self) -> Dict[str, List[str]]:
         """문제 유형별 패턴 분석"""
-        patterns = {}
-        
-        patterns["정의_문제"] = [
-            "정의로 가장 적절한 것은",
-            "의미로 옳은 것은",
-            "개념을 설명한 것은",
-            "이란 무엇인가"
-        ]
-        
-        patterns["법령_문제"] = [
-            "법에 따르면",
-            "규정에 의하면", 
-            "조항에 해당하는",
-            "벌칙은",
-            "신고 기한은"
-        ]
-        
-        patterns["기술_문제"] = [
-            "암호화 알고리즘",
-            "해킹 기법",
-            "보안 솔루션",
-            "기술적 특징"
-        ]
-        
-        patterns["절차_문제"] = [
-            "절차로 옳은 것은",
-            "순서로 적절한",
-            "단계는",
-            "과정에서"
-        ]
-        
-        patterns["부정형_문제"] = [
-            "해당하지 않는",
-            "적절하지 않은", 
-            "옳지 않은",
-            "틀린 것은",
-            "제외한 것은"
-        ]
-        
+        patterns = {
+            "정의_문제": [
+                r"정의로\s*(?:가장\s*)?적절한",
+                r"의미로\s*옳은",
+                r"개념.*설명",
+                r"란\s*무엇"
+            ],
+            "법령_문제": [
+                r"법.*따르면",
+                r"규정.*의하면", 
+                r"조항.*해당",
+                r"법.*제\d+조"
+            ],
+            "부정형_문제": [
+                r"해당하지\s*않는",
+                r"적절하지\s*않은", 
+                r"옳지\s*않은",
+                r"틀린\s*것"
+            ]
+        }
         return patterns
     
-    def _build_common_answers(self) -> Dict[str, str]:
-        """일반적인 정답 패턴"""
+    def _build_domain_keywords(self) -> Dict[str, List[str]]:
+        """도메인별 핵심 키워드"""
         return {
-            "개인정보_유출_신고": "즉시 또는 지체 없이",
-            "암호화_필수": "개인정보 전송 시 필수",
-            "동의_원칙": "사전 동의 필요",
-            "최소수집_원칙": "꼭 필요한 최소한의 정보만",
-            "목적외_이용": "원칙적으로 금지",
-            "보유기간": "목적 달성 후 지체 없이 파기"
+            "개인정보보호": ["개인정보", "정보주체", "동의", "수집", "이용", "제공", "파기", "유출"],
+            "전자금융": ["전자금융", "전자적장치", "접근매체", "거래", "인증", "전자서명"],
+            "보안관리": ["보안", "관리", "통제", "정책", "절차", "체계", "ISMS"],
+            "사이버보안": ["해킹", "악성코드", "침해", "취약점", "보안사고"],
+            "암호화": ["암호화", "복호화", "키", "인증서", "전자서명"]
         }
+    
+    def _compile_patterns(self) -> Dict:
+        """패턴 컴파일 (성능 향상)"""
+        compiled = {}
+        for pattern_type, patterns in self.question_patterns.items():
+            compiled[pattern_type] = [re.compile(p, re.IGNORECASE) for p in patterns]
+        return compiled
     
     def analyze_question(self, question: str) -> Dict:
-        """문제 분석 및 관련 지식 추출"""
+        """문제 분석 및 관련 지식 추출 - 최적화"""
         analysis = {
-            "question_type": self._classify_question_type(question),
-            "domain": self._identify_domain(question),
-            "related_concepts": self._extract_related_concepts(question),
-            "relevant_laws": self._extract_relevant_laws(question),
-            "key_hints": self._extract_key_hints(question),
-            "negative_question": self._is_negative_question(question)
+            "question_type": self._classify_question_type_fast(question),
+            "domain": self._identify_domain_fast(question),
+            "related_concepts": [],
+            "relevant_laws": [],
+            "key_hints": [],
+            "negative_question": self._is_negative_question_fast(question)
         }
+        
+        # 필요시에만 상세 분석
+        if analysis["question_type"] in ["법령_문제", "정의_문제"]:
+            analysis["related_concepts"] = self._extract_related_concepts(question)
+            analysis["relevant_laws"] = self._extract_relevant_laws_fast(question)
+        
         return analysis
     
-    def _classify_question_type(self, question: str) -> str:
-        """문제 유형 분류"""
-        question_lower = question.lower()
-        
-        for pattern_type, patterns in self.question_patterns.items():
-            for pattern in patterns:
-                if pattern in question_lower:
+    def _classify_question_type_fast(self, question: str) -> str:
+        """빠른 문제 유형 분류"""
+        for pattern_type, compiled_patterns in self.compiled_patterns.items():
+            for pattern in compiled_patterns:
+                if pattern.search(question):
                     return pattern_type
-        
         return "일반_문제"
     
-    def _identify_domain(self, question: str) -> List[str]:
-        """도메인 식별"""
+    def _identify_domain_fast(self, question: str) -> List[str]:
+        """빠른 도메인 식별"""
         domains = []
         question_lower = question.lower()
         
-        domain_keywords = {
-            "개인정보보호": ["개인정보", "정보주체", "동의", "수집", "이용", "제공", "파기"],
-            "전자금융": ["전자금융", "전자적장치", "접근매체", "거래", "인증", "비밀번호"],
-            "사이버보안": ["해킹", "악성코드", "피싱", "파밍", "보안", "침입", "방화벽"],
-            "암호화": ["암호화", "복호화", "키", "알고리즘", "해시", "전자서명"],
-            "정보보호": ["정보보호", "보안정책", "접근제어", "감사", "모니터링"]
-        }
-        
-        for domain, keywords in domain_keywords.items():
-            if any(keyword in question_lower for keyword in keywords):
-                domains.append(domain)
+        # 핵심 키워드만 체크
+        if "개인정보" in question_lower:
+            domains.append("개인정보보호")
+        if "전자금융" in question_lower or "전자적" in question_lower:
+            domains.append("전자금융")
+        if "보안" in question_lower and "관리" in question_lower:
+            domains.append("보안관리")
+        if "암호화" in question_lower:
+            domains.append("암호화")
         
         return domains if domains else ["일반"]
+    
+    def _is_negative_question_fast(self, question: str) -> bool:
+        """빠른 부정형 질문 판별"""
+        negative_keywords = ['해당하지 않는', '적절하지 않은', '옳지 않은', '틀린', '잘못된']
+        return any(keyword in question for keyword in negative_keywords)
     
     def _extract_related_concepts(self, question: str) -> List[str]:
         """관련 개념 추출"""
@@ -266,53 +231,19 @@ class FinancialSecurityKnowledgeBase:
                 
         return related
     
-    def _extract_relevant_laws(self, question: str) -> List[str]:
-        """관련 법령 추출"""
+    def _extract_relevant_laws_fast(self, question: str) -> List[str]:
+        """빠른 관련 법령 추출"""
         relevant = []
         question_lower = question.lower()
         
-        law_indicators = {
-            "개인정보보호법": ["개인정보보호법", "개인정보", "정보주체"],
-            "전자금융거래법": ["전자금융거래법", "전자금융", "접근매체"],
-            "정보통신망법": ["정보통신망", "정보통신망법", "온라인"],
-            "전자서명법": ["전자서명", "공인인증서", "디지털서명"]
-        }
-        
-        for law, indicators in law_indicators.items():
-            if any(indicator in question_lower for indicator in indicators):
-                relevant.append(law)
-                
+        if "개인정보" in question_lower:
+            relevant.append("개인정보보호법")
+        if "전자금융" in question_lower:
+            relevant.append("전자금융거래법")
+        if "정보통신망" in question_lower:
+            relevant.append("정보통신망법")
+            
         return relevant
-    
-    def _extract_key_hints(self, question: str) -> List[str]:
-        """핵심 힌트 추출"""
-        hints = []
-        
-        # 숫자 힌트
-        numbers = re.findall(r'(\d+)(?:일|년|개월|시간|분)', question)
-        if numbers:
-            hints.extend([f"{num}단위_기간" for num in numbers])
-        
-        # 키워드 힌트
-        key_phrases = [
-            "즉시", "지체없이", "사전", "사후", "필수", "선택", 
-            "의무", "권장", "금지", "허용", "최소", "최대"
-        ]
-        
-        for phrase in key_phrases:
-            if phrase in question:
-                hints.append(phrase)
-                
-        return hints
-    
-    def _is_negative_question(self, question: str) -> bool:
-        """부정형 문제 판별"""
-        negative_indicators = [
-            "해당하지 않는", "적절하지 않은", "옳지 않은", 
-            "틀린", "잘못된", "부적절한", "제외한"
-        ]
-        
-        return any(indicator in question for indicator in negative_indicators)
     
     def get_expert_knowledge(self, concept: str) -> Optional[FinancialConcept]:
         """전문 지식 조회"""
@@ -323,33 +254,26 @@ class FinancialSecurityKnowledgeBase:
         return self.laws.get(law_name)
     
     def generate_analysis_context(self, question: str) -> str:
-        """문제 분석 컨텍스트 생성"""
+        """문제 분석 컨텍스트 생성 - 간소화"""
         analysis = self.analyze_question(question)
+        
+        if not analysis['relevant_laws'] and not analysis['related_concepts']:
+            return ""  # 빈 컨텍스트로 빠른 처리
         
         context = []
         
-        # 문제 유형
-        context.append(f"문제 유형: {analysis['question_type']}")
-        
-        # 관련 도메인
-        if analysis['domain']:
-            context.append(f"관련 분야: {', '.join(analysis['domain'])}")
-        
-        # 관련 개념
-        if analysis['related_concepts']:
-            for concept in analysis['related_concepts']:
-                concept_info = self.get_expert_knowledge(concept)
-                if concept_info:
-                    context.append(f"\n[{concept}]")
-                    context.append(f"정의: {concept_info.definition}")
-                    context.append(f"핵심 포인트: {', '.join(concept_info.key_points[:2])}")
-        
-        # 관련 법령
+        # 관련 법령 (중요한 것만)
         if analysis['relevant_laws']:
-            context.append(f"\n관련 법령: {', '.join(analysis['relevant_laws'])}")
+            law_info = []
+            for law in analysis['relevant_laws'][:1]:  # 첫 번째 법령만
+                info = self.get_law_info(law)
+                if info:
+                    law_info.append(f"{law}: {info['목적']}")
+            if law_info:
+                context.append("관련 법령: " + ", ".join(law_info))
         
         # 부정형 문제 경고
         if analysis['negative_question']:
-            context.append("\n⚠️ 부정형 문제: '해당하지 않는' 또는 '틀린' 것을 찾으세요!")
+            context.append("⚠️ 부정형 문제: '해당하지 않는' 것을 찾으세요!")
         
         return "\n".join(context)
