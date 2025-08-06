@@ -7,20 +7,20 @@ import torch
 import re
 import time
 import gc
-import threading
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
-from queue import Queue
 from transformers import (
     AutoTokenizer, 
-    AutoModelForCausalLM, 
-    BitsAndBytesConfig,
-    pipeline
+    AutoModelForCausalLM,
+    GenerationConfig,
+    BitsAndBytesConfig
 )
+import warnings
+warnings.filterwarnings("ignore")
 
 @dataclass
 class InferenceResult:
-    """추론 결과 데이터 클래스"""
+    """추론 결과"""
     response: str
     confidence: float
     reasoning_quality: float
@@ -38,7 +38,26 @@ class ModelHandler:
         
         print(f"모델 로딩: {model_name}")
         
-        # RTX 4090 24GB - 16bit 정밀도 사용
+        # 토크나이저 로딩
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_name,
+            trust_remote_code=True,
+            use_fast=True
+        )
+        
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+        
+        # 모델 설정
+        model_kwargs = {
+            "trust_remote_code": True,
+            "torch_dtype": torch.float16,
+            "device_map": "auto",
+            "low_cpu_mem_usage": True,
+        }
+        
+        # 4bit 양자화 설정
         if load_in_4bit:
             quantization_config = BitsAndBytesConfig(
                 load_in_4bit=True,
@@ -46,74 +65,61 @@ class ModelHandler:
                 bnb_4bit_quant_type="nf4",
                 bnb_4bit_use_double_quant=True,
             )
-        else:
-            quantization_config = None
+            model_kwargs["quantization_config"] = quantization_config
         
-        # 토크나이저 로딩
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_name,
-            trust_remote_code=True,
-            padding_side="left"
-        )
-        
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+        # Flash Attention 지원 확인
+        try:
+            import flash_attn
+            model_kwargs["attn_implementation"] = "flash_attention_2"
+            print("Flash Attention 2 활성화")
+        except ImportError:
+            if hasattr(torch.nn.functional, 'scaled_dot_product_attention'):
+                model_kwargs["attn_implementation"] = "sdpa"
+                print("SDPA Attention 활성화")
+            else:
+                print("Standard Attention 사용")
         
         # 모델 로딩
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            quantization_config=quantization_config,
-            device_map="auto",
-            torch_dtype=torch.float16,
-            trust_remote_code=True,
-            max_memory={0: f"{max_memory_gb}GB"},
-            low_cpu_mem_usage=True,
-            use_safetensors=True,
+            **model_kwargs
         )
         
-        # 추론 설정
+        # 평가 모드
         self.model.eval()
-        if hasattr(self.model.config, "use_cache"):
-            self.model.config.use_cache = True
         
-        # torch.compile 사용
-        if hasattr(torch, 'compile'):
-            try:
-                self.model = torch.compile(self.model, mode="reduce-overhead")
-                print("모델 컴파일 완료")
-            except:
-                print("모델 컴파일 스킵")
-        
-        # 파이프라인 설정
-        self.pipe = pipeline(
-            "text-generation",
-            model=self.model,
-            tokenizer=self.tokenizer,
-            device_map="auto",
-            return_full_text=False,
-            batch_size=1,
-            torch_dtype=torch.float16
+        # 생성 설정
+        self.generation_config = GenerationConfig(
+            do_sample=True,
+            temperature=0.7,
+            top_p=0.9,
+            top_k=50,
+            max_new_tokens=512,
+            repetition_penalty=1.1,
+            no_repeat_ngram_size=3,
+            pad_token_id=self.tokenizer.pad_token_id,
+            eos_token_id=self.tokenizer.eos_token_id,
         )
         
-        # 캐시 설정
+        # 캐시
         self.response_cache = {}
         self.cache_hits = 0
         
         print("모델 로딩 완료")
     
     def generate_response(self, prompt: str, question_type: str,
-                                max_attempts: int = 2) -> InferenceResult:
+                         max_attempts: int = 2) -> InferenceResult:
         """응답 생성"""
         
         start_time = time.time()
         
         # 캐시 확인
-        cache_key = hash(prompt[:100])
+        cache_key = hash(prompt[:200])
         if cache_key in self.response_cache:
             self.cache_hits += 1
-            cached_result = self.response_cache[cache_key]
-            cached_result.inference_time = 0.01
-            return cached_result
+            cached = self.response_cache[cache_key]
+            cached.inference_time = 0.01
+            return cached
         
         best_result = None
         best_score = 0
@@ -121,271 +127,199 @@ class ModelHandler:
         for attempt in range(max_attempts):
             try:
                 # 시도별 파라미터 조정
-                generation_params = self._get_params(question_type, attempt)
+                if question_type == "multiple_choice":
+                    # 객관식: 정확성 우선
+                    gen_config = GenerationConfig(
+                        do_sample=True if attempt > 0 else False,
+                        temperature=0.3 if attempt == 0 else 0.5,
+                        top_p=0.85,
+                        top_k=40,
+                        max_new_tokens=256,
+                        repetition_penalty=1.05,
+                        no_repeat_ngram_size=2,
+                        pad_token_id=self.tokenizer.pad_token_id,
+                        eos_token_id=self.tokenizer.eos_token_id,
+                    )
+                else:
+                    # 주관식: 품질 우선
+                    gen_config = GenerationConfig(
+                        do_sample=True,
+                        temperature=0.5,
+                        top_p=0.9,
+                        top_k=50,
+                        max_new_tokens=512,
+                        repetition_penalty=1.1,
+                        no_repeat_ngram_size=3,
+                        pad_token_id=self.tokenizer.pad_token_id,
+                        eos_token_id=self.tokenizer.eos_token_id,
+                    )
                 
-                # 추론 실행
+                # 토크나이징
+                inputs = self.tokenizer(
+                    prompt,
+                    return_tensors="pt",
+                    truncation=True,
+                    max_length=2048
+                ).to(self.model.device)
+                
+                # 생성
                 with torch.no_grad():
-                    with torch.cuda.amp.autocast():
-                        outputs = self.pipe(prompt, **generation_params)
-                        response = outputs[0]["generated_text"].strip()
+                    with torch.cuda.amp.autocast(enabled=True):
+                        outputs = self.model.generate(
+                            **inputs,
+                            generation_config=gen_config,
+                            use_cache=True
+                        )
                 
-                # 응답 품질 평가
+                # 디코딩
+                response = self.tokenizer.decode(
+                    outputs[0][inputs['input_ids'].shape[1]:],
+                    skip_special_tokens=True
+                ).strip()
+                
+                # 응답 평가
                 result = self._evaluate_response(response, question_type)
                 result.inference_time = time.time() - start_time
                 
-                # 최고 품질 응답 선택
-                current_score = result.confidence * result.reasoning_quality
-                if current_score > best_score:
-                    best_score = current_score
+                # 최고 품질 선택
+                score = result.confidence * result.reasoning_quality
+                if score > best_score:
+                    best_score = score
                     best_result = result
                 
-                # 충분히 좋은 응답이면 조기 종료
-                if current_score > 0.7 or (attempt == 0 and current_score > 0.5):
+                # 충분히 좋으면 조기 종료
+                if score > 0.7:
                     break
                     
             except Exception as e:
+                print(f"생성 오류 (시도 {attempt+1}): {e}")
                 continue
         
-        # 실패 시 기본 응답
+        # 실패 시 폴백
         if best_result is None:
             if question_type == "multiple_choice":
                 best_result = InferenceResult(
-                    response="분석 결과 2번이 가장 적절합니다.",
-                    confidence=0.3,
-                    reasoning_quality=0.3,
+                    response="2",
+                    confidence=0.2,
+                    reasoning_quality=0.2,
                     analysis_depth=1,
                     inference_time=time.time() - start_time
                 )
             else:
                 best_result = InferenceResult(
-                    response="해당 사항은 금융보안 규정에 따라 적절한 조치가 필요합니다.",
-                    confidence=0.3,
-                    reasoning_quality=0.3,
+                    response="관련 규정에 따른 적절한 조치가 필요합니다.",
+                    confidence=0.2,
+                    reasoning_quality=0.2,
                     analysis_depth=1,
                     inference_time=time.time() - start_time
                 )
         
         # 캐시 저장
-        if best_score > 0.6:
+        if best_score > 0.5:
             self.response_cache[cache_key] = best_result
         
         return best_result
     
-    def _get_params(self, question_type: str, attempt: int) -> Dict:
-        """생성 파라미터"""
+    def _evaluate_response(self, response: str, question_type: str) -> InferenceResult:
+        """응답 평가"""
         
         if question_type == "multiple_choice":
-            # 객관식: 빠르고 정확한 생성
-            if attempt == 0:
-                base_params = {
-                    "max_new_tokens": 256,
-                    "temperature": 0.1,
-                    "top_p": 0.8,
-                    "top_k": 30,
-                    "do_sample": True,
-                    "repetition_penalty": 1.05,
-                    "no_repeat_ngram_size": 2,
-                }
-            else:
-                base_params = {
-                    "max_new_tokens": 512,
-                    "temperature": 0.2,
-                    "top_p": 0.85,
-                    "top_k": 40,
-                    "do_sample": True,
-                    "repetition_penalty": 1.1,
-                    "no_repeat_ngram_size": 2,
-                }
-        else:
-            # 주관식: 완성도 우선
-            base_params = {
-                "max_new_tokens": 512,
-                "temperature": 0.2,
-                "top_p": 0.9,
-                "top_k": 50,
-                "do_sample": True,
-                "repetition_penalty": 1.15,
-                "no_repeat_ngram_size": 3,
-            }
-        
-        # 공통 파라미터
-        base_params.update({
-            "pad_token_id": self.tokenizer.pad_token_id,
-            "eos_token_id": self.tokenizer.eos_token_id,
-            "early_stopping": True,
-        })
-        
-        return base_params
-    
-    def generate_batch_responses(self, prompts: List[str], question_types: List[str], 
-                               batch_size: int = 10) -> List[InferenceResult]:
-        """배치 추론"""
-        results = []
-        
-        # 동일 타입끼리 그룹화
-        type_groups = {}
-        for i, (prompt, q_type) in enumerate(zip(prompts, question_types)):
-            if q_type not in type_groups:
-                type_groups[q_type] = []
-            type_groups[q_type].append((i, prompt))
-        
-        # 타입별 배치 처리
-        for q_type, group in type_groups.items():
-            indices = [g[0] for g in group]
-            group_prompts = [g[1] for g in group]
+            confidence = 0.4
+            reasoning = 0.4
             
-            # 배치로 나누어 처리
-            for i in range(0, len(group_prompts), batch_size):
-                batch_prompts = group_prompts[i:i+batch_size]
-                
-                try:
-                    # 배치 추론
-                    batch_results = self._process_batch(batch_prompts, q_type)
-                    
-                    # 결과를 원래 순서대로 저장
-                    for j, result in enumerate(batch_results):
-                        original_idx = indices[i+j]
-                        results.append((original_idx, result))
-                        
-                except Exception as e:
-                    print(f"배치 처리 실패, 개별 처리로 전환: {e}")
-                    # 실패한 배치는 개별 처리
-                    for j, prompt in enumerate(batch_prompts):
-                        original_idx = indices[i+j]
-                        result = self.generate_response(prompt, q_type, max_attempts=1)
-                        results.append((original_idx, result))
-                
-                # 메모리 정리
-                if len(results) % 50 == 0:
-                    torch.cuda.empty_cache()
+            # 답변 패턴 확인
+            if re.search(r'[1-5]', response):
+                confidence += 0.3
+            
+            # 명시적 답변
+            if re.search(r'정답|답|결론', response):
+                confidence += 0.2
+            
+            # 분석 포함
+            if any(word in response for word in ['분석', '검토', '따라서', '그러므로']):
+                reasoning += 0.3
+            
+            # 길이 체크
+            if 30 <= len(response) <= 500:
+                reasoning += 0.2
+            
+            return InferenceResult(
+                response=response,
+                confidence=min(confidence, 1.0),
+                reasoning_quality=min(reasoning, 1.0),
+                analysis_depth=2
+            )
         
-        # 원래 순서로 정렬
-        results.sort(key=lambda x: x[0])
-        return [r[1] for r in results]
+        else:
+            confidence = 0.4
+            reasoning = 0.4
+            
+            # 길이 체크
+            length = len(response)
+            if 100 <= length <= 800:
+                confidence += 0.3
+            elif 50 <= length < 100:
+                confidence += 0.1
+            
+            # 전문 용어
+            keywords = ['법', '규정', '보안', '관리', '조치', '정책', '체계']
+            keyword_count = sum(1 for k in keywords if k in response)
+            if keyword_count >= 3:
+                confidence += 0.2
+                reasoning += 0.3
+            elif keyword_count >= 1:
+                confidence += 0.1
+                reasoning += 0.1
+            
+            # 구조화
+            if re.search(r'첫째|둘째|1\)|2\)', response):
+                reasoning += 0.2
+            
+            return InferenceResult(
+                response=response,
+                confidence=min(confidence, 1.0),
+                reasoning_quality=min(reasoning, 1.0),
+                analysis_depth=3
+            )
     
-    def _process_batch(self, prompts: List[str], question_type: str) -> List[InferenceResult]:
+    def generate_batch(self, prompts: List[str], question_types: List[str],
+                      batch_size: int = 8) -> List[InferenceResult]:
         """배치 처리"""
-        generation_params = self._get_params(question_type, 0)
-        
-        # 토큰화
-        inputs = self.tokenizer(
-            prompts,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=1024
-        ).to(self.device)
-        
-        # 배치 생성
-        with torch.no_grad():
-            with torch.cuda.amp.autocast():
-                outputs = self.model.generate(
-                    **inputs,
-                    **generation_params,
-                    pad_token_id=self.tokenizer.pad_token_id
-                )
-        
-        # 디코딩
-        responses = self.tokenizer.batch_decode(
-            outputs[:, inputs['input_ids'].shape[1]:],
-            skip_special_tokens=True
-        )
-        
-        # 결과 평가
         results = []
-        for response in responses:
-            result = self._evaluate_response(response.strip(), question_type)
-            results.append(result)
+        
+        for i in range(0, len(prompts), batch_size):
+            batch_prompts = prompts[i:i+batch_size]
+            batch_types = question_types[i:i+batch_size]
+            
+            for prompt, q_type in zip(batch_prompts, batch_types):
+                result = self.generate_response(prompt, q_type, max_attempts=1)
+                results.append(result)
+            
+            # 메모리 정리
+            if (i + batch_size) % 32 == 0:
+                torch.cuda.empty_cache()
         
         return results
     
-    def _evaluate_response(self, response: str, question_type: str) -> InferenceResult:
-        """응답 품질 평가"""
-        
-        if question_type == "multiple_choice":
-            return self._evaluate_mc_response(response)
-        else:
-            return self._evaluate_subjective_response(response)
-    
-    def _evaluate_mc_response(self, response: str) -> InferenceResult:
-        """객관식 응답 평가"""
-        confidence = 0.5
-        reasoning_quality = 0.5
-        
-        # 답변 번호 추출 가능성
-        answer_patterns = [
-            r'정답[:\s]*([1-5])',
-            r'답[:\s]*([1-5])',
-            r'([1-5])번',
-            r'선택지\s*([1-5])',
-        ]
-        
-        for pattern in answer_patterns:
-            if re.search(pattern, response):
-                confidence += 0.3
-                break
-        
-        # 분석 키워드 존재
-        if any(keyword in response for keyword in ['분석', '근거', '따라서', '법']):
-            reasoning_quality += 0.2
-        
-        # 길이 체크
-        if 50 <= len(response) <= 800:
-            confidence += 0.1
-        
-        return InferenceResult(
-            response=response,
-            confidence=min(confidence, 1.0),
-            reasoning_quality=min(reasoning_quality, 1.0),
-            analysis_depth=2
-        )
-    
-    def _evaluate_subjective_response(self, response: str) -> InferenceResult:
-        """주관식 응답 평가"""
-        confidence = 0.5
-        reasoning_quality = 0.5
-        
-        # 길이 체크
-        response_length = len(response)
-        if 100 <= response_length <= 1000:
-            confidence += 0.2
-        
-        # 전문 용어 체크
-        if any(term in response for term in ['보안', '개인정보', '금융', '시스템']):
-            confidence += 0.2
-            reasoning_quality += 0.2
-        
-        return InferenceResult(
-            response=response,
-            confidence=min(confidence, 1.0),
-            reasoning_quality=min(reasoning_quality, 1.0),
-            analysis_depth=3
-        )
-    
     def cleanup(self):
         """메모리 정리"""
-        # 캐시 통계 출력
-        if self.response_cache:
-            print(f"캐시 히트: {self.cache_hits}회")
+        print(f"캐시 히트: {self.cache_hits}회")
         
-        if hasattr(self, 'pipe'):
-            del self.pipe
         if hasattr(self, 'model'):
             del self.model
         if hasattr(self, 'tokenizer'):
             del self.tokenizer
         
+        self.response_cache.clear()
+        
         gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
+        torch.cuda.empty_cache()
     
     def get_model_info(self) -> Dict:
-        """모델 정보 반환"""
+        """모델 정보"""
         return {
             "model_name": self.model_name,
             "device": self.device,
-            "memory_usage": torch.cuda.memory_allocated() / 1024**3 if torch.cuda.is_available() else 0,
-            "max_memory": self.max_memory_gb,
-            "cache_hits": self.cache_hits
+            "cache_hits": self.cache_hits,
+            "cache_size": len(self.response_cache)
         }
