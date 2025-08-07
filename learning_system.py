@@ -7,6 +7,7 @@ import json
 import pickle
 import hashlib
 import numpy as np
+import re
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, asdict
 from collections import defaultdict
@@ -24,9 +25,10 @@ class LearningData:
     question_type: str
     domain: List[str]
     timestamp: float
+    korean_quality: float = 0.0
 
 class UnifiedLearningSystem:
-    """통합 학습 시스템"""
+    """통합 학습 시스템 - 한국어 특화"""
     
     def __init__(self):
         # 학습 데이터 저장소
@@ -34,9 +36,22 @@ class UnifiedLearningSystem:
         self.pattern_bank = defaultdict(list)
         self.answer_statistics = defaultdict(lambda: defaultdict(int))
         
+        # 한국어 품질 추적
+        self.korean_quality_stats = {
+            "total_samples": 0,
+            "high_quality": 0,
+            "medium_quality": 0,
+            "low_quality": 0,
+            "avg_quality": 0.0
+        }
+        
         # 학습 규칙
         self.learned_rules = {}
         self.rule_performance = defaultdict(list)
+        
+        # 한국어 템플릿 뱅크
+        self.korean_templates = self._initialize_korean_templates()
+        self.successful_answers = defaultdict(list)
         
         # 성능 추적
         self.performance_history = []
@@ -44,19 +59,95 @@ class UnifiedLearningSystem:
             "total_samples": 0,
             "correct_predictions": 0,
             "patterns_learned": 0,
-            "rules_created": 0
+            "rules_created": 0,
+            "korean_quality_avg": 0.0
         }
         
         # 캐시
         self.prediction_cache = {}
         
+    def _initialize_korean_templates(self) -> Dict[str, List[str]]:
+        """한국어 템플릿 초기화"""
+        return {
+            "개인정보보호": [
+                "개인정보보호법 제{조}조에 따라 {내용}을 수행해야 합니다.",
+                "정보주체의 {권리}를 보장하기 위해 {조치}가 필요합니다.",
+                "개인정보 {단계}에서 {요구사항}을 준수해야 합니다."
+            ],
+            "전자금융": [
+                "전자금융거래법에 따라 {요구사항}을 이행해야 합니다.",
+                "전자적 장치를 통한 {거래유형}에서 {보안조치}가 필요합니다.",
+                "금융회사는 {의무사항}을 준수해야 합니다."
+            ],
+            "정보보안": [
+                "정보보호관리체계는 {구성요소}를 포함해야 합니다.",
+                "위험평가를 통해 {위험요소}를 식별하고 {대응방안}을 수립해야 합니다.",
+                "{보안영역}에 대한 {통제방안}을 구현해야 합니다."
+            ],
+            "암호화": [
+                "{정보유형}은 {암호알고리즘}을 사용하여 암호화해야 합니다.",
+                "키 관리는 {생명주기}에 따라 {관리방안}을 적용해야 합니다.",
+                "{전송/저장} 시 {암호화방식}을 적용해야 합니다."
+            ],
+            "사고대응": [
+                "{사고유형} 발생 시 {대응절차}를 수행해야 합니다.",
+                "침해사고 대응은 {단계}별로 {조치사항}을 이행해야 합니다.",
+                "복구 계획은 {목표시간}을 고려하여 {복구방안}을 수립해야 합니다."
+            ]
+        }
+    
+    def _evaluate_korean_quality(self, text: str, question_type: str) -> float:
+        """한국어 품질 평가"""
+        
+        if question_type == "multiple_choice":
+            # 객관식은 숫자면 만점
+            if re.match(r'^[1-5]$', text.strip()):
+                return 1.0
+            return 0.5
+        
+        # 한자 확인
+        if re.search(r'[\u4e00-\u9fff]', text):
+            return 0.0
+        
+        # 이상한 문자 확인
+        weird_chars = re.findall(r'[^\w\s가-힣0-9.,!?()·\-]', text)
+        if len(weird_chars) > 10:
+            return 0.1
+        
+        # 한국어 비율 계산
+        korean_chars = len(re.findall(r'[가-힣]', text))
+        total_chars = len(re.sub(r'[^\w]', '', text))
+        
+        if total_chars == 0:
+            return 0.0
+        
+        korean_ratio = korean_chars / total_chars
+        
+        # 영어 비율
+        english_chars = len(re.findall(r'[A-Za-z]', text))
+        english_ratio = english_chars / total_chars
+        
+        # 전문성 평가
+        professional_terms = ['법', '규정', '조치', '관리', '보안', '체계', '정책']
+        prof_count = sum(1 for term in professional_terms if term in text)
+        prof_bonus = min(prof_count * 0.05, 0.2)
+        
+        # 품질 점수 계산
+        quality = korean_ratio * 0.7
+        quality -= english_ratio * 0.3
+        quality += prof_bonus
+        quality = max(0, min(1, quality))
+        
+        return quality
+    
     def add_training_sample(self, question: str, correct_answer: str, 
                           predicted_answer: str, confidence: float,
                           question_type: str, domain: List[str],
                           question_id: str = None) -> None:
-        """학습 샘플 추가"""
+        """학습 샘플 추가 - 한국어 품질 포함"""
         
         is_correct = (correct_answer == predicted_answer)
+        korean_quality = self._evaluate_korean_quality(predicted_answer, question_type)
         
         sample = LearningData(
             question_id=question_id or hashlib.md5(question.encode()).hexdigest()[:8],
@@ -67,7 +158,8 @@ class UnifiedLearningSystem:
             is_correct=is_correct,
             question_type=question_type,
             domain=domain,
-            timestamp=time.time()
+            timestamp=time.time(),
+            korean_quality=korean_quality
         )
         
         self.training_data.append(sample)
@@ -76,9 +168,53 @@ class UnifiedLearningSystem:
         if is_correct:
             self.learning_metrics["correct_predictions"] += 1
         
+        # 한국어 품질 통계 업데이트
+        self._update_korean_quality_stats(korean_quality)
+        
+        # 성공적인 한국어 답변 저장
+        if korean_quality > 0.8 and question_type != "multiple_choice":
+            for d in domain:
+                self.successful_answers[d].append({
+                    "answer": predicted_answer,
+                    "confidence": confidence,
+                    "structure": self._analyze_answer_structure(predicted_answer)
+                })
+                # 도메인별 최대 50개만 유지
+                if len(self.successful_answers[d]) > 50:
+                    self.successful_answers[d] = self.successful_answers[d][-50:]
+        
         # 패턴 추출 및 저장
         self._extract_patterns(sample)
+    
+    def _update_korean_quality_stats(self, quality: float) -> None:
+        """한국어 품질 통계 업데이트"""
+        self.korean_quality_stats["total_samples"] += 1
         
+        if quality > 0.8:
+            self.korean_quality_stats["high_quality"] += 1
+        elif quality > 0.5:
+            self.korean_quality_stats["medium_quality"] += 1
+        else:
+            self.korean_quality_stats["low_quality"] += 1
+        
+        # 평균 품질 계산
+        total = self.korean_quality_stats["total_samples"]
+        if total > 0:
+            prev_avg = self.korean_quality_stats["avg_quality"]
+            self.korean_quality_stats["avg_quality"] = (prev_avg * (total - 1) + quality) / total
+            self.learning_metrics["korean_quality_avg"] = self.korean_quality_stats["avg_quality"]
+    
+    def _analyze_answer_structure(self, answer: str) -> Dict:
+        """답변 구조 분석"""
+        return {
+            "has_numbering": bool(re.search(r'첫째|둘째|1\)|2\)', answer)),
+            "has_law_reference": bool(re.search(r'법|규정|조항', answer)),
+            "has_conclusion": bool(re.search(r'따라서|그러므로|결론', answer)),
+            "has_examples": bool(re.search(r'예를 들어|예시|구체적으로', answer)),
+            "sentence_count": len(re.split(r'[.!?]', answer)),
+            "length": len(answer)
+        }
+    
     def _extract_patterns(self, sample: LearningData) -> None:
         """패턴 추출"""
         
@@ -90,7 +226,8 @@ class UnifiedLearningSystem:
             self.pattern_bank[keyword].append({
                 "answer": sample.correct_answer,
                 "confidence": sample.confidence if sample.is_correct else 0.0,
-                "domain": sample.domain
+                "domain": sample.domain,
+                "korean_quality": sample.korean_quality
             })
         
         # 도메인별 답변 분포
@@ -105,9 +242,6 @@ class UnifiedLearningSystem:
     
     def _extract_keywords(self, text: str) -> List[str]:
         """키워드 추출"""
-        import re
-        
-        # 핵심 키워드 추출
         keywords = []
         
         # 법령 관련
@@ -120,10 +254,18 @@ class UnifiedLearningSystem:
         keywords.extend(articles)
         
         # 보안 용어
-        security_terms = ["개인정보", "암호화", "보안", "인증", "접근", "통제", "관리"]
+        security_terms = ["개인정보", "암호화", "보안", "인증", "접근", "통제", "관리", "전자금융", "침해", "유출"]
         for term in security_terms:
             if term in text:
                 keywords.append(term)
+        
+        # 문제 유형
+        if "정의" in text:
+            keywords.append("definition")
+        if "해당하지" in text or "적절하지" in text:
+            keywords.append("negative")
+        if "방안" in text or "대책" in text:
+            keywords.append("solution")
         
         return keywords
     
@@ -147,22 +289,39 @@ class UnifiedLearningSystem:
     def _learn_subjective_pattern(self, sample: LearningData) -> None:
         """주관식 패턴 학습"""
         
+        # 한국어 품질이 높은 경우만 학습
+        if sample.korean_quality < 0.7:
+            return
+        
         # 도메인별 템플릿 학습
         for domain in sample.domain:
             pattern_key = f"subj_{domain}"
             if pattern_key not in self.learned_rules:
                 self.learned_rules[pattern_key] = {
                     "templates": [],
-                    "keywords": []
+                    "keywords": [],
+                    "avg_quality": 0.0
                 }
             
             if sample.is_correct and len(sample.correct_answer) > 50:
                 # 성공적인 답변 템플릿 저장
-                self.learned_rules[pattern_key]["templates"].append(sample.correct_answer[:200])
+                self.learned_rules[pattern_key]["templates"].append({
+                    "text": sample.correct_answer[:300],
+                    "quality": sample.korean_quality,
+                    "structure": self._analyze_answer_structure(sample.correct_answer)
+                })
+                
+                # 최대 20개만 유지
+                if len(self.learned_rules[pattern_key]["templates"]) > 20:
+                    # 품질 기준으로 정렬하여 상위 20개만 유지
+                    self.learned_rules[pattern_key]["templates"].sort(
+                        key=lambda x: x["quality"], reverse=True
+                    )
+                    self.learned_rules[pattern_key]["templates"] = self.learned_rules[pattern_key]["templates"][:20]
     
     def predict_with_learning(self, question: str, question_type: str,
                             domain: List[str]) -> Tuple[str, float]:
-        """학습 기반 예측"""
+        """학습 기반 예측 - 한국어 품질 우선"""
         
         # 캐시 확인
         cache_key = hashlib.md5(f"{question}{question_type}".encode()).hexdigest()[:12]
@@ -172,7 +331,7 @@ class UnifiedLearningSystem:
         if question_type == "multiple_choice":
             prediction = self._predict_mc(question, domain)
         else:
-            prediction = self._predict_subjective(question, domain)
+            prediction = self._predict_subjective_korean(question, domain)
         
         # 캐시 저장
         self.prediction_cache[cache_key] = prediction
@@ -202,10 +361,24 @@ class UnifiedLearningSystem:
                     return best_answer[0], confidence * 0.7
         
         # 기본값
-        return "2", 0.3
+        return "3", 0.3
     
-    def _predict_subjective(self, question: str, domain: List[str]) -> Tuple[str, float]:
-        """주관식 예측"""
+    def _predict_subjective_korean(self, question: str, domain: List[str]) -> Tuple[str, float]:
+        """주관식 예측 - 한국어 품질 우선"""
+        
+        # 성공적인 답변에서 선택
+        for d in domain:
+            if d in self.successful_answers and self.successful_answers[d]:
+                # 가장 최근의 고품질 답변 선택
+                best_answers = sorted(
+                    self.successful_answers[d],
+                    key=lambda x: x["confidence"],
+                    reverse=True
+                )[:3]
+                
+                if best_answers:
+                    selected = best_answers[0]
+                    return selected["answer"], selected["confidence"] * 0.8
         
         # 도메인별 템플릿 활용
         for d in domain:
@@ -213,44 +386,26 @@ class UnifiedLearningSystem:
             if pattern_key in self.learned_rules:
                 templates = self.learned_rules[pattern_key].get("templates", [])
                 if templates:
-                    # 가장 최근 템플릿 활용
-                    return templates[-1], 0.5
+                    # 품질이 가장 높은 템플릿 선택
+                    best_template = max(templates, key=lambda x: x["quality"])
+                    return best_template["text"], 0.6
         
-        # 기본 응답
-        if "개인정보" in domain:
-            return "개인정보보호법에 따른 안전성 확보조치가 필요합니다.", 0.4
-        elif "전자금융" in domain:
-            return "전자금융거래법에 따른 보안 대책이 요구됩니다.", 0.4
-        else:
-            return "관련 법령에 따른 적절한 조치가 필요합니다.", 0.3
+        # 기본 한국어 응답
+        return self._generate_korean_fallback(domain), 0.4
     
-    def auto_learn_from_batch(self, questions: List[Dict], 
-                            predictions: List[Dict]) -> Dict:
-        """배치 자동 학습"""
+    def _generate_korean_fallback(self, domains: List[str]) -> str:
+        """한국어 폴백 응답 생성"""
         
-        learned_patterns = 0
-        
-        for q_data, pred in zip(questions, predictions):
-            # 예측 신뢰도가 높은 경우 학습
-            if pred.get("confidence", 0) > 0.7:
-                self.add_training_sample(
-                    question=q_data["question"],
-                    correct_answer=pred["answer"],
-                    predicted_answer=pred["answer"],
-                    confidence=pred["confidence"],
-                    question_type=q_data.get("type", "multiple_choice"),
-                    domain=q_data.get("domain", ["일반"]),
-                    question_id=q_data.get("id")
-                )
-                learned_patterns += 1
-        
-        self.learning_metrics["patterns_learned"] += learned_patterns
-        
-        return {
-            "patterns_learned": learned_patterns,
-            "total_samples": len(self.training_data),
-            "accuracy": self.get_current_accuracy()
-        }
+        if "개인정보보호" in domains:
+            return "개인정보보호법에 따라 개인정보의 수집과 이용 시 정보주체의 동의를 받아야 하며, 안전성 확보조치를 통해 개인정보를 보호해야 합니다. 개인정보 유출 시에는 지체 없이 정보주체에게 통지하고 필요한 조치를 취해야 합니다."
+        elif "전자금융" in domains:
+            return "전자금융거래법에 따라 전자적 장치를 통한 금융거래의 안전성과 신뢰성을 확보해야 합니다. 접근매체를 안전하게 관리하고, 거래내역을 통지하며, 사고 발생 시 적절한 손실 분담 원칙을 적용해야 합니다."
+        elif "정보보안" in domains:
+            return "정보보안 관리체계를 구축하여 조직의 정보자산을 체계적으로 보호해야 합니다. 위험평가를 통해 취약점을 식별하고, 관리적 기술적 물리적 보안대책을 구현하며, 지속적인 모니터링과 개선을 수행해야 합니다."
+        elif "암호화" in domains:
+            return "중요 정보는 안전한 암호 알고리즘을 사용하여 암호화해야 합니다. 대칭키와 공개키 암호화를 적절히 활용하고, 안전한 키 관리 체계를 구축하며, 전송 구간과 저장 시 모두 암호화를 적용해야 합니다."
+        else:
+            return "관련 법령과 규정에 따라 체계적인 보안 관리 방안을 수립하고 지속적인 개선을 수행해야 합니다. 정기적인 점검과 모니터링을 통해 보안 수준을 향상시키고, 사고 발생 시 신속한 대응 체계를 구축해야 합니다."
     
     def get_current_accuracy(self) -> float:
         """현재 정확도"""
@@ -281,12 +436,14 @@ class UnifiedLearningSystem:
         """학습 데이터 저장"""
         
         save_data = {
-            "training_data": [asdict(d) for d in self.training_data],
+            "training_data": [asdict(d) for d in self.training_data[-1000:]],  # 최근 1000개만
             "pattern_bank": dict(self.pattern_bank),
             "answer_statistics": dict(self.answer_statistics),
             "learned_rules": self.learned_rules,
             "rule_performance": dict(self.rule_performance),
-            "learning_metrics": self.learning_metrics
+            "learning_metrics": self.learning_metrics,
+            "korean_quality_stats": self.korean_quality_stats,
+            "successful_answers": dict(self.successful_answers)
         }
         
         with open(filepath, 'wb') as f:
@@ -299,12 +456,14 @@ class UnifiedLearningSystem:
             with open(filepath, 'rb') as f:
                 data = pickle.load(f)
             
-            self.training_data = [LearningData(**d) for d in data["training_data"]]
-            self.pattern_bank = defaultdict(list, data["pattern_bank"])
-            self.answer_statistics = defaultdict(lambda: defaultdict(int), data["answer_statistics"])
-            self.learned_rules = data["learned_rules"]
-            self.rule_performance = defaultdict(list, data["rule_performance"])
-            self.learning_metrics = data["learning_metrics"]
+            self.training_data = [LearningData(**d) for d in data.get("training_data", [])]
+            self.pattern_bank = defaultdict(list, data.get("pattern_bank", {}))
+            self.answer_statistics = defaultdict(lambda: defaultdict(int), data.get("answer_statistics", {}))
+            self.learned_rules = data.get("learned_rules", {})
+            self.rule_performance = defaultdict(list, data.get("rule_performance", {}))
+            self.learning_metrics = data.get("learning_metrics", self.learning_metrics)
+            self.korean_quality_stats = data.get("korean_quality_stats", self.korean_quality_stats)
+            self.successful_answers = defaultdict(list, data.get("successful_answers", {}))
             
             return True
         except Exception as e:
@@ -319,10 +478,16 @@ class UnifiedLearningSystem:
             "accuracy": self.get_current_accuracy(),
             "patterns_learned": self.learning_metrics["patterns_learned"],
             "rules_created": self.learning_metrics["rules_created"],
+            "korean_quality": {
+                "average": self.korean_quality_stats["avg_quality"],
+                "high_quality_rate": self.korean_quality_stats["high_quality"] / max(self.korean_quality_stats["total_samples"], 1),
+                "low_quality_rate": self.korean_quality_stats["low_quality"] / max(self.korean_quality_stats["total_samples"], 1)
+            },
             "domain_distribution": {
                 domain: len(stats) 
                 for domain, stats in self.answer_statistics.items()
             },
+            "successful_templates": sum(len(answers) for answers in self.successful_answers.values()),
             "cache_size": len(self.prediction_cache)
         }
     
@@ -330,3 +495,5 @@ class UnifiedLearningSystem:
         """리소스 정리"""
         self.prediction_cache.clear()
         print(f"학습 시스템: {self.learning_metrics['total_samples']}개 샘플 학습")
+        if self.korean_quality_stats["total_samples"] > 0:
+            print(f"한국어 품질 평균: {self.korean_quality_stats['avg_quality']:.2f}")
