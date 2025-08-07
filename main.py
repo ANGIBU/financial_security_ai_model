@@ -1,6 +1,6 @@
 # main.py
 """
-개발용 메인 파일
+개발용 메인 파일 (한국어 강화 버전)
 """
 
 import os
@@ -11,6 +11,7 @@ import torch
 import argparse
 import re
 from pathlib import Path
+from typing import Dict, List
 
 # 현재 디렉토리 추가
 current_dir = Path(__file__).parent.absolute()
