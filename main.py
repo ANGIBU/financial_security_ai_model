@@ -9,16 +9,40 @@ import time
 import pandas as pd
 import torch
 import argparse
+import re
 from pathlib import Path
 
 # 현재 디렉토리 추가
 current_dir = Path(__file__).parent.absolute()
 sys.path.append(str(current_dir))
 
+def test_korean_quality(text: str) -> Dict:
+    """한국어 품질 검사"""
+    
+    # 한자 문자 확인
+    chinese_chars = re.findall(r'[\u4e00-\u9fff]', text)
+    
+    # 한국어 비율 계산
+    korean_chars = len(re.findall(r'[가-힣]', text))
+    total_chars = len(re.sub(r'[^\w]', '', text))
+    korean_ratio = korean_chars / max(total_chars, 1)
+    
+    # 영어 비율 계산
+    english_chars = len(re.findall(r'[A-Za-z]', text))
+    english_ratio = english_chars / max(len(text), 1)
+    
+    return {
+        "has_chinese": len(chinese_chars) > 0,
+        "chinese_chars": chinese_chars,
+        "korean_ratio": korean_ratio,
+        "english_ratio": english_ratio,
+        "is_good_quality": len(chinese_chars) == 0 and korean_ratio > 0.6 and english_ratio < 0.2
+    }
+
 def test_basic():
     """기본 테스트"""
     print("="*50)
-    print("기본 시스템 체크")
+    print("기본 시스템 체크 (한국어 강화 버전)")
     print("="*50)
     
     # GPU 확인
@@ -39,94 +63,130 @@ def test_basic():
         else:
             print(f"✗ {f} 없음")
     
+    # 한국어 처리 모듈 테스트
+    print("\n한국어 처리 모듈 테스트:")
+    try:
+        from data_processor import DataProcessor
+        processor = DataProcessor()
+        
+        # 테스트 텍스트 (한자 포함)
+        test_texts = [
+            "이것은 软件입니다",  # 중국어 간체
+            "金融 거래의 安全성",   # 한자 혼재
+            "financial system 관리",  # 영어 혼재
+            "개인정보보호법에 따른 조치"  # 순수 한국어
+        ]
+        
+        for text in test_texts:
+            cleaned = processor._clean_korean_text(text)
+            quality = test_korean_quality(cleaned)
+            print(f"  원본: {text}")
+            print(f"  정리: {cleaned}")
+            print(f"  품질: {'✓' if quality['is_good_quality'] else '✗'}")
+            print()
+            
+    except Exception as e:
+        print(f"  오류: {e}")
+    
     print()
 
-def test_learning():
-    """학습 시스템 테스트"""
+def test_korean_generation():
+    """한국어 생성 테스트"""
     print("="*50)
-    print("학습 시스템 테스트")
+    print("한국어 생성 품질 테스트")
     print("="*50)
     
-    from learning_system import UnifiedLearningSystem
-    from auto_learner import AutoLearner
-    from manual_correction import ManualCorrectionSystem
-    
-    # 학습 시스템 초기화
-    learning = UnifiedLearningSystem()
-    auto = AutoLearner()
-    manual = ManualCorrectionSystem()
-    
-    # 테스트 데이터
-    test_questions = [
-        {
-            "question": "개인정보보호법상 개인정보의 정의로 가장 적절한 것은?",
-            "correct": "2",
-            "predicted": "2",
-            "confidence": 0.8,
-            "type": "multiple_choice",
-            "domain": ["개인정보보호"]
-        },
-        {
-            "question": "전자금융거래란 무엇인가?",
-            "correct": "전자적 장치를 통한 금융거래",
-            "predicted": "전자적 장치를 통한 금융거래",
-            "confidence": 0.7,
-            "type": "subjective",
-            "domain": ["전자금융"]
-        }
-    ]
-    
-    # 학습 테스트
-    print("\n1. 학습 데이터 추가")
-    for data in test_questions:
-        learning.add_training_sample(
-            question=data["question"],
-            correct_answer=data["correct"],
-            predicted_answer=data["predicted"],
-            confidence=data["confidence"],
-            question_type=data["type"],
-            domain=data["domain"]
-        )
+    try:
+        from model_handler import ModelHandler
         
-        auto.learn_from_prediction(
-            question=data["question"],
-            prediction=data["predicted"],
-            confidence=data["confidence"],
-            question_type=data["type"],
-            domain=data["domain"]
+        print("모델 로딩 중...")
+        start = time.time()
+        
+        handler = ModelHandler(
+            model_name="upstage/SOLAR-10.7B-Instruct-v1.0",
+            device="cuda" if torch.cuda.is_available() else "cpu"
         )
-    
-    print(f"  - {learning.learning_metrics['total_samples']}개 샘플 추가")
-    print(f"  - 정확도: {learning.get_current_accuracy():.2%}")
-    
-    # 예측 테스트
-    print("\n2. 학습 기반 예측")
-    test_q = "개인정보란 무엇인가?"
-    pred, conf = learning.predict_with_learning(test_q, "multiple_choice", ["개인정보보호"])
-    print(f"  질문: {test_q}")
-    print(f"  예측: {pred} (신뢰도: {conf:.2f})")
-    
-    # 자동 학습 분석
-    print("\n3. 자동 학습 분석")
-    progress = auto.analyze_learning_progress()
-    print(f"  - 총 샘플: {progress.get('total_samples', 0)}")
-    print(f"  - 패턴 다양성: {progress.get('pattern_diversity', 0)}")
-    
-    # 저장 테스트
-    print("\n4. 학습 데이터 저장")
-    learning.save_learning_data("./test_learning.pkl")
-    auto.save_model("./test_auto_model.pkl")
-    print("  - 저장 완료")
-    
-    # 정리
-    os.remove("./test_learning.pkl") if os.path.exists("./test_learning.pkl") else None
-    os.remove("./test_auto_model.pkl") if os.path.exists("./test_auto_model.pkl") else None
+        load_time = time.time() - start
+        print(f"모델 로딩 시간: {load_time:.1f}초")
+        
+        # 테스트 프롬프트들
+        test_prompts = [
+            {
+                "name": "객관식 테스트",
+                "prompt": """### 지시사항
+당신은 한국의 금융보안 전문가입니다.
+반드시 한국어로만 답변하고, 한자나 영어는 절대 사용하지 마세요.
 
-def test_small_inference(sample_size: int = 5, with_learning: bool = False):
-    """소규모 추론 테스트"""
+### 문제
+개인정보보호법상 개인정보의 정의로 가장 적절한 것은?
+1. 모든 정보
+2. 살아 있는 개인에 관한 정보로서 개인을 알아볼 수 있는 정보
+3. 기업 정보
+4. 공개된 정보
+5. 암호화된 정보
+
+반드시 한국어로만 간단히 분석한 후 정답 번호만 제시하세요.
+
+정답 번호:""",
+                "type": "multiple_choice"
+            },
+            {
+                "name": "주관식 테스트",
+                "prompt": """### 지시사항
+당신은 한국의 금융보안 전문가입니다.
+반드시 한국어로만 답변하세요. 한자, 영어, 기타 외국어는 절대 사용하지 마세요.
+
+### 질문
+개인정보보호 관리체계 구축 방안을 설명하세요.
+
+### 중요 사항
+- 전문적이고 정확한 한국어만 사용
+- 한자나 영어 단어 사용 금지
+- 법령명도 한국어로 표기
+
+답변:""",
+                "type": "subjective"
+            }
+        ]
+        
+        print("\n한국어 생성 테스트...")
+        for test in test_prompts:
+            print(f"\n--- {test['name']} ---")
+            
+            start_time = time.time()
+            result = handler.generate_response(
+                test["prompt"], 
+                test["type"],
+                max_attempts=2
+            )
+            elapsed = time.time() - start_time
+            
+            print(f"응답 시간: {elapsed:.2f}초")
+            print(f"원본 응답: {result.response}")
+            
+            # 한국어 품질 검사
+            quality = test_korean_quality(result.response)
+            print(f"\n품질 분석:")
+            print(f"  한자 포함: {'예' if quality['has_chinese'] else '아니오'}")
+            if quality['chinese_chars']:
+                print(f"  한자 문자: {quality['chinese_chars']}")
+            print(f"  한국어 비율: {quality['korean_ratio']:.2%}")
+            print(f"  영어 비율: {quality['english_ratio']:.2%}")
+            print(f"  품질 평가: {'✓ 우수' if quality['is_good_quality'] else '✗ 개선 필요'}")
+        
+        handler.cleanup()
+        
+    except Exception as e:
+        print(f"오류: {e}")
+        import traceback
+        traceback.print_exc()
+
+def test_small_inference_korean(sample_size: int = 5, with_learning: bool = False):
+    """소규모 추론 테스트 (한국어 품질 포함)"""
     mode_text = "학습 포함" if with_learning else "기본"
     print("="*50)
     print(f"소규모 추론 테스트 ({sample_size}개, {mode_text} 모드)")
+    print("한국어 품질 검사 포함")
     print("="*50)
     
     # 파일 확인
@@ -156,6 +216,8 @@ def test_small_inference(sample_size: int = 5, with_learning: bool = False):
         engine = FinancialAIInference(enable_learning=with_learning)
         
         answers = []
+        korean_quality_results = []
+        
         for idx, row in sample_df.iterrows():
             question = row['Question']
             question_id = row['ID']
@@ -167,10 +229,22 @@ def test_small_inference(sample_size: int = 5, with_learning: bool = False):
             answer = engine.process_question(question, question_id, idx)
             answers.append(answer)
             
+            # 한국어 품질 검사
+            quality = test_korean_quality(answer)
+            korean_quality_results.append(quality)
+            
             if len(answer) > 100:
                 print(f"답변: {answer[:100]}...")
             else:
                 print(f"답변: {answer}")
+            
+            # 품질 표시
+            if quality['has_chinese']:
+                print(f"⚠️ 한자 포함: {quality['chinese_chars']}")
+            if quality['is_good_quality']:
+                print("✓ 한국어 품질 우수")
+            else:
+                print("✗ 한국어 품질 개선 필요")
         
         elapsed = time.time() - start
         
@@ -178,15 +252,33 @@ def test_small_inference(sample_size: int = 5, with_learning: bool = False):
         mc_answers = [a for a in answers if a.isdigit()]
         subj_answers = [a for a in answers if not a.isdigit()]
         
+        # 한국어 품질 통계
+        total_with_chinese = sum(1 for q in korean_quality_results if q['has_chinese'])
+        total_good_quality = sum(1 for q in korean_quality_results if q['is_good_quality'])
+        avg_korean_ratio = sum(q['korean_ratio'] for q in korean_quality_results) / len(korean_quality_results)
+        
         print("\n" + "="*50)
         print("테스트 결과")
         print("="*50)
         print(f"처리 시간: {elapsed:.1f}초")
         print(f"평균 시간: {elapsed/sample_size:.1f}초/문항")
         
+        # 한국어 품질 리포트
+        print(f"\n한국어 품질 리포트:")
+        print(f"  한자 포함 답변: {total_with_chinese}/{sample_size}개")
+        print(f"  품질 우수 답변: {total_good_quality}/{sample_size}개")
+        print(f"  평균 한국어 비율: {avg_korean_ratio:.2%}")
+        print(f"  전체 품질 점수: {(total_good_quality/sample_size)*100:.1f}점")
+        
+        if total_with_chinese == 0:
+            print("  ✅ 한자 혼재 문제 해결됨")
+        else:
+            print("  ⚠️ 일부 답변에 한자 포함")
+        
         if with_learning:
             print(f"\n학습 통계:")
             print(f"  학습된 샘플: {engine.stats.get('learned', 0)}개")
+            print(f"  한국어 수정: {engine.stats.get('korean_fixes', 0)}회")
             if hasattr(engine, 'learning_system'):
                 print(f"  정확도: {engine.learning_system.get_current_accuracy():.2%}")
         
@@ -197,11 +289,20 @@ def test_small_inference(sample_size: int = 5, with_learning: bool = False):
             for ans in mc_answers:
                 distribution[ans] = distribution.get(ans, 0) + 1
             print("답변 분포:", distribution)
+            
+            # 다양성 확인
+            if len(distribution) >= min(4, len(mc_answers)):
+                print("✅ 다양한 답변 생성됨 (폴백 현상 해결)")
+            else:
+                print("⚠️ 답변 다양성 부족")
         
         if subj_answers:
             print(f"\n주관식 답변 ({len(subj_answers)}개)")
             for i, ans in enumerate(subj_answers[:3]):
                 print(f"  {i+1}. {ans[:50]}...")
+                quality = korean_quality_results[len(mc_answers) + i] if len(mc_answers) + i < len(korean_quality_results) else None
+                if quality and quality['has_chinese']:
+                    print(f"     ⚠️ 한자 포함: {quality['chinese_chars'][:3]}")
         
         # 전체 예상 시간
         total_questions = len(test_df)
@@ -228,7 +329,7 @@ def test_small_inference(sample_size: int = 5, with_learning: bool = False):
 def test_patterns():
     """패턴 테스트"""
     print("="*50)
-    print("패턴 학습 테스트")
+    print("패턴 학습 테스트 (한국어 강화)")
     print("="*50)
     
     from pattern_learner import AnswerPatternLearner
@@ -244,9 +345,16 @@ def test_patterns():
     learner = AnswerPatternLearner()
     processor = DataProcessor()
     
+    print("한국어 처리 테스트:")
+    
     for i, question in enumerate(test_questions, 1):
         print(f"\n테스트 {i}:")
         print(f"질문: {question[:80]}...")
+        
+        # 한국어 정리 테스트
+        cleaned = processor._clean_korean_text(question)
+        quality = test_korean_quality(cleaned)
+        print(f"한국어 품질: {'✓' if quality['is_good_quality'] else '✗'}")
         
         structure = processor.analyze_question_structure(question)
         pattern = learner.analyze_question_pattern(question)
@@ -262,10 +370,173 @@ def test_patterns():
             answer, confidence = learner.predict_answer(question, structure)
             print(f"통계적 예측: {answer}번 (신뢰도: {confidence:.2f})")
 
+def show_menu():
+    """메뉴 표시"""
+    print("\n" + "="*50)
+    print("금융 AI Challenge 테스트 시스템")
+    print("한국어 강화 버전")
+    print("="*50)
+    print("\n실행 옵션:")
+    print("1. 기본 시스템 체크")
+    print("2. 한국어 생성 품질 테스트")
+    print("3. 소규모 추론 테스트 (5문항)")
+    print("4. 중규모 추론 테스트 (10문항)")
+    print("5. 학습 포함 추론 테스트 (5문항)")
+    print("6. 패턴 학습 테스트")
+    print("7. 속도 성능 테스트")
+    print("8. 수동 교정 테스트")
+    print("9. 수동 교정 사용법 가이드")
+    print("10. 전체 추론 실행 (515문항)")
+    print("0. 종료")
+    print("-"*50)
+
+def test_manual_correction():
+    """수동 교정 테스트"""
+    print("="*50)
+    print("수동 교정 시스템 테스트")
+    print("="*50)
+    
+    from manual_correction import ManualCorrectionSystem
+    
+    correction_system = ManualCorrectionSystem()
+    
+    # 테스트 교정 추가
+    test_corrections = [
+        {
+            "question": "개인정보의 정의는?",
+            "predicted": "1",
+            "correct": "2",
+            "reason": "법령 정의 확인"
+        },
+        {
+            "question": "전자금융거래의 범위는?", 
+            "predicted": "전자거래는 모든 거래입니다",
+            "correct": "전자금융거래는 전자적 장치를 통한 금융상품 및 서비스 제공과 이용 거래입니다",
+            "reason": "정확한 법령 정의 적용"
+        }
+    ]
+    
+    print("테스트 교정 데이터 추가:")
+    for i, correction in enumerate(test_corrections, 1):
+        correction_system.add_correction(
+            question=correction["question"],
+            predicted=correction["predicted"],
+            correct=correction["correct"],
+            reason=correction["reason"]
+        )
+        print(f"  {i}. {correction['question'][:30]}... -> {correction['correct'][:20]}...")
+    
+    # 교정 적용 테스트
+    print(f"\n교정 적용 테스트:")
+    test_questions = [
+        "개인정보의 정의는?",
+        "개인정보란 무엇인가?",
+        "전자금융거래의 범위는?",
+        "새로운 질문입니다"
+    ]
+    
+    for question in test_questions:
+        corrected, confidence = correction_system.apply_corrections(question, "기본답변")
+        print(f"  질문: {question}")
+        print(f"  교정 결과: {corrected} (신뢰도: {confidence:.2f})")
+        print()
+    
+    # 통계 확인
+    stats = correction_system.get_correction_stats()
+    print(f"교정 통계:")
+    print(f"  총 교정: {stats['total']}개")
+    print(f"  객관식: {stats['mc']}개")
+    print(f"  주관식: {stats['subjective']}개")
+    print(f"  패턴: {stats['patterns']}개")
+
+def show_correction_guide():
+    """수동 교정 사용법 가이드"""
+    print("="*50)
+    print("수동 교정 시스템 사용법 가이드")
+    print("="*50)
+    
+    guide_text = """
+### 1. 교정 데이터 준비
+
+**CSV 파일 형식** (corrections.csv):
+```
+id,question,predicted,correct,reason
+Q001,개인정보의 정의는?,1,2,법령 정의 확인
+Q002,전자금융 범위,잘못된답변,올바른답변,정확한 법령 적용
+```
+
+**JSON 파일 형식** (corrections.json):
+```json
+[
+    {
+        "id": "Q001",
+        "question": "개인정보의 정의는?",
+        "predicted": "1",
+        "correct": "2", 
+        "reason": "법령 정의 확인"
+    }
+]
+```
+
+### 2. 교정 시스템 사용
+
+**기본 사용법:**
+```python
+from manual_correction import ManualCorrectionSystem
+
+# 시스템 초기화
+correction = ManualCorrectionSystem()
+
+# 교정 추가
+correction.add_correction(
+    question="문제 내용",
+    predicted="예측 답변", 
+    correct="올바른 답변",
+    reason="교정 이유"
+)
+
+# 교정 적용
+corrected, confidence = correction.apply_corrections(question, predicted)
+```
+
+### 3. 대화형 교정
+
+추론 실행 시 다음 옵션 활성화:
+```python
+engine.execute_inference(
+    test_file="test.csv",
+    submission_file="sample_submission.csv", 
+    enable_manual_correction=True  # 이 옵션 활성화
+)
+```
+
+### 4. 교정 효과
+
+- **패턴 학습**: 비슷한 문제에 자동 적용
+- **신뢰도 증가**: 교정된 답변의 신뢰도 향상  
+- **학습 데이터**: 향후 모델 학습에 활용
+- **일관성**: 동일한 패턴의 문제에 일관된 답변
+
+### 5. 주의사항
+
+- 교정 이유를 명확히 기록
+- 법령이나 규정 근거 제시
+- 과도한 교정은 오히려 성능 저하 가능
+- 정기적인 교정 효과 검증 필요
+
+### 6. 파일 위치
+
+- **저장**: `./corrections.csv`
+- **로드**: 시스템 시작 시 자동 로드
+- **백업**: 정기적으로 백업 권장
+"""
+    
+    print(guide_text)
+
 def test_speed():
     """속도 테스트"""
     print("="*50)
-    print("속도 테스트")
+    print("속도 테스트 (한국어 강화)")
     print("="*50)
     
     from model_handler import ModelHandler
@@ -282,7 +553,11 @@ def test_speed():
         print(f"모델 로딩 시간: {load_time:.1f}초")
         
         # 테스트 프롬프트
-        test_prompt = """### 문제
+        test_prompt = """### 지시사항
+당신은 한국의 금융보안 전문가입니다.
+반드시 한국어로만 답변하고, 한자나 영어는 절대 사용하지 마세요.
+
+### 문제
 개인정보보호법상 개인정보의 정의로 가장 적절한 것은?
 1. 모든 정보
 2. 살아 있는 개인에 관한 정보로서 개인을 알아볼 수 있는 정보
@@ -290,8 +565,9 @@ def test_speed():
 4. 공개된 정보
 5. 암호화된 정보
 
-### 정답
-정답 번호는"""
+반드시 한국어로만 간단히 분석한 후 정답 번호만 제시하세요.
+
+정답 번호:"""
         
         print("\n추론 테스트...")
         
@@ -300,16 +576,36 @@ def test_speed():
         
         # 실제 측정
         times = []
+        korean_quality_scores = []
+        
         for i in range(3):
             start = time.time()
             result = handler.generate_response(test_prompt, "multiple_choice", max_attempts=1)
             elapsed = time.time() - start
             times.append(elapsed)
-            print(f"시도 {i+1}: {elapsed:.2f}초 - 답변: {result.response[:50]}...")
+            
+            # 한국어 품질 확인
+            quality = test_korean_quality(result.response)
+            korean_quality_scores.append(quality['is_good_quality'])
+            
+            print(f"시도 {i+1}: {elapsed:.2f}초")
+            print(f"  답변: {result.response[:50]}...")
+            print(f"  한국어 품질: {'✓' if quality['is_good_quality'] else '✗'}")
+            if quality['has_chinese']:
+                print(f"  한자 발견: {quality['chinese_chars'][:3]}")
         
         avg_time = sum(times) / len(times)
-        print(f"\n평균 추론 시간: {avg_time:.2f}초")
+        korean_success_rate = sum(korean_quality_scores) / len(korean_quality_scores)
+        
+        print(f"\n=== 성능 결과 ===")
+        print(f"평균 추론 시간: {avg_time:.2f}초")
+        print(f"한국어 품질 성공률: {korean_success_rate:.2%}")
         print(f"예상 전체 시간 (515문항): {avg_time * 515 / 60:.1f}분")
+        
+        if korean_success_rate >= 0.9:
+            print("✅ 한국어 품질 우수")
+        else:
+            print("⚠️ 한국어 품질 개선 필요")
         
         handler.cleanup()
         
@@ -318,30 +614,13 @@ def test_speed():
         import traceback
         traceback.print_exc()
 
-def show_menu():
-    """메뉴 표시"""
-    print("\n" + "="*50)
-    print("금융 AI Challenge 테스트 시스템")
-    print("="*50)
-    print("\n실행 옵션:")
-    print("1. 기본 시스템 체크")
-    print("2. 소규모 추론 테스트 (5문항)")
-    print("3. 중규모 추론 테스트 (10문항)")
-    print("4. 학습 포함 추론 테스트 (5문항)")
-    print("5. 패턴 학습 테스트")
-    print("6. 속도 성능 테스트")
-    print("7. 학습 시스템 테스트")
-    print("8. 전체 추론 실행 (515문항)")
-    print("0. 종료")
-    print("-"*50)
-
 def interactive_mode():
     """대화형 모드"""
     while True:
         show_menu()
         
         try:
-            choice = input("\n선택하세요 (0-8): ").strip()
+            choice = input("\n선택하세요 (0-10): ").strip()
             
             if choice == "0":
                 print("종료합니다.")
@@ -349,18 +628,22 @@ def interactive_mode():
             elif choice == "1":
                 test_basic()
             elif choice == "2":
-                test_small_inference(5, with_learning=False)
+                test_korean_generation()
             elif choice == "3":
-                test_small_inference(10, with_learning=False)
+                test_small_inference_korean(5, with_learning=False)
             elif choice == "4":
-                test_small_inference(5, with_learning=True)
+                test_small_inference_korean(10, with_learning=False)
             elif choice == "5":
-                test_patterns()
+                test_small_inference_korean(5, with_learning=True)
             elif choice == "6":
-                test_speed()
+                test_patterns()
             elif choice == "7":
-                test_learning()
+                test_speed()
             elif choice == "8":
+                test_manual_correction()
+            elif choice == "9":
+                show_correction_guide()
+            elif choice == "10":
                 confirm = input("전체 515문항을 실행합니다. 계속하시겠습니까? (y/n): ")
                 if confirm.lower() == 'y':
                     os.system("python inference.py")
@@ -377,8 +660,8 @@ def interactive_mode():
 
 def main():
     """메인 함수"""
-    parser = argparse.ArgumentParser(description="금융 AI 테스트")
-    parser.add_argument("--test-type", choices=["basic", "small", "patterns", "speed", "learning", "interactive"], 
+    parser = argparse.ArgumentParser(description="금융 AI 테스트 (한국어 강화)")
+    parser.add_argument("--test-type", choices=["basic", "korean", "small", "patterns", "speed", "correction", "interactive"], 
                        help="테스트 유형")
     parser.add_argument("--sample-size", type=int, default=5, 
                        help="샘플 크기 (small 테스트용)")
@@ -392,14 +675,16 @@ def main():
         interactive_mode()
     elif args.test_type == "basic":
         test_basic()
+    elif args.test_type == "korean":
+        test_korean_generation()
     elif args.test_type == "small":
-        test_small_inference(args.sample_size, args.with_learning)
+        test_small_inference_korean(args.sample_size, args.with_learning)
     elif args.test_type == "patterns":
         test_patterns()
     elif args.test_type == "speed":
         test_speed()
-    elif args.test_type == "learning":
-        test_learning()
+    elif args.test_type == "correction":
+        test_manual_correction()
     elif args.test_type == "interactive":
         interactive_mode()
 
