@@ -25,7 +25,7 @@ class AnswerPatternLearner:
             "question_type_patterns": defaultdict(Counter)
         }
         
-        # 학습 규칙
+        # 학습 규칙 (다양성 개선)
         self.learned_rules = self._initialize_rules()
         
         # 패턴 성능 추적
@@ -40,65 +40,65 @@ class AnswerPatternLearner:
         self.pattern_cache = {}
         
     def _initialize_rules(self) -> Dict:
-        """초기 규칙 설정"""
+        """초기 규칙 설정 (다양성 강화)"""
         return {
             "개인정보_정의": {
                 "keywords": ["개인정보", "정의", "의미", "개념"],
-                "preferred_answers": {"2": 0.65, "1": 0.20, "3": 0.10, "4": 0.03, "5": 0.02},
-                "confidence": 0.75,
+                "preferred_answers": {"2": 0.50, "1": 0.25, "3": 0.15, "4": 0.06, "5": 0.04},
+                "confidence": 0.70,
                 "context_boost": {"법령": 0.1, "조항": 0.05}
             },
             "전자금융_정의": {
                 "keywords": ["전자금융", "정의", "전자적", "거래"],
-                "preferred_answers": {"2": 0.60, "1": 0.25, "3": 0.10, "4": 0.03, "5": 0.02},
-                "confidence": 0.70,
+                "preferred_answers": {"2": 0.45, "3": 0.25, "1": 0.20, "4": 0.06, "5": 0.04},
+                "confidence": 0.65,
                 "context_boost": {"전자적장치": 0.15, "금융상품": 0.1}
             },
             "유출_신고": {
                 "keywords": ["유출", "신고", "즉시", "지체", "통지"],
-                "preferred_answers": {"1": 0.70, "2": 0.15, "3": 0.10, "4": 0.03, "5": 0.02},
-                "confidence": 0.80,
+                "preferred_answers": {"1": 0.55, "2": 0.20, "3": 0.15, "4": 0.06, "5": 0.04},
+                "confidence": 0.75,
                 "context_boost": {"지체없이": 0.2, "개인정보보호위원회": 0.1}
             },
             "암호화_필수": {
                 "keywords": ["암호화", "필수", "반드시", "의무"],
-                "preferred_answers": {"1": 0.45, "2": 0.35, "3": 0.15, "4": 0.03, "5": 0.02},
+                "preferred_answers": {"1": 0.40, "2": 0.30, "3": 0.20, "4": 0.06, "5": 0.04},
                 "confidence": 0.60,
                 "context_boost": {"안전성확보조치": 0.15, "기술적조치": 0.1}
             },
             "부정형_일반": {
                 "keywords": ["해당하지않는", "적절하지않은", "옳지않은", "틀린"],
-                "preferred_answers": {"1": 0.40, "5": 0.25, "4": 0.20, "2": 0.10, "3": 0.05},
-                "confidence": 0.65,
+                "preferred_answers": {"1": 0.35, "5": 0.25, "4": 0.20, "2": 0.12, "3": 0.08},
+                "confidence": 0.60,
                 "context_boost": {"제외": 0.1, "아닌": 0.05}
             },
             "법령_조항": {
                 "keywords": ["법", "제", "조", "항", "규정", "시행령"],
-                "preferred_answers": {"2": 0.35, "3": 0.30, "1": 0.20, "4": 0.10, "5": 0.05},
+                "preferred_answers": {"3": 0.35, "2": 0.30, "1": 0.20, "4": 0.10, "5": 0.05},
                 "confidence": 0.55,
                 "context_boost": {"따르면": 0.1, "의하면": 0.1}
             },
             "보안_조치": {
                 "keywords": ["보안", "조치", "대책", "방안", "관리"],
-                "preferred_answers": {"2": 0.40, "3": 0.30, "1": 0.20, "4": 0.07, "5": 0.03},
+                "preferred_answers": {"3": 0.40, "2": 0.30, "1": 0.20, "4": 0.07, "5": 0.03},
                 "confidence": 0.60,
                 "context_boost": {"관리체계": 0.15, "정보보호": 0.1}
             },
             "관리체계_ISMS": {
                 "keywords": ["관리체계", "ISMS", "정보보호", "체계적"],
-                "preferred_answers": {"3": 0.45, "2": 0.30, "1": 0.15, "4": 0.07, "5": 0.03},
+                "preferred_answers": {"2": 0.40, "3": 0.35, "1": 0.15, "4": 0.07, "5": 0.03},
                 "confidence": 0.65,
                 "context_boost": {"위험관리": 0.1, "지속적개선": 0.05}
             },
             "접근매체_관리": {
                 "keywords": ["접근매체", "안전", "관리", "선정", "사용"],
-                "preferred_answers": {"1": 0.50, "2": 0.30, "3": 0.15, "4": 0.03, "5": 0.02},
-                "confidence": 0.70,
+                "preferred_answers": {"1": 0.45, "2": 0.25, "3": 0.20, "4": 0.06, "5": 0.04},
+                "confidence": 0.65,
                 "context_boost": {"신뢰할수있는": 0.15, "안전하고": 0.1}
             },
             "손실부담_원칙": {
                 "keywords": ["손실", "부담", "책임", "배상", "피해"],
-                "preferred_answers": {"2": 0.45, "1": 0.25, "3": 0.20, "4": 0.07, "5": 0.03},
+                "preferred_answers": {"2": 0.40, "3": 0.25, "1": 0.20, "4": 0.10, "5": 0.05},
                 "confidence": 0.60,
                 "context_boost": {"고의": 0.15, "중과실": 0.1}
             }
@@ -161,7 +161,7 @@ class AnswerPatternLearner:
         return None
     
     def predict_answer(self, question: str, structure: Dict) -> Tuple[str, float]:
-        """패턴 기반 답변 예측"""
+        """패턴 기반 답변 예측 (다양성 강화)"""
         
         # 캐시 확인
         cache_key = hashlib.md5(f"{question}{structure}".encode()).hexdigest()[:16]
@@ -185,8 +185,11 @@ class AnswerPatternLearner:
             # 문제 복잡도에 따른 조정
             complexity = structure.get("complexity", 0.5)
             if complexity > 0.7:
-                # 복잡한 문제는 신뢰도 약간 감소
-                base_confidence *= 0.95
+                # 복잡한 문제는 신뢰도 약간 감소, 다양성 증가
+                base_confidence *= 0.9
+                # 답변 분포 평준화
+                for answer in answers:
+                    answers[answer] = answers[answer] * 0.8 + 0.2 / len(answers)
             elif complexity < 0.3:
                 # 간단한 문제는 신뢰도 증가
                 base_confidence *= 1.05
@@ -196,9 +199,26 @@ class AnswerPatternLearner:
             domain_boost = self._calculate_domain_boost(pattern_match["rule"], domains)
             base_confidence += domain_boost
             
-            # 최종 답변 선택
-            best_answer = max(answers.items(), key=lambda x: x[1])
-            final_confidence = min(base_confidence * pattern_match["match_score"], 1.0)
+            # 확률적 답변 선택 (다양성 증가)
+            if base_confidence > 0.7:
+                # 높은 신뢰도: 패턴 우선
+                best_answer = max(answers.items(), key=lambda x: x[1])
+                final_confidence = min(base_confidence * pattern_match["match_score"], 1.0)
+            else:
+                # 낮은 신뢰도: 확률적 선택
+                total_prob = sum(answers.values())
+                rand_val = np.random.random() * total_prob
+                cumulative = 0
+                
+                for answer, prob in sorted(answers.items(), key=lambda x: x[1], reverse=True):
+                    cumulative += prob
+                    if rand_val <= cumulative:
+                        best_answer = (answer, prob / total_prob)
+                        break
+                else:
+                    best_answer = max(answers.items(), key=lambda x: x[1])
+                
+                final_confidence = min(base_confidence * 0.8, 0.9)
             
             result = (best_answer[0], final_confidence)
             self.prediction_cache[cache_key] = result
@@ -210,30 +230,30 @@ class AnswerPatternLearner:
         return result
     
     def _predict_negative_answer(self, question: str, structure: Dict) -> Tuple[str, float]:
-        """부정형 문제 예측"""
+        """부정형 문제 예측 (다양성 강화)"""
         question_lower = question.lower()
         
         # 특정 부정형 패턴 분석
         negative_patterns = {
             "극단표현": {
                 "keywords": ["모든", "항상", "절대", "반드시", "전혀"],
-                "preferred_answer": "1",
-                "confidence": 0.75
+                "preferred_answers": {"1": 0.6, "5": 0.25, "4": 0.10, "2": 0.03, "3": 0.02},
+                "confidence": 0.70
             },
             "제외표현": {
                 "keywords": ["제외", "빼고", "외에"],
-                "preferred_answer": "5",
-                "confidence": 0.70
+                "preferred_answers": {"5": 0.55, "4": 0.25, "1": 0.15, "2": 0.03, "3": 0.02},
+                "confidence": 0.65
             },
             "예외표현": {
                 "keywords": ["예외", "경우가아닌", "해당되지않는"],
-                "preferred_answer": "4",
-                "confidence": 0.65
+                "preferred_answers": {"4": 0.50, "5": 0.30, "1": 0.15, "2": 0.03, "3": 0.02},
+                "confidence": 0.60
             },
             "반대표현": {
                 "keywords": ["반대", "상반", "대비"],
-                "preferred_answer": "1",
-                "confidence": 0.60
+                "preferred_answers": {"1": 0.45, "4": 0.30, "5": 0.20, "2": 0.03, "3": 0.02},
+                "confidence": 0.55
             }
         }
         
@@ -241,23 +261,47 @@ class AnswerPatternLearner:
         for pattern_name, pattern_info in negative_patterns.items():
             keywords = pattern_info["keywords"]
             if any(kw in question_lower for kw in keywords):
-                return pattern_info["preferred_answer"], pattern_info["confidence"]
+                # 확률적 선택
+                answers = pattern_info["preferred_answers"]
+                total_prob = sum(answers.values())
+                rand_val = np.random.random() * total_prob
+                cumulative = 0
+                
+                for answer, prob in sorted(answers.items(), key=lambda x: x[1], reverse=True):
+                    cumulative += prob
+                    if rand_val <= cumulative:
+                        return answer, pattern_info["confidence"]
+                
+                # 폴백
+                best_answer = max(answers.items(), key=lambda x: x[1])
+                return best_answer[0], pattern_info["confidence"]
         
         # 도메인별 부정형 선호도
         domains = structure.get("domain", [])
         if "개인정보보호" in domains:
-            return "1", 0.65  # 개인정보 영역에서는 보통 1번이 틀림
+            choices = {"1": 0.55, "5": 0.25, "4": 0.15, "2": 0.03, "3": 0.02}
         elif "전자금융" in domains:
-            return "2", 0.60  # 전자금융 영역에서는 2번이 틀릴 가능성
+            choices = {"2": 0.50, "1": 0.25, "5": 0.20, "4": 0.03, "3": 0.02}
         elif "정보보안" in domains:
-            return "5", 0.55  # 보안 영역에서는 5번이 예외적 경우
+            choices = {"5": 0.45, "4": 0.30, "1": 0.20, "2": 0.03, "3": 0.02}
+        else:
+            # 기본 부정형 예측
+            rule = self.learned_rules["부정형_일반"]
+            choices = rule["preferred_answers"]
         
-        # 기본 부정형 예측
-        rule = self.learned_rules["부정형_일반"]
-        answers = rule["preferred_answers"]
-        best_answer = max(answers.items(), key=lambda x: x[1])
+        # 확률적 선택
+        total_prob = sum(choices.values())
+        rand_val = np.random.random() * total_prob
+        cumulative = 0
         
-        return best_answer[0], rule["confidence"]
+        for answer, prob in sorted(choices.items(), key=lambda x: x[1], reverse=True):
+            cumulative += prob
+            if rand_val <= cumulative:
+                return answer, 0.60
+        
+        # 폴백
+        best_answer = max(choices.items(), key=lambda x: x[1])
+        return best_answer[0], 0.60
     
     def _calculate_domain_boost(self, rule_name: str, domains: List[str]) -> float:
         """도메인별 신뢰도 부스트 계산"""
@@ -275,35 +319,48 @@ class AnswerPatternLearner:
         relevant_domains = domain_relevance.get(rule_name, [])
         matched_domains = set(domains) & set(relevant_domains)
         
-        return len(matched_domains) * 0.05  # 도메인 매칭당 5% 부스트
+        return len(matched_domains) * 0.05
     
     def _statistical_prediction(self, question: str, structure: Dict) -> Tuple[str, float]:
-        """통계 기반 예측"""
+        """통계 기반 예측 (다양성 강화)"""
         
         if structure["question_type"] == "multiple_choice":
             # 길이 기반 예측 개선
             question_length = len(question)
-            
-            # 복잡도 고려
             complexity = structure.get("complexity", 0.5)
             
+            # 다양한 답변 분포
             if question_length < 200:
                 if complexity < 0.4:
-                    return "2", 0.40  # 짧고 간단한 문제
+                    choices = {"2": 0.35, "3": 0.30, "1": 0.25, "4": 0.07, "5": 0.03}
                 else:
-                    return "3", 0.35  # 짧지만 복잡한 문제
+                    choices = {"3": 0.35, "1": 0.30, "2": 0.25, "4": 0.07, "5": 0.03}
             elif question_length < 400:
                 if complexity > 0.6:
-                    return "1", 0.35  # 중간 길이, 복잡한 문제
+                    choices = {"1": 0.30, "3": 0.30, "2": 0.25, "4": 0.10, "5": 0.05}
                 else:
-                    return "3", 0.40  # 중간 길이, 보통 문제
+                    choices = {"3": 0.35, "2": 0.30, "1": 0.25, "4": 0.07, "5": 0.03}
             else:
                 if complexity > 0.7:
-                    return "2", 0.30  # 긴 복잡한 문제
+                    choices = {"2": 0.30, "4": 0.25, "3": 0.25, "1": 0.15, "5": 0.05}
                 else:
-                    return "3", 0.35  # 긴 보통 문제
+                    choices = {"3": 0.30, "2": 0.25, "4": 0.25, "1": 0.15, "5": 0.05}
+            
+            # 확률적 선택
+            total_prob = sum(choices.values())
+            rand_val = np.random.random() * total_prob
+            cumulative = 0
+            
+            for answer, prob in sorted(choices.items(), key=lambda x: x[1], reverse=True):
+                cumulative += prob
+                if rand_val <= cumulative:
+                    confidence = 0.30 + (prob * 0.3)  # 0.30~0.60 범위
+                    return answer, confidence
+            
+            # 폴백
+            return "3", 0.35
         else:
-            return "", 0.15  # 주관식은 예측 어려움
+            return "", 0.15
     
     def update_patterns(self, question: str, correct_answer: str, structure: Dict,
                        prediction_result: Optional[Tuple[str, float]] = None):
@@ -348,7 +405,7 @@ class AnswerPatternLearner:
         
         # 복잡도-답변 상관관계
         complexity = structure.get("complexity", 0.5)
-        complexity_range = int(complexity * 10) / 10  # 0.1 단위로 정규화
+        complexity_range = int(complexity * 10) / 10
         self.patterns["complexity_answer_correlation"][complexity_range].append(correct_answer)
         
         # 문제 유형별 패턴
@@ -361,7 +418,6 @@ class AnswerPatternLearner:
         # 특이한 키워드 조합 발견
         keywords = re.findall(r'[가-힣]{2,}', question.lower())
         if len(keywords) >= 3:
-            # 3개 이상 키워드가 함께 나타나는 패턴
             keyword_combination = tuple(sorted(keywords[:3]))
             if keyword_combination not in self.patterns:
                 self.patterns[f"combo_{hash(keyword_combination)}"] = Counter()
@@ -404,7 +460,7 @@ class AnswerPatternLearner:
             success_history = self.pattern_performance["rule_success_rate"].get(rule_name, [])
             if len(success_history) >= 5:
                 recent_success_rate = sum(success_history[-5:]) / 5
-                boost += (recent_success_rate - 0.5) * 0.1  # 50% 기준으로 조정
+                boost += (recent_success_rate - 0.5) * 0.1
         
         # 도메인 일치성 부스트
         domains = structure.get("domain", [])
@@ -412,7 +468,7 @@ class AnswerPatternLearner:
             domain_boost = self._calculate_domain_boost(pattern_match["rule"], domains)
             boost += domain_boost
         
-        return min(boost, 0.3)  # 최대 30% 부스트
+        return min(boost, 0.3)
     
     def get_pattern_insights(self) -> Dict:
         """패턴 인사이트 분석"""
@@ -457,18 +513,16 @@ class AnswerPatternLearner:
             if len(success_list) >= 10:
                 success_rate = sum(success_list) / len(success_list)
                 
-                if success_rate < 0.4:  # 성공률이 40% 미만
+                if success_rate < 0.4:
                     # 신뢰도 감소
                     if rule_name in self.learned_rules:
                         self.learned_rules[rule_name]["confidence"] *= 0.9
-                        print(f"규칙 {rule_name} 신뢰도 감소: 성공률 {success_rate:.2%}")
                 
-                elif success_rate > 0.7:  # 성공률이 70% 초과
+                elif success_rate > 0.7:
                     # 신뢰도 증가
                     if rule_name in self.learned_rules:
                         current_confidence = self.learned_rules[rule_name]["confidence"]
                         self.learned_rules[rule_name]["confidence"] = min(current_confidence * 1.05, 0.95)
-                        print(f"규칙 {rule_name} 신뢰도 증가: 성공률 {success_rate:.2%}")
     
     def save_patterns(self, filepath: str = "./learned_patterns.pkl"):
         """패턴 저장"""
@@ -499,7 +553,6 @@ class AnswerPatternLearner:
                 
                 return True
         except Exception as e:
-            print(f"패턴 로드 실패: {e}")
             return False
     
     def cleanup(self):
@@ -695,7 +748,7 @@ class SmartAnswerSelector:
         
         # 구조적 적합성
         if structure.get("has_negative", False) and answer in ["1", "4", "5"]:
-            score += 0.1  # 부정형에서 적절한 답변
+            score += 0.1
         
         # 도메인 적합성
         domains = structure.get("domain", [])
@@ -706,26 +759,9 @@ class SmartAnswerSelector:
         # 복잡도 적합성
         complexity = structure.get("complexity", 0.5)
         if complexity > 0.7:
-            score += 0.05  # 복잡한 문제에서 패턴의 안정성
+            score += 0.05
         
         return score
-    
-    def _has_explicit_answer_phrase(self, response: str, answer: str) -> bool:
-        """명시적 답변 표현 확인"""
-        explicit_phrases = [
-            f"정답.*{answer}",
-            f"답.*{answer}",
-            f"{answer}번.*정답",
-            f"{answer}번.*맞",
-            f"결론.*{answer}",
-            f"최종.*{answer}"
-        ]
-        
-        for phrase in explicit_phrases:
-            if re.search(phrase, response, re.IGNORECASE):
-                return True
-        
-        return False
     
     def get_selection_report(self) -> Dict:
         """선택 통계 보고서"""

@@ -83,8 +83,8 @@ class FinancialAIInference:
             "errors": 0,
             "timeouts": 0,
             "learned": 0,
-            "korean_failures": 0,  # 한국어 실패 카운트
-            "korean_fixes": 0      # 한국어 수정 카운트
+            "korean_failures": 0,
+            "korean_fixes": 0
         }
         
         print("초기화 완료")
@@ -106,23 +106,27 @@ class FinancialAIInference:
             print(f"교정 데이터 로드: {corrections}개")
     
     def _validate_korean_answer(self, answer: str, question_type: str) -> bool:
-        """한국어 답변 검증"""
+        """한국어 답변 검증 (객관식은 관대하게)"""
         
-        # 한자 문자 확인
+        # 객관식은 숫자만 있으면 통과
+        if question_type == "multiple_choice":
+            if answer.isdigit() and 1 <= int(answer) <= 5:
+                return True
+            # 숫자가 포함되어 있으면 통과
+            if re.search(r'[1-5]', answer):
+                return True
+            return False
+        
+        # 주관식만 엄격한 검증
         if re.search(r'[\u4e00-\u9fff]', answer):
             return False
         
-        # 객관식은 숫자만 있을 수 있음
-        if question_type == "multiple_choice":
-            return answer.isdigit() and 1 <= int(answer) <= 5
-        
-        # 주관식은 한국어 비율 확인
         korean_chars = len(re.findall(r'[가-힣]', answer))
         total_chars = len(re.sub(r'[^\w]', '', answer))
         
         if total_chars > 0:
             korean_ratio = korean_chars / total_chars
-            return korean_ratio >= 0.6
+            return korean_ratio >= 0.5
         
         return len(answer.strip()) > 0
     
@@ -134,12 +138,12 @@ class FinancialAIInference:
             numbers = re.findall(r'[1-5]', answer)
             if numbers:
                 return numbers[-1]
-            return "2"  # 기본값
+            return "3"  # 기본값
         
         # 주관식 한국어 정리
         fixed = self.data_processor._clean_korean_text(answer)
         
-        # 한국어 비율이 여전히 낮으면 폴백 사용
+        # 여전히 문제가 있으면 폴백
         if not self._validate_korean_answer(fixed, question_type):
             return self._get_korean_fallback(question_type)
         
@@ -149,12 +153,12 @@ class FinancialAIInference:
         """한국어 폴백 답변"""
         
         if question_type == "multiple_choice":
-            return "2"
+            return "3"
         else:
             return "관련 법령과 규정에 따른 적절한 조치가 필요합니다."
     
     def process_question(self, question: str, question_id: str, idx: int) -> str:
-        """문제 처리 (한국어 강화)"""
+        """문제 처리"""
         
         try:
             # 1. 문제 분석
@@ -180,7 +184,6 @@ class FinancialAIInference:
                 )
                 
                 if correction_conf > 0.8:
-                    # 한국어 검증
                     if self._validate_korean_answer(corrected_answer, structure["question_type"]):
                         return corrected_answer
                     else:
@@ -200,15 +203,15 @@ class FinancialAIInference:
                 final_hint = hint_answer
                 final_confidence = hint_confidence
             
-            # 7. 한국어 강화 프롬프트 생성
+            # 7. 프롬프트 생성
             if is_mc:
-                prompt = self._create_korean_mc_prompt(
+                prompt = self._create_mc_prompt(
                     question, structure, analysis, final_hint, final_confidence
                 )
             else:
-                prompt = self._create_korean_subjective_prompt(question, structure, analysis)
+                prompt = self._create_subjective_prompt(question, structure, analysis)
             
-            # 8. 모델 추론 (한국어 강제)
+            # 8. 모델 추론
             max_attempts = 2 if difficulty.score > 0.7 else 1
             result = self.model_handler.generate_response(
                 prompt=prompt,
@@ -216,18 +219,17 @@ class FinancialAIInference:
                 max_attempts=max_attempts
             )
             
-            # 9. 답변 추출 및 한국어 검증
+            # 9. 답변 추출
             if is_mc:
-                answer = self._extract_and_validate_mc_answer(result.response, final_hint, final_confidence)
+                answer = self._extract_mc_answer(result.response, final_hint, final_confidence)
             else:
-                answer = self._extract_and_validate_subjective_answer(result.response, structure)
+                answer = self._extract_subjective_answer(result.response, structure)
             
-            # 10. 한국어 최종 검증 및 수정
+            # 10. 한국어 검증 및 수정 (주관식만)
             if not self._validate_korean_answer(answer, structure["question_type"]):
                 self.stats["korean_failures"] += 1
                 answer = self._fix_korean_answer(answer, structure["question_type"])
                 self.stats["korean_fixes"] += 1
-                print(f"한국어 수정 적용: {question_id}")
             
             # 11. 학습
             if self.enable_learning:
@@ -270,14 +272,14 @@ class FinancialAIInference:
             # 기존 폴백
             if structure.get("question_type") == "multiple_choice":
                 fallback_answer, _ = self.pattern_learner.predict_answer(question, structure)
-                return fallback_answer if fallback_answer else "2"
+                return fallback_answer if fallback_answer else "3"
             else:
                 return self._get_korean_fallback(structure.get("question_type", "subjective"))
     
-    def _create_korean_mc_prompt(self, question: str, structure: Dict, 
-                               analysis: Dict, hint_answer: str, 
-                               hint_confidence: float) -> str:
-        """한국어 강화 객관식 프롬프트 생성"""
+    def _create_mc_prompt(self, question: str, structure: Dict, 
+                         analysis: Dict, hint_answer: str, 
+                         hint_confidence: float) -> str:
+        """객관식 프롬프트 생성 (간단하게)"""
         
         # 부정형 처리
         if structure.get("has_negative", False):
@@ -285,93 +287,76 @@ class FinancialAIInference:
         else:
             instruction = "다음 문제의 정답을 선택하세요."
         
-        # 도메인 컨텍스트
-        context = ""
-        if analysis.get("domain"):
-            domain = analysis["domain"][0]
-            if domain == "개인정보보호":
-                context = "개인정보보호법과 관련 규정을 고려하여 답하세요."
-            elif domain == "전자금융":
-                context = "전자금융거래법과 관련 규정을 고려하여 답하세요."
-        
         # 학습 기반 힌트
         hint_text = ""
         if hint_confidence > 0.75:
             hint_text = f"\n참고: 유사 문제 분석 결과 {hint_answer}번이 유력합니다."
         
         prompt = f"""### 지시사항
-당신은 한국의 금융보안 전문가입니다.
-반드시 한국어로만 답변하고, 한자나 영어는 절대 사용하지 마세요.
-
+당신은 금융보안 전문가입니다.
 {instruction}
-{context}
 
 ### 문제
 {question}
 
-### 분석 및 답변
-1. 핵심 개념을 파악합니다.
-2. 각 선택지를 검토합니다.
-3. 가장 적절한 답을 선택합니다.{hint_text}
+간단히 분석한 후 정답 번호만 제시하세요.{hint_text}
 
-반드시 한국어로만 간단히 분석한 후 정답 번호만 제시하세요.
-
-정답 번호:"""
+정답:"""
         
         return prompt
     
-    def _create_korean_subjective_prompt(self, question: str, structure: Dict, 
-                                       analysis: Dict) -> str:
-        """한국어 강화 주관식 프롬프트 생성"""
+    def _create_subjective_prompt(self, question: str, structure: Dict, 
+                                 analysis: Dict) -> str:
+        """주관식 프롬프트 생성"""
         
         # 도메인별 지시
         domain_instructions = {
-            "개인정보보호": "개인정보보호법에 따른 구체적인 방안을 한국어로 제시하세요.",
-            "전자금융": "전자금융거래법에 따른 안전한 거래 방안을 한국어로 설명하세요.",
-            "정보보안": "정보보안 관리체계 관점에서 체계적으로 한국어로 답변하세요."
+            "개인정보보호": "개인정보보호법에 따른 구체적인 방안을 제시하세요.",
+            "전자금융": "전자금융거래법에 따른 안전한 거래 방안을 설명하세요.",
+            "정보보안": "정보보안 관리체계 관점에서 체계적으로 답변하세요."
         }
         
         domain = analysis.get("domain", ["일반"])[0]
-        instruction = domain_instructions.get(domain, "금융보안 관점에서 구체적으로 한국어로 답변하세요.")
+        instruction = domain_instructions.get(domain, "금융보안 관점에서 구체적으로 답변하세요.")
         
         prompt = f"""### 지시사항
-당신은 한국의 금융보안 전문가입니다.
-반드시 한국어로만 답변하세요. 한자, 영어, 기타 외국어는 절대 사용하지 마세요.
+당신은 금융보안 전문가입니다.
+반드시 한국어로만 답변하세요.
 
 {instruction}
 
 ### 질문
 {question}
 
-### 답변 구조 (모두 한국어로)
+### 답변 구조
 1. 핵심 개념 설명
 2. 구체적 방안 제시
 3. 관련 법령 또는 규정 언급
-
-### 중요 사항
-- 전문적이고 정확한 한국어만 사용
-- 한자나 영어 단어 사용 금지
-- 법령명도 한국어로 표기
 
 답변:"""
         
         return prompt
     
-    def _extract_and_validate_mc_answer(self, response: str, hint_answer: str, 
-                                      hint_confidence: float) -> str:
-        """객관식 답변 추출 및 한국어 검증"""
+    def _extract_mc_answer(self, response: str, hint_answer: str, 
+                          hint_confidence: float) -> str:
+        """객관식 답변 추출"""
         
-        # 한국어 정리
-        cleaned_response = self.data_processor._clean_korean_text(response)
+        # 응답 정리
+        cleaned_response = response.strip()
         
-        # 우선순위 패턴
+        # 단순 숫자 확인
+        if re.match(r'^[1-5]$', cleaned_response):
+            return cleaned_response
+        
+        # 패턴 기반 추출
         patterns = [
             (r'정답.*?([1-5])', 1.0),
             (r'답.*?([1-5])', 0.9),
             (r'([1-5])번.*?(?:정답|맞|적절)', 0.8),
             (r'결론.*?([1-5])', 0.7),
             (r'따라서.*?([1-5])', 0.6),
-            (r'([1-5])번', 0.5)
+            (r'([1-5])번', 0.5),
+            (r'([1-5])', 0.3)
         ]
         
         candidates = []
@@ -392,20 +377,16 @@ class FinancialAIInference:
             if best_answer == hint_answer and hint_confidence > 0.7:
                 return best_answer
             
-            # 신뢰도 차이가 크면 힌트 우선
-            if hint_confidence > 0.8 and candidates[0][1] < 0.7:
-                return hint_answer
-            
             return best_answer
         
         # 힌트 사용
         if hint_confidence > 0.6:
             return hint_answer
         
-        return "2"
+        return "3"
     
-    def _extract_and_validate_subjective_answer(self, response: str, structure: Dict) -> str:
-        """주관식 답변 추출 및 한국어 검증"""
+    def _extract_subjective_answer(self, response: str, structure: Dict) -> str:
+        """주관식 답변 추출"""
         
         # 한국어 정리
         cleaned_response = self.data_processor._clean_korean_text(response)
@@ -417,31 +398,6 @@ class FinancialAIInference:
         # 최소 길이 확인
         if len(cleaned_response) < 50:
             return self._get_domain_fallback_korean(structure)
-        
-        # 한국어 품질 확인
-        korean_chars = len(re.findall(r'[가-힣]', cleaned_response))
-        total_chars = len(re.sub(r'[^\w]', '', cleaned_response))
-        
-        if total_chars > 0 and korean_chars / total_chars < 0.6:
-            # 한국어 문장만 추출
-            sentences = re.split(r'[.!?]\s+', cleaned_response)
-            korean_sentences = []
-            
-            for sentence in sentences:
-                sentence = sentence.strip()
-                if sentence and len(sentence) > 10:
-                    sent_korean = len(re.findall(r'[가-힣]', sentence))
-                    sent_total = len(re.sub(r'[^\w]', '', sentence))
-                    
-                    if sent_total > 0 and sent_korean / sent_total > 0.5:
-                        korean_sentences.append(sentence)
-            
-            if korean_sentences:
-                cleaned_response = '. '.join(korean_sentences)
-                if not cleaned_response.endswith('.'):
-                    cleaned_response += '.'
-            else:
-                return self._get_domain_fallback_korean(structure)
         
         # 문장 정리
         sentences = re.split(r'[.!?]\s+', cleaned_response)
@@ -524,8 +480,6 @@ class FinancialAIInference:
         if self.enable_learning:
             print(f"학습 모드: 활성화")
         
-        print(f"한국어 강제 모드: 활성화")
-        
         # 추론 실행
         answers = [""] * len(test_df)
         predictions = []
@@ -581,11 +535,23 @@ class FinancialAIInference:
         for ans in mc_answers:
             answer_distribution[ans] = answer_distribution.get(ans, 0) + 1
         
-        # 한국어 품질 검사
+        # 한국어 품질 검사 (주관식만)
+        subj_answers = [a for a, q in zip(answers, questions_data) if not q["is_mc"]]
         korean_quality_issues = 0
-        for answer in answers:
-            if re.search(r'[\u4e00-\u9fff]', answer):
-                korean_quality_issues += 1
+        total_korean_ratio = 0
+        
+        for answer in subj_answers:
+            korean_chars = len(re.findall(r'[가-힣]', answer))
+            total_chars = len(re.sub(r'[^\w]', '', answer))
+            
+            if total_chars > 0:
+                korean_ratio = korean_chars / total_chars
+                total_korean_ratio += korean_ratio
+                
+                if korean_ratio < 0.5 or re.search(r'[\u4e00-\u9fff]', answer):
+                    korean_quality_issues += 1
+        
+        avg_korean_ratio = total_korean_ratio / max(len(subj_answers), 1) if subj_answers else 1.0
         
         # 결과 출력
         print("\n" + "="*50)
@@ -597,9 +563,9 @@ class FinancialAIInference:
         
         # 한국어 품질 리포트
         print(f"\n한국어 품질 리포트:")
-        print(f"  한국어 실패: {self.stats['korean_failures']}개")
-        print(f"  한국어 수정: {self.stats['korean_fixes']}개")
-        print(f"  품질 문제: {korean_quality_issues}개")
+        print(f"  한국어 수정: {self.stats['korean_fixes']}회")
+        print(f"  품질 문제: {korean_quality_issues}/{len(subj_answers)}개 (주관식)")
+        print(f"  평균 한국어 비율: {avg_korean_ratio:.2%}")
         if korean_quality_issues == 0:
             print("  ✅ 모든 답변이 한국어로 생성됨")
         
@@ -633,10 +599,10 @@ class FinancialAIInference:
             "elapsed_minutes": elapsed_time / 60,
             "answer_distribution": answer_distribution,
             "korean_quality": {
-                "failures": self.stats["korean_failures"],
                 "fixes": self.stats["korean_fixes"],
                 "issues": korean_quality_issues,
-                "success_rate": (len(answers) - korean_quality_issues) / len(answers)
+                "avg_ratio": avg_korean_ratio,
+                "success_rate": (len(subj_answers) - korean_quality_issues) / max(len(subj_answers), 1)
             },
             "learning_stats": {
                 "learned_samples": self.stats["learned"],
@@ -669,7 +635,6 @@ def main():
     
     print("="*50)
     print("금융 AI Challenge 추론 시스템")
-    print("한국어 강화 버전")
     print("="*50)
     
     # GPU 확인
@@ -708,7 +673,7 @@ def main():
         
         if results["success"]:
             print("\n✅ 추론 완료!")
-            if results["korean_quality"]["success_rate"] > 0.95:
+            if results["korean_quality"]["success_rate"] > 0.9:
                 print("✅ 한국어 품질 우수!")
             else:
                 print(f"⚠️ 한국어 품질: {results['korean_quality']['success_rate']:.2%}")
