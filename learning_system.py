@@ -1,6 +1,6 @@
 # learning_system.py
 """
-통합 학습 시스템
+통합 학습
 """
 
 import json

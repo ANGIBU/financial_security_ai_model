@@ -41,10 +41,92 @@ def test_basic():
     
     print()
 
-def test_small_inference(sample_size: int = 5):
-    """소규모 추론 테스트"""
+def test_learning():
+    """학습 시스템 테스트"""
     print("="*50)
-    print(f"소규모 추론 테스트 ({sample_size}개)")
+    print("학습 시스템 테스트")
+    print("="*50)
+    
+    from learning_system import UnifiedLearningSystem
+    from auto_learner import AutoLearner
+    from manual_correction import ManualCorrectionSystem
+    
+    # 학습 시스템 초기화
+    learning = UnifiedLearningSystem()
+    auto = AutoLearner()
+    manual = ManualCorrectionSystem()
+    
+    # 테스트 데이터
+    test_questions = [
+        {
+            "question": "개인정보보호법상 개인정보의 정의로 가장 적절한 것은?",
+            "correct": "2",
+            "predicted": "2",
+            "confidence": 0.8,
+            "type": "multiple_choice",
+            "domain": ["개인정보보호"]
+        },
+        {
+            "question": "전자금융거래란 무엇인가?",
+            "correct": "전자적 장치를 통한 금융거래",
+            "predicted": "전자적 장치를 통한 금융거래",
+            "confidence": 0.7,
+            "type": "subjective",
+            "domain": ["전자금융"]
+        }
+    ]
+    
+    # 학습 테스트
+    print("\n1. 학습 데이터 추가")
+    for data in test_questions:
+        learning.add_training_sample(
+            question=data["question"],
+            correct_answer=data["correct"],
+            predicted_answer=data["predicted"],
+            confidence=data["confidence"],
+            question_type=data["type"],
+            domain=data["domain"]
+        )
+        
+        auto.learn_from_prediction(
+            question=data["question"],
+            prediction=data["predicted"],
+            confidence=data["confidence"],
+            question_type=data["type"],
+            domain=data["domain"]
+        )
+    
+    print(f"  - {learning.learning_metrics['total_samples']}개 샘플 추가")
+    print(f"  - 정확도: {learning.get_current_accuracy():.2%}")
+    
+    # 예측 테스트
+    print("\n2. 학습 기반 예측")
+    test_q = "개인정보란 무엇인가?"
+    pred, conf = learning.predict_with_learning(test_q, "multiple_choice", ["개인정보보호"])
+    print(f"  질문: {test_q}")
+    print(f"  예측: {pred} (신뢰도: {conf:.2f})")
+    
+    # 자동 학습 분석
+    print("\n3. 자동 학습 분석")
+    progress = auto.analyze_learning_progress()
+    print(f"  - 총 샘플: {progress.get('total_samples', 0)}")
+    print(f"  - 패턴 다양성: {progress.get('pattern_diversity', 0)}")
+    
+    # 저장 테스트
+    print("\n4. 학습 데이터 저장")
+    learning.save_learning_data("./test_learning.pkl")
+    auto.save_model("./test_auto_model.pkl")
+    print("  - 저장 완료")
+    
+    # 정리
+    os.remove("./test_learning.pkl") if os.path.exists("./test_learning.pkl") else None
+    os.remove("./test_auto_model.pkl") if os.path.exists("./test_auto_model.pkl") else None
+
+def test_small_inference(sample_size: int = 5, with_learning: bool = False):
+    """소규모 추론 테스트"""
+    mode_text = "학습 포함" if with_learning else "기본"
+    print("="*50)
+    print(f"소규모 추론 테스트 ({sample_size}개, {mode_text} 모드)")
     print("="*50)
     
     # 파일 확인
@@ -70,8 +152,8 @@ def test_small_inference(sample_size: int = 5):
     engine = None
     try:
         start = time.time()
-        print("\n모델 로딩 중...")
-        engine = FinancialAIInference()
+        print(f"\n모델 로딩 중...")
+        engine = FinancialAIInference(enable_learning=with_learning)
         
         answers = []
         for idx, row in sample_df.iterrows():
@@ -102,6 +184,12 @@ def test_small_inference(sample_size: int = 5):
         print(f"처리 시간: {elapsed:.1f}초")
         print(f"평균 시간: {elapsed/sample_size:.1f}초/문항")
         
+        if with_learning:
+            print(f"\n학습 통계:")
+            print(f"  학습된 샘플: {engine.stats.get('learned', 0)}개")
+            if hasattr(engine, 'learning_system'):
+                print(f"  정확도: {engine.learning_system.get_current_accuracy():.2%}")
+        
         if mc_answers:
             print(f"\n객관식 답변 ({len(mc_answers)}개): {mc_answers}")
             # 분포 확인
@@ -112,7 +200,7 @@ def test_small_inference(sample_size: int = 5):
         
         if subj_answers:
             print(f"\n주관식 답변 ({len(subj_answers)}개)")
-            for i, ans in enumerate(subj_answers[:3]):  # 최대 3개만 표시
+            for i, ans in enumerate(subj_answers[:3]):
                 print(f"  {i+1}. {ans[:50]}...")
         
         # 전체 예상 시간
@@ -239,9 +327,11 @@ def show_menu():
     print("1. 기본 시스템 체크")
     print("2. 소규모 추론 테스트 (5문항)")
     print("3. 중규모 추론 테스트 (10문항)")
-    print("4. 패턴 학습 테스트")
-    print("5. 속도 성능 테스트")
-    print("6. 전체 추론 실행 (515문항)")
+    print("4. 학습 포함 추론 테스트 (5문항)")
+    print("5. 패턴 학습 테스트")
+    print("6. 속도 성능 테스트")
+    print("7. 학습 시스템 테스트")
+    print("8. 전체 추론 실행 (515문항)")
     print("0. 종료")
     print("-"*50)
 
@@ -251,7 +341,7 @@ def interactive_mode():
         show_menu()
         
         try:
-            choice = input("\n선택하세요 (0-6): ").strip()
+            choice = input("\n선택하세요 (0-8): ").strip()
             
             if choice == "0":
                 print("종료합니다.")
@@ -259,14 +349,18 @@ def interactive_mode():
             elif choice == "1":
                 test_basic()
             elif choice == "2":
-                test_small_inference(5)
+                test_small_inference(5, with_learning=False)
             elif choice == "3":
-                test_small_inference(10)
+                test_small_inference(10, with_learning=False)
             elif choice == "4":
-                test_patterns()
+                test_small_inference(5, with_learning=True)
             elif choice == "5":
-                test_speed()
+                test_patterns()
             elif choice == "6":
+                test_speed()
+            elif choice == "7":
+                test_learning()
+            elif choice == "8":
                 confirm = input("전체 515문항을 실행합니다. 계속하시겠습니까? (y/n): ")
                 if confirm.lower() == 'y':
                     os.system("python inference.py")
@@ -284,10 +378,12 @@ def interactive_mode():
 def main():
     """메인 함수"""
     parser = argparse.ArgumentParser(description="금융 AI 테스트")
-    parser.add_argument("--test-type", choices=["basic", "small", "patterns", "speed", "interactive"], 
+    parser.add_argument("--test-type", choices=["basic", "small", "patterns", "speed", "learning", "interactive"], 
                        help="테스트 유형")
     parser.add_argument("--sample-size", type=int, default=5, 
                        help="샘플 크기 (small 테스트용)")
+    parser.add_argument("--with-learning", action="store_true",
+                       help="학습 기능 활성화")
     
     args = parser.parse_args()
     
@@ -297,11 +393,13 @@ def main():
     elif args.test_type == "basic":
         test_basic()
     elif args.test_type == "small":
-        test_small_inference(args.sample_size)
+        test_small_inference(args.sample_size, args.with_learning)
     elif args.test_type == "patterns":
         test_patterns()
     elif args.test_type == "speed":
         test_speed()
+    elif args.test_type == "learning":
+        test_learning()
     elif args.test_type == "interactive":
         interactive_mode()
 

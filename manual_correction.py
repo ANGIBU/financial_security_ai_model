@@ -1,6 +1,6 @@
 # manual_correction.py
 """
-수동 교정 시스템
+수동 교정
 """
 
 import json
