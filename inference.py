@@ -172,8 +172,9 @@ class FinancialAIInference:
         
         question_lower = question.lower()
         
-        if "트로이" in question or "악성코드" in question or "RAT" in question:
-            return "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 원격 접근 트로이 목마는 공격자가 감염된 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결, 시스템 리소스 사용 증가, 알 수 없는 프로세스 실행, 방화벽 규칙 변경 등이 있습니다. 탐지를 위해서는 네트워크 모니터링, 행위 기반 탐지, 시그니처 기반 검사를 종합적으로 활용해야 합니다."
+        # 트로이 목마 관련 특별 처리
+        if "트로이" in question or "악성코드" in question or "RAT" in question.upper() or "원격제어" in question or "원격 제어" in question:
+            return "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 원격 접근 트로이 목마는 공격자가 감염된 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결, 시스템 리소스 사용 증가, 알 수 없는 프로세스 실행, 방화벽 규칙 변경, 레지스트리 변경, 이상한 파일 생성 등이 있습니다. 탐지를 위해서는 네트워크 모니터링, 행위 기반 탐지, 시그니처 기반 검사를 종합적으로 활용해야 합니다."
         
         if "개인정보" in question_lower:
             if "유출" in question_lower:

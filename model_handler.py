@@ -111,13 +111,13 @@ class ModelHandler:
         self.korean_start_tokens = list(set(self.korean_start_tokens))
     
     def _create_korean_optimized_prompt(self, prompt: str, question_type: str) -> str:
-        """한국어 최적화 프롬프트 생성"""
+        """한국어 최적화 프롬프트 생성 (더욱 강화)"""
         if question_type == "multiple_choice":
-            korean_prefix = "### 중요: 반드시 1, 2, 3, 4, 5 중 하나의 숫자만 답하세요 ###\n\n"
-            korean_example = "\n### 답변 예시\n정답: 2\n\n"
+            korean_prefix = "### 매우 중요: 절대로 1, 2, 3, 4, 5 중 하나의 숫자만 답하세요. 한자나 외국어 절대 금지 ###\n\n"
+            korean_example = "\n### 올바른 답변 예시\n정답: 2\n\n### 절대 금지\n- 한자 사용 금지\n- 영어 사용 금지\n- 설명 금지\n\n"
         else:
-            korean_prefix = "### 중요: 반드시 한국어로만 답변하세요 ###\n\n"
-            korean_example = "\n### 답변 예시\n관련 법령에 따라 체계적인 관리 방안을 수립하고 지속적인 개선이 필요합니다.\n\n"
+            korean_prefix = "### 매우 중요: 반드시 순수 한국어로만 답변하세요. 한자, 영어, 일본어 등 모든 외국어 절대 금지 ###\n\n"
+            korean_example = "\n### 올바른 답변 예시\n트로이 목마는 정상 프로그램으로 위장한 악성코드입니다.\n\n### 절대 금지\n- 한자 절대 금지\n- 영어 절대 금지\n- 일본어 절대 금지\n- 중국어 절대 금지\n\n"
         
         return korean_prefix + prompt + korean_example
     
