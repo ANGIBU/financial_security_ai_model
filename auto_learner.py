@@ -9,35 +9,49 @@ import re
 from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
 
+def _default_int():
+    """기본 정수값 반환"""
+    return 0
+
+def _default_float():
+    """기본 실수값 반환"""
+    return 0.0
+
+def _default_list():
+    """기본 리스트 반환"""
+    return []
+
+def _default_float_dict():
+    """기본 실수 딕셔너리 반환"""
+    return defaultdict(_default_float)
+
+def _default_int_dict():
+    """기본 정수 딕셔너리 반환"""
+    return defaultdict(_default_int)
+
 class AutoLearner:
-    """자동 학습 엔진 - 한국어 특화"""
+    """자동 학습 엔진"""
     
     def __init__(self):
-        # 학습 파라미터
         self.learning_rate = 0.1
         self.confidence_threshold = 0.7
         self.min_samples = 5
         
-        # 패턴 저장소
-        self.pattern_weights = defaultdict(lambda: defaultdict(float))
-        self.pattern_counts = defaultdict(int)
+        self.pattern_weights = defaultdict(_default_float_dict)
+        self.pattern_counts = defaultdict(_default_int)
         
-        # 답변 분포
         self.answer_distribution = {
-            "mc": defaultdict(int),
-            "domain": defaultdict(lambda: defaultdict(int)),
-            "negative": defaultdict(int)
+            "mc": defaultdict(_default_int),
+            "domain": defaultdict(_default_int_dict),
+            "negative": defaultdict(_default_int)
         }
         
-        # 한국어 품질 학습
-        self.korean_quality_patterns = defaultdict(list)
+        self.korean_quality_patterns = defaultdict(_default_list)
         self.successful_korean_templates = []
         
-        # 학습 히스토리
         self.learning_history = []
         self.performance_metrics = []
         
-        # 도메인별 한국어 템플릿
         self.domain_templates = self._initialize_korean_templates()
         
     def _initialize_korean_templates(self) -> Dict[str, List[str]]:
@@ -68,44 +82,37 @@ class AutoLearner:
     def learn_from_prediction(self, question: str, prediction: str,
                             confidence: float, question_type: str,
                             domain: List[str]) -> None:
-        """예측으로부터 학습 - 한국어 품질 포함"""
+        """예측으로부터 학습"""
         
-        # 높은 신뢰도만 학습
         if confidence < self.confidence_threshold:
             return
         
-        # 한국어 품질 체크
         korean_quality = self._evaluate_korean_quality(prediction, question_type)
         
-        # 품질이 좋은 경우만 학습
         if korean_quality < 0.5 and question_type != "multiple_choice":
             return
         
-        # 패턴 추출
         patterns = self._extract_patterns(question)
         
-        # 가중치 업데이트
         for pattern in patterns:
             weight_boost = confidence * self.learning_rate * korean_quality
             self.pattern_weights[pattern][prediction] += weight_boost
             self.pattern_counts[pattern] += 1
         
-        # 답변 분포 업데이트
         if question_type == "multiple_choice":
             self.answer_distribution["mc"][prediction] += 1
             
-            # 부정형 문제 특별 처리
             if self._is_negative_question(question):
                 self.answer_distribution["negative"][prediction] += 1
         
         for d in domain:
+            if d not in self.answer_distribution["domain"]:
+                self.answer_distribution["domain"][d] = defaultdict(_default_int)
             self.answer_distribution["domain"][d][prediction] += 1
         
-        # 한국어 품질 패턴 학습
         if korean_quality > 0.8 and question_type != "multiple_choice":
             self._learn_korean_patterns(prediction, domain)
         
-        # 히스토리 저장
         self.learning_history.append({
             "question_sample": question[:100],
             "prediction": prediction[:100] if len(prediction) > 100 else prediction,
@@ -118,16 +125,13 @@ class AutoLearner:
         """한국어 품질 평가"""
         
         if question_type == "multiple_choice":
-            # 객관식은 숫자면 만점
             if re.match(r'^[1-5]$', text.strip()):
                 return 1.0
             return 0.5
         
-        # 한자 확인
         if re.search(r'[\u4e00-\u9fff]', text):
             return 0.0
         
-        # 한국어 비율 계산
         korean_chars = len(re.findall(r'[가-힣]', text))
         total_chars = len(re.sub(r'[^\w]', '', text))
         
@@ -136,11 +140,9 @@ class AutoLearner:
         
         korean_ratio = korean_chars / total_chars
         
-        # 영어 비율
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
-        # 품질 점수 계산
         quality = korean_ratio * 0.8
         quality -= english_ratio * 0.4
         quality = max(0, min(1, quality))
@@ -157,12 +159,11 @@ class AutoLearner:
         return any(keyword in question_lower for keyword in negative_keywords)
     
     def _extract_patterns(self, question: str) -> List[str]:
-        """패턴 추출 - 개선"""
+        """패턴 추출"""
         
         patterns = []
         question_lower = question.lower()
         
-        # 구조 패턴
         if self._is_negative_question(question):
             patterns.append("negative_question")
         if "정의" in question_lower:
@@ -174,7 +175,6 @@ class AutoLearner:
         if "절차" in question_lower or "과정" in question_lower:
             patterns.append("procedure_question")
         
-        # 도메인 패턴
         domains = {
             "personal_info": ["개인정보", "정보주체", "동의", "수집", "이용"],
             "electronic": ["전자금융", "전자적", "거래", "접근매체"],
@@ -187,7 +187,6 @@ class AutoLearner:
             if any(kw in question_lower for kw in keywords):
                 patterns.append(f"domain_{domain}")
         
-        # 길이 패턴
         if len(question) < 200:
             patterns.append("short_question")
         elif len(question) > 500:
@@ -195,7 +194,6 @@ class AutoLearner:
         else:
             patterns.append("medium_question")
         
-        # 복잡도 패턴
         if question.count('\n') > 5:
             patterns.append("complex_structure")
         if len(re.findall(r'[1-5]', question)) >= 5:
@@ -206,7 +204,6 @@ class AutoLearner:
     def _learn_korean_patterns(self, text: str, domains: List[str]) -> None:
         """한국어 패턴 학습"""
         
-        # 성공적인 템플릿 저장
         if len(text) > 50 and len(text) < 800:
             self.successful_korean_templates.append({
                 "text": text,
@@ -214,11 +211,9 @@ class AutoLearner:
                 "structure": self._analyze_text_structure(text)
             })
             
-            # 최대 100개만 유지
             if len(self.successful_korean_templates) > 100:
                 self.successful_korean_templates = self.successful_korean_templates[-100:]
         
-        # 도메인별 패턴 학습
         for domain in domains:
             self.korean_quality_patterns[domain].append({
                 "length": len(text),
@@ -266,15 +261,14 @@ class AutoLearner:
         return markers
     
     def predict_with_patterns(self, question: str, question_type: str) -> Tuple[str, float]:
-        """패턴 기반 예측 - 한국어 품질 고려"""
+        """패턴 기반 예측"""
         
         patterns = self._extract_patterns(question)
         
         if not patterns:
             return self._get_default_answer(question_type), 0.3
         
-        # 패턴별 답변 집계
-        answer_scores = defaultdict(float)
+        answer_scores = defaultdict(_default_float)
         total_weight = 0
         
         for pattern in patterns:
@@ -288,15 +282,12 @@ class AutoLearner:
         if not answer_scores:
             return self._get_default_answer(question_type), 0.3
         
-        # 최고 점수 답변
         best_answer = max(answer_scores.items(), key=lambda x: x[1])
         confidence = min(best_answer[1] / max(total_weight, 1), 0.9)
         
-        # 주관식의 경우 한국어 품질 체크
         if question_type != "multiple_choice":
             korean_quality = self._evaluate_korean_quality(best_answer[0], question_type)
             if korean_quality < 0.5:
-                # 품질이 낮으면 템플릿 기반 답변 생성
                 return self._generate_korean_answer(question, patterns), 0.5
         
         return best_answer[0], confidence
@@ -304,14 +295,12 @@ class AutoLearner:
     def _generate_korean_answer(self, question: str, patterns: List[str]) -> str:
         """한국어 답변 생성"""
         
-        # 도메인 확인
         domain = None
         for pattern in patterns:
             if pattern.startswith("domain_"):
                 domain = pattern.replace("domain_", "")
                 break
         
-        # 도메인별 템플릿 선택
         if domain == "personal_info":
             base_answer = "개인정보보호법에 따라 개인정보의 안전한 관리와 정보주체의 권리 보호를 위한 체계적인 조치가 필요합니다."
         elif domain == "electronic":
@@ -323,7 +312,6 @@ class AutoLearner:
         else:
             base_answer = "관련 법령과 규정에 따라 적절한 보안 조치를 수립하고 지속적인 관리와 개선을 수행해야 합니다."
         
-        # 문제 유형별 추가
         if "solution_question" in patterns:
             base_answer += " 구체적인 방안으로는 정책 수립, 조직 구성, 기술적 대책 구현, 정기적 점검 등이 있습니다."
         elif "procedure_question" in patterns:
@@ -332,10 +320,9 @@ class AutoLearner:
         return base_answer
     
     def _get_default_answer(self, question_type: str) -> str:
-        """기본 답변 - 한국어"""
+        """기본 답변"""
         
         if question_type == "multiple_choice":
-            # 분포 기반 선택
             if self.answer_distribution["mc"]:
                 return max(self.answer_distribution["mc"].items(), 
                           key=lambda x: x[1])[0]
@@ -349,7 +336,6 @@ class AutoLearner:
         optimized = 0
         removed = 0
         
-        # 샘플이 적은 패턴 제거
         patterns_to_remove = []
         for pattern, count in self.pattern_counts.items():
             if count < self.min_samples:
@@ -360,7 +346,6 @@ class AutoLearner:
             del self.pattern_counts[pattern]
             removed += 1
         
-        # 가중치 정규화
         for pattern in self.pattern_weights:
             total = sum(self.pattern_weights[pattern].values())
             if total > 0:
@@ -382,18 +367,14 @@ class AutoLearner:
         
         recent_history = self.learning_history[-100:]
         
-        # 신뢰도 추세
         confidences = [h["confidence"] for h in recent_history]
         confidence_trend = np.mean(confidences) if confidences else 0
         
-        # 한국어 품질 추세
         korean_qualities = [h.get("korean_quality", 0) for h in recent_history]
         korean_quality_trend = np.mean(korean_qualities) if korean_qualities else 0
         
-        # 패턴 다양성
         pattern_diversity = len(self.pattern_weights)
         
-        # 답변 분포
         mc_distribution = dict(self.answer_distribution["mc"])
         
         return {
@@ -413,10 +394,14 @@ class AutoLearner:
         model_data = {
             "pattern_weights": dict(self.pattern_weights),
             "pattern_counts": dict(self.pattern_counts),
-            "answer_distribution": dict(self.answer_distribution),
+            "answer_distribution": {
+                "mc": dict(self.answer_distribution["mc"]),
+                "domain": {k: dict(v) for k, v in self.answer_distribution["domain"].items()},
+                "negative": dict(self.answer_distribution["negative"])
+            },
             "korean_quality_patterns": dict(self.korean_quality_patterns),
-            "successful_korean_templates": self.successful_korean_templates[-50:],  # 최근 50개만
-            "learning_history": self.learning_history[-1000:],  # 최근 1000개만
+            "successful_korean_templates": self.successful_korean_templates[-50:],
+            "learning_history": self.learning_history[-1000:],
             "parameters": {
                 "learning_rate": self.learning_rate,
                 "confidence_threshold": self.confidence_threshold,
@@ -434,11 +419,23 @@ class AutoLearner:
             with open(filepath, 'rb') as f:
                 model_data = pickle.load(f)
             
-            self.pattern_weights = defaultdict(lambda: defaultdict(float), 
-                                             model_data["pattern_weights"])
-            self.pattern_counts = defaultdict(int, model_data["pattern_counts"])
-            self.answer_distribution = model_data["answer_distribution"]
-            self.korean_quality_patterns = defaultdict(list, model_data.get("korean_quality_patterns", {}))
+            self.pattern_weights = defaultdict(_default_float_dict)
+            for k, v in model_data["pattern_weights"].items():
+                self.pattern_weights[k] = defaultdict(_default_float, v)
+            
+            self.pattern_counts = defaultdict(_default_int, model_data["pattern_counts"])
+            
+            answer_dist = model_data["answer_distribution"]
+            self.answer_distribution = {
+                "mc": defaultdict(_default_int, answer_dist.get("mc", {})),
+                "domain": defaultdict(_default_int_dict),
+                "negative": defaultdict(_default_int, answer_dist.get("negative", {}))
+            }
+            
+            for k, v in answer_dist.get("domain", {}).items():
+                self.answer_distribution["domain"][k] = defaultdict(_default_int, v)
+            
+            self.korean_quality_patterns = defaultdict(_default_list, model_data.get("korean_quality_patterns", {}))
             self.successful_korean_templates = model_data.get("successful_korean_templates", [])
             self.learning_history = model_data["learning_history"]
             
@@ -455,5 +452,3 @@ class AutoLearner:
     def cleanup(self):
         """리소스 정리"""
         print(f"자동 학습: {len(self.pattern_weights)}개 패턴 학습")
-        if self.successful_korean_templates:
-            print(f"한국어 템플릿: {len(self.successful_korean_templates)}개 저장")

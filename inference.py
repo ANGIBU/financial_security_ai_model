@@ -17,42 +17,36 @@ from typing import List, Dict, Tuple, Optional
 import numpy as np
 warnings.filterwarnings("ignore")
 
-# 현재 디렉토리를 Python 경로에 추가
 current_dir = Path(__file__).parent.absolute()
 sys.path.append(str(current_dir))
 
-# Transformers 관련 import
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 from transformers.utils import logging
 logging.set_verbosity_error()
 
-# 커스텀 모듈
 from model_handler import ModelHandler
 from data_processor import DataProcessor
 from prompt_engineering import PromptEngineer
 from advanced_optimizer import SystemOptimizer
 from pattern_learner import AnswerPatternLearner
 
-# 학습 모듈
 from learning_system import UnifiedLearningSystem
 from manual_correction import ManualCorrectionSystem
 from auto_learner import AutoLearner
 
 class FinancialAIInference:
-    """금융 AI 추론 엔진 - 한국어 강화"""
+    """금융 AI 추론 엔진"""
     
-    def __init__(self, enable_learning: bool = True):
+    def __init__(self, enable_learning: bool = False):
         self.start_time = time.time()
         self.enable_learning = enable_learning
         
-        # GPU 메모리 설정
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-            torch.cuda.set_per_process_memory_fraction(0.95)
+            torch.cuda.set_per_process_memory_fraction(0.90)
         
         print("시스템 초기화 중...")
         
-        # 기존 컴포넌트
         self.model_handler = ModelHandler(
             model_name="upstage/SOLAR-10.7B-Instruct-v1.0",
             device="cuda" if torch.cuda.is_available() else "cpu",
@@ -65,17 +59,13 @@ class FinancialAIInference:
         self.optimizer = SystemOptimizer()
         self.pattern_learner = AnswerPatternLearner()
         
-        # 학습 컴포넌트
         if self.enable_learning:
             print("학습 시스템 초기화 중...")
             self.learning_system = UnifiedLearningSystem()
             self.correction_system = ManualCorrectionSystem()
             self.auto_learner = AutoLearner()
-            
-            # 기존 학습 데이터 로드
             self._load_existing_learning_data()
         
-        # 통계
         self.stats = {
             "total": 0,
             "mc_correct": 0,
@@ -92,44 +82,33 @@ class FinancialAIInference:
     
     def _load_existing_learning_data(self) -> None:
         """학습 데이터 로드"""
-        
-        # 학습 시스템 데이터
         if self.learning_system.load_learning_data():
             print(f"학습 데이터 로드: {self.learning_system.learning_metrics['total_samples']}개")
         
-        # 자동 학습 모델
         if self.auto_learner.load_model():
             print(f"자동 학습 모델 로드: {len(self.auto_learner.pattern_weights)}개 패턴")
         
-        # 교정 데이터
         corrections = self.correction_system.load_corrections_from_csv("./corrections.csv")
         if corrections > 0:
             print(f"교정 데이터 로드: {corrections}개")
     
     def _validate_korean_quality(self, text: str, question_type: str) -> Tuple[bool, float]:
-        """한국어 품질 검증 - 개선된 버전"""
-        
-        # 객관식은 숫자만 확인
+        """한국어 품질 검증"""
         if question_type == "multiple_choice":
             if re.match(r'^[1-5]$', text.strip()):
                 return True, 1.0
-            # 숫자가 포함되어 있으면 통과
             numbers = re.findall(r'[1-5]', text)
             if numbers:
                 return True, 0.8
             return False, 0.0
         
-        # 주관식 품질 검증
-        # 한자 확인
         if re.search(r'[\u4e00-\u9fff]', text):
             return False, 0.0
         
-        # 이상한 문자 확인
         weird_chars = re.findall(r'[^\w\s가-힣0-9.,!?()·\-]', text)
         if len(weird_chars) > 5:
             return False, 0.1
         
-        # 한국어 비율 계산
         korean_chars = len(re.findall(r'[가-힣]', text))
         total_chars = len(re.sub(r'[^\w]', '', text))
         
@@ -138,11 +117,9 @@ class FinancialAIInference:
         
         korean_ratio = korean_chars / total_chars
         
-        # 주관식은 최소 60% 한국어 필요
         if korean_ratio < 0.6:
             return False, korean_ratio
         
-        # 영어 비율 체크
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
@@ -152,20 +129,16 @@ class FinancialAIInference:
         return True, korean_ratio
     
     def _get_domain_specific_fallback(self, question: str, question_type: str) -> str:
-        """도메인별 한국어 폴백 답변"""
-        
+        """도메인별 폴백 답변"""
         if question_type == "multiple_choice":
-            # 패턴 기반 예측
             structure = self.data_processor.analyze_question_structure(question)
             hint, conf = self.optimizer.get_smart_answer_hint(question, structure)
             if conf > 0.5:
                 return hint
             return "3"
         
-        # 주관식 폴백
         question_lower = question.lower()
         
-        # 특정 키워드별 맞춤 답변
         if "트로이" in question or "악성코드" in question or "RAT" in question:
             return "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 원격 접근 트로이 목마는 공격자가 감염된 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결, 시스템 리소스 사용 증가, 알 수 없는 프로세스 실행, 방화벽 규칙 변경 등이 있습니다. 탐지를 위해서는 네트워크 모니터링, 행위 기반 탐지, 시그니처 기반 검사를 종합적으로 활용해야 합니다."
         
@@ -190,45 +163,33 @@ class FinancialAIInference:
         if "재해" in question_lower or "복구" in question_lower:
             return "재해복구계획은 재해 발생 시 핵심 업무를 신속하게 복구하기 위한 체계적인 계획입니다. 복구목표시간과 복구목표시점을 설정하고, 백업 및 복구 절차를 수립하며, 정기적인 모의훈련을 통해 실효성을 검증해야 합니다."
         
-        # 일반 폴백
         return "관련 법령과 규정에 따라 체계적인 보안 관리 방안을 수립하고, 지속적인 모니터링과 개선을 통해 안전성을 확보해야 합니다."
     
     def process_question(self, question: str, question_id: str, idx: int) -> str:
-        """문제 처리 - 한국어 품질 강화"""
-        
+        """문제 처리"""
         try:
-            # 1. 문제 분석
             structure = self.data_processor.analyze_question_structure(question)
             analysis = self.prompt_engineer.knowledge_base.analyze_question(question)
             
-            # 2. 난이도 평가
             difficulty = self.optimizer.evaluate_question_difficulty(question, structure)
-            
-            # 3. 문제 타입 결정
             is_mc = structure["question_type"] == "multiple_choice"
             
-            # 4. 학습 기반 예측 (활성화된 경우)
             if self.enable_learning:
-                # 자동 학습 예측
                 learned_answer, learned_confidence = self.auto_learner.predict_with_patterns(
                     question, structure["question_type"]
                 )
                 
-                # 교정 시스템 확인
                 corrected_answer, correction_conf = self.correction_system.apply_corrections(
                     question, learned_answer
                 )
                 
                 if correction_conf > 0.8:
-                    # 한국어 품질 확인
                     is_valid, quality = self._validate_korean_quality(corrected_answer, structure["question_type"])
                     if is_valid:
                         return corrected_answer
             
-            # 5. 패턴 기반 힌트
             hint_answer, hint_confidence = self.optimizer.get_smart_answer_hint(question, structure)
             
-            # 6. 난이도가 매우 높거나 시간이 부족한 경우 빠른 처리
             if difficulty.score > 0.85 or self.stats["total"] > 400:
                 if is_mc and hint_confidence > 0.6:
                     return hint_answer
@@ -236,12 +197,10 @@ class FinancialAIInference:
                     self.stats["fallback_used"] += 1
                     return self._get_domain_specific_fallback(question, structure["question_type"])
             
-            # 7. 프롬프트 생성 (한국어 강화)
             prompt = self.prompt_engineer.create_korean_reinforced_prompt(
                 question, structure["question_type"]
             )
             
-            # 8. 모델 추론 (시도 횟수 제한)
             max_attempts = 1 if self.stats["total"] > 200 else 2
             result = self.model_handler.generate_response(
                 prompt=prompt,
@@ -249,19 +208,15 @@ class FinancialAIInference:
                 max_attempts=max_attempts
             )
             
-            # 9. 답변 추출 및 정리
             if is_mc:
-                # 객관식: 숫자만 추출
                 numbers = re.findall(r'[1-5]', result.response)
                 if numbers:
                     answer = numbers[0]
                 else:
                     answer = hint_answer if hint_confidence > 0.5 else "3"
             else:
-                # 주관식: 한국어 정리
                 answer = self.data_processor._clean_korean_text(result.response)
                 
-                # 한국어 품질 검증
                 is_valid, quality = self._validate_korean_quality(answer, structure["question_type"])
                 
                 if not is_valid or quality < 0.5:
@@ -270,14 +225,12 @@ class FinancialAIInference:
                     self.stats["korean_fixes"] += 1
                     self.stats["fallback_used"] += 1
                 
-                # 길이 조정
                 if len(answer) < 50:
                     answer = self._get_domain_specific_fallback(question, structure["question_type"])
                     self.stats["fallback_used"] += 1
                 elif len(answer) > 800:
                     answer = answer[:797] + "..."
             
-            # 10. 학습 (활성화된 경우)
             if self.enable_learning and result.confidence > 0.5:
                 self.auto_learner.learn_from_prediction(
                     question, answer, result.confidence,
@@ -296,17 +249,12 @@ class FinancialAIInference:
                     )
                     self.stats["learned"] += 1
             
-            # 11. 패턴 학습
-            if is_mc and answer.isdigit():
-                self.pattern_learner.update_patterns(question, answer, structure)
-            
             return answer
             
         except Exception as e:
             self.stats["errors"] += 1
             print(f"처리 오류: {e}")
             
-            # 오류 시 즉시 폴백
             self.stats["fallback_used"] += 1
             return self._get_domain_specific_fallback(
                 question, 
@@ -316,37 +264,25 @@ class FinancialAIInference:
     def execute_inference(self, test_file: str, submission_file: str,
                          output_file: str = "./final_submission.csv",
                          enable_manual_correction: bool = False) -> Dict:
-        """추론 실행 - 최적화"""
-        
-        # 데이터 로드
+        """추론 실행"""
         test_df = pd.read_csv(test_file)
         submission_df = pd.read_csv(submission_file)
         
         print(f"데이터 로드 완료: {len(test_df)}개 문항")
         
-        # 문제 분석 및 정렬
-        print("문제 분석 중...")
         questions_data = []
         
         for idx, row in test_df.iterrows():
             question = row['Question']
             structure = self.data_processor.analyze_question_structure(question)
-            difficulty = self.optimizer.evaluate_question_difficulty(question, structure)
             
             questions_data.append({
                 "idx": idx,
                 "id": row['ID'],
                 "question": question,
                 "structure": structure,
-                "difficulty": difficulty,
                 "is_mc": structure["question_type"] == "multiple_choice"
             })
-        
-        # 최적화된 순서로 정렬 (쉬운 문제 먼저)
-        questions_data.sort(key=lambda x: (
-            not x["is_mc"],  # 객관식 먼저
-            x["difficulty"].score  # 쉬운 것 먼저
-        ))
         
         mc_count = sum(1 for q in questions_data if q["is_mc"])
         subj_count = len(questions_data) - mc_count
@@ -356,7 +292,6 @@ class FinancialAIInference:
         if self.enable_learning:
             print(f"학습 모드: 활성화")
         
-        # 추론 실행
         answers = [""] * len(test_df)
         
         print("추론 시작...")
@@ -365,50 +300,44 @@ class FinancialAIInference:
             question_id = q_data["id"]
             question = q_data["question"]
             
-            # 답변 생성
             answer = self.process_question(question, question_id, idx)
             answers[idx] = answer
             
             self.stats["total"] += 1
             
-            # 주기적 메모리 정리
-            if self.stats["total"] % 10 == 0:
+            if self.stats["total"] % 50 == 0:
                 torch.cuda.empty_cache()
                 gc.collect()
             
-            # 학습 최적화
-            if self.enable_learning and self.stats["total"] % 30 == 0:
+            if self.enable_learning and self.stats["total"] % 100 == 0:
                 self.auto_learner.optimize_patterns()
         
-        # 수동 교정 (선택사항)
         if enable_manual_correction and self.enable_learning:
             print("\n수동 교정 모드 시작...")
             corrections = self.correction_system.interactive_correction(
-                questions_data[:5],  # 처음 5개만
+                questions_data[:5],
                 answers[:5]
             )
             print(f"교정 완료: {corrections}개")
         
-        # 결과 저장
         submission_df['Answer'] = answers
         submission_df.to_csv(output_file, index=False, encoding='utf-8-sig')
         
-        # 학습 데이터 저장
         if self.enable_learning:
-            self.learning_system.save_learning_data()
-            self.auto_learner.save_model()
-            self.correction_system.save_corrections_to_csv()
+            try:
+                self.learning_system.save_learning_data()
+                self.auto_learner.save_model()
+                self.correction_system.save_corrections_to_csv()
+            except Exception as e:
+                print(f"학습 데이터 저장 오류: {e}")
         
-        # 통계 계산
         elapsed_time = time.time() - self.start_time
         
-        # 답변 분포 분석
         mc_answers = [a for a, q in zip(answers, questions_data) if q["is_mc"] and a.isdigit()]
         answer_distribution = {}
         for ans in mc_answers:
             answer_distribution[ans] = answer_distribution.get(ans, 0) + 1
         
-        # 한국어 품질 검사
         subj_answers = [a for a, q in zip(answers, questions_data) if not q["is_mc"]]
         korean_quality_scores = []
         
@@ -418,7 +347,6 @@ class FinancialAIInference:
         
         avg_korean_quality = np.mean(korean_quality_scores) if korean_quality_scores else 0
         
-        # 결과 출력
         print("\n" + "="*50)
         print("추론 완료")
         print("="*50)
@@ -426,7 +354,6 @@ class FinancialAIInference:
         print(f"소요 시간: {elapsed_time/60:.1f}분")
         print(f"문항당 평균: {elapsed_time/len(answers):.1f}초")
         
-        # 한국어 품질 리포트
         print(f"\n한국어 품질 리포트:")
         print(f"  한국어 실패: {self.stats['korean_failures']}회")
         print(f"  한국어 수정: {self.stats['korean_fixes']}회")
@@ -434,11 +361,11 @@ class FinancialAIInference:
         print(f"  평균 품질 점수: {avg_korean_quality:.2f}")
         
         if avg_korean_quality > 0.7:
-            print("  ✅ 한국어 품질 우수")
+            print("  한국어 품질 우수")
         elif avg_korean_quality > 0.5:
-            print("  ⚠️ 한국어 품질 보통")
+            print("  한국어 품질 보통")
         else:
-            print("  ❌ 한국어 품질 개선 필요")
+            print("  한국어 품질 개선 필요")
         
         if self.enable_learning:
             print(f"\n학습 통계:")
@@ -497,12 +424,6 @@ class FinancialAIInference:
 def main():
     """메인 함수"""
     
-    print("="*50)
-    print("금융 AI Challenge 추론 시스템")
-    print("한국어 품질 강화 버전")
-    print("="*50)
-    
-    # GPU 확인
     if torch.cuda.is_available():
         gpu_info = torch.cuda.get_device_properties(0)
         print(f"GPU: {gpu_info.name}")
@@ -510,7 +431,6 @@ def main():
     else:
         print("GPU 없음 - CPU 모드")
     
-    # 파일 확인
     test_file = "./test.csv"
     submission_file = "./sample_submission.csv"
     
@@ -522,11 +442,9 @@ def main():
         print(f"오류: {submission_file} 파일 없음")
         sys.exit(1)
     
-    # 학습 모드 선택
-    response = input("\n학습 기능을 활성화하시겠습니까? (y/n): ")
-    enable_learning = response.lower() == 'y'
+    # 추론 단계에서는 학습 비활성화
+    enable_learning = False
     
-    # 추론 실행
     engine = None
     try:
         engine = FinancialAIInference(enable_learning=enable_learning)
@@ -537,14 +455,14 @@ def main():
         )
         
         if results["success"]:
-            print("\n✅ 추론 완료!")
+            print("\n추론 완료")
             quality = results["korean_quality"]["avg_score"]
             if quality > 0.7:
-                print("✅ 한국어 품질 우수!")
+                print("한국어 품질 우수")
             elif quality > 0.5:
-                print("⚠️ 한국어 품질 보통")
+                print("한국어 품질 보통")
             else:
-                print("❌ 한국어 품질 개선 필요")
+                print("한국어 품질 개선 필요")
         
     except KeyboardInterrupt:
         print("\n추론 중단")

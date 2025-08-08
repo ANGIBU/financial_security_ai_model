@@ -9,18 +9,17 @@ from typing import Dict, List, Optional
 from knowledge_base import FinancialSecurityKnowledgeBase
 
 class PromptEngineer:
-    """프롬프트 엔지니어링 클래스 - 한국어 특화"""
+    """프롬프트 엔지니어링 클래스"""
     
     def __init__(self):
         self.knowledge_base = FinancialSecurityKnowledgeBase()
         self.templates = self._build_korean_templates()
         self.examples = self._build_korean_examples()
         
-        # 캐시
         self.prompt_cache = {}
         self.template_cache = {}
+        self.max_cache_size = 200
         
-        # 통계
         self.stats = {
             "cache_hits": 0,
             "template_usage": {},
@@ -31,7 +30,6 @@ class PromptEngineer:
         """한국어 전용 템플릿"""
         templates = {}
         
-        # 객관식 기본 템플릿
         templates["mc_basic"] = """당신은 한국의 금융보안 전문가입니다.
 
 ### 절대 규칙
@@ -48,7 +46,6 @@ class PromptEngineer:
 
 정답:"""
 
-        # 객관식 부정형 템플릿  
         templates["mc_negative"] = """당신은 한국의 금융보안 전문가입니다.
 
 ### 절대 규칙
@@ -65,7 +62,6 @@ class PromptEngineer:
 
 정답:"""
 
-        # 주관식 기본 템플릿
         templates["subj_basic"] = """당신은 한국의 금융보안 전문가입니다.
 
 ### 절대 규칙
@@ -83,7 +79,6 @@ class PromptEngineer:
 
 답변:"""
 
-        # 도메인별 주관식 템플릿
         templates["subj_personal_info"] = """당신은 한국의 개인정보보호 전문가입니다.
 
 ### 절대 규칙
@@ -155,8 +150,8 @@ class PromptEngineer:
                      analysis: Dict, structure: Dict) -> str:
         """프롬프트 생성"""
         
-        # 캐시 확인
-        cache_key = hashlib.md5(f"{question[:100]}{question_type}".encode()).hexdigest()[:16]
+        # 간단한 캐시 키 생성
+        cache_key = hash(f"{question[:100]}{question_type}")
         if cache_key in self.prompt_cache:
             self.stats["cache_hits"] += 1
             return self.prompt_cache[cache_key]
@@ -166,10 +161,12 @@ class PromptEngineer:
         else:
             prompt = self._create_subj_prompt(question, analysis, structure)
         
-        # 캐시 저장
+        # 캐시 저장 (크기 제한)
+        if len(self.prompt_cache) >= self.max_cache_size:
+            oldest_key = next(iter(self.prompt_cache))
+            del self.prompt_cache[oldest_key]
         self.prompt_cache[cache_key] = prompt
         
-        # 통계 업데이트
         self._update_stats(analysis)
         
         return prompt
@@ -177,7 +174,6 @@ class PromptEngineer:
     def _create_mc_prompt(self, question: str, analysis: Dict, structure: Dict) -> str:
         """객관식 프롬프트 생성"""
         
-        # 부정형 확인
         if structure.get("has_negative", False):
             negative_keywords = ["해당하지 않는", "적절하지 않은", "옳지 않은", "틀린"]
             keyword = next((k for k in negative_keywords if k in question), "해당하지 않는")
@@ -196,7 +192,6 @@ class PromptEngineer:
     def _create_subj_prompt(self, question: str, analysis: Dict, structure: Dict) -> str:
         """주관식 프롬프트 생성"""
         
-        # 도메인 특화
         domains = analysis.get("domain", ["일반"])
         
         if "개인정보보호" in domains:
@@ -284,14 +279,11 @@ class PromptEngineer:
     def optimize_for_model(self, prompt: str, model_name: str) -> str:
         """모델별 최적화"""
         
-        # 한국어 강제 접두사 추가
         korean_prefix = "### 중요: 반드시 한국어로만 답변하세요 ###\n\n"
         
         if "solar" in model_name.lower():
-            # SOLAR 모델용
             optimized = f"{korean_prefix}### User:\n{prompt}\n\n### Assistant:\n"
         elif "llama" in model_name.lower():
-            # Llama 모델용
             optimized = f"{korean_prefix}<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n{prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
         else:
             optimized = korean_prefix + prompt
@@ -300,7 +292,6 @@ class PromptEngineer:
     
     def _update_stats(self, analysis: Dict):
         """통계 업데이트"""
-        # 도메인 분포
         domains = analysis.get("domain", ["일반"])
         for domain in domains:
             self.stats["domain_distribution"][domain] = self.stats["domain_distribution"].get(domain, 0) + 1
@@ -319,8 +310,7 @@ class PromptEngineer:
     def cleanup(self):
         """리소스 정리"""
         if self.stats["template_usage"]:
-            print(f"\n=== 프롬프트 통계 ===")
-            print(f"총 생성: {sum(self.stats['template_usage'].values())}개")
+            print(f"프롬프트 생성: {sum(self.stats['template_usage'].values())}개")
             print(f"캐시 히트: {self.stats['cache_hits']}회")
             
             if self.stats["template_usage"]:

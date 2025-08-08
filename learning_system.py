@@ -13,6 +13,22 @@ from dataclasses import dataclass, asdict
 from collections import defaultdict
 import time
 
+def _default_list():
+    """기본 리스트 반환"""
+    return []
+
+def _default_int():
+    """기본 정수값 반환"""
+    return 0
+
+def _default_float():
+    """기본 실수값 반환"""
+    return 0.0
+
+def _default_int_dict():
+    """기본 정수 딕셔너리 반환"""
+    return defaultdict(_default_int)
+
 @dataclass
 class LearningData:
     """학습 데이터"""
@@ -28,15 +44,13 @@ class LearningData:
     korean_quality: float = 0.0
 
 class UnifiedLearningSystem:
-    """통합 학습 시스템 - 한국어 특화"""
+    """통합 학습 시스템"""
     
     def __init__(self):
-        # 학습 데이터 저장소
         self.training_data = []
-        self.pattern_bank = defaultdict(list)
-        self.answer_statistics = defaultdict(lambda: defaultdict(int))
+        self.pattern_bank = defaultdict(_default_list)
+        self.answer_statistics = defaultdict(_default_int_dict)
         
-        # 한국어 품질 추적
         self.korean_quality_stats = {
             "total_samples": 0,
             "high_quality": 0,
@@ -45,15 +59,12 @@ class UnifiedLearningSystem:
             "avg_quality": 0.0
         }
         
-        # 학습 규칙
         self.learned_rules = {}
-        self.rule_performance = defaultdict(list)
+        self.rule_performance = defaultdict(_default_list)
         
-        # 한국어 템플릿 뱅크
         self.korean_templates = self._initialize_korean_templates()
-        self.successful_answers = defaultdict(list)
+        self.successful_answers = defaultdict(_default_list)
         
-        # 성능 추적
         self.performance_history = []
         self.learning_metrics = {
             "total_samples": 0,
@@ -63,7 +74,6 @@ class UnifiedLearningSystem:
             "korean_quality_avg": 0.0
         }
         
-        # 캐시
         self.prediction_cache = {}
         
     def _initialize_korean_templates(self) -> Dict[str, List[str]]:
@@ -100,21 +110,17 @@ class UnifiedLearningSystem:
         """한국어 품질 평가"""
         
         if question_type == "multiple_choice":
-            # 객관식은 숫자면 만점
             if re.match(r'^[1-5]$', text.strip()):
                 return 1.0
             return 0.5
         
-        # 한자 확인
         if re.search(r'[\u4e00-\u9fff]', text):
             return 0.0
         
-        # 이상한 문자 확인
         weird_chars = re.findall(r'[^\w\s가-힣0-9.,!?()·\-]', text)
         if len(weird_chars) > 10:
             return 0.1
         
-        # 한국어 비율 계산
         korean_chars = len(re.findall(r'[가-힣]', text))
         total_chars = len(re.sub(r'[^\w]', '', text))
         
@@ -123,16 +129,13 @@ class UnifiedLearningSystem:
         
         korean_ratio = korean_chars / total_chars
         
-        # 영어 비율
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
-        # 전문성 평가
         professional_terms = ['법', '규정', '조치', '관리', '보안', '체계', '정책']
         prof_count = sum(1 for term in professional_terms if term in text)
         prof_bonus = min(prof_count * 0.05, 0.2)
         
-        # 품질 점수 계산
         quality = korean_ratio * 0.7
         quality -= english_ratio * 0.3
         quality += prof_bonus
@@ -144,7 +147,7 @@ class UnifiedLearningSystem:
                           predicted_answer: str, confidence: float,
                           question_type: str, domain: List[str],
                           question_id: str = None) -> None:
-        """학습 샘플 추가 - 한국어 품질 포함"""
+        """학습 샘플 추가"""
         
         is_correct = (correct_answer == predicted_answer)
         korean_quality = self._evaluate_korean_quality(predicted_answer, question_type)
@@ -168,10 +171,8 @@ class UnifiedLearningSystem:
         if is_correct:
             self.learning_metrics["correct_predictions"] += 1
         
-        # 한국어 품질 통계 업데이트
         self._update_korean_quality_stats(korean_quality)
         
-        # 성공적인 한국어 답변 저장
         if korean_quality > 0.8 and question_type != "multiple_choice":
             for d in domain:
                 self.successful_answers[d].append({
@@ -179,11 +180,9 @@ class UnifiedLearningSystem:
                     "confidence": confidence,
                     "structure": self._analyze_answer_structure(predicted_answer)
                 })
-                # 도메인별 최대 50개만 유지
                 if len(self.successful_answers[d]) > 50:
                     self.successful_answers[d] = self.successful_answers[d][-50:]
         
-        # 패턴 추출 및 저장
         self._extract_patterns(sample)
     
     def _update_korean_quality_stats(self, quality: float) -> None:
@@ -197,7 +196,6 @@ class UnifiedLearningSystem:
         else:
             self.korean_quality_stats["low_quality"] += 1
         
-        # 평균 품질 계산
         total = self.korean_quality_stats["total_samples"]
         if total > 0:
             prev_avg = self.korean_quality_stats["avg_quality"]
@@ -220,7 +218,6 @@ class UnifiedLearningSystem:
         
         question_lower = sample.question.lower()
         
-        # 키워드 기반 패턴
         keywords = self._extract_keywords(question_lower)
         for keyword in keywords:
             self.pattern_bank[keyword].append({
@@ -230,11 +227,11 @@ class UnifiedLearningSystem:
                 "korean_quality": sample.korean_quality
             })
         
-        # 도메인별 답변 분포
         for domain in sample.domain:
+            if domain not in self.answer_statistics:
+                self.answer_statistics[domain] = defaultdict(_default_int)
             self.answer_statistics[domain][sample.correct_answer] += 1
         
-        # 문제 유형별 패턴
         if sample.question_type == "multiple_choice":
             self._learn_mc_pattern(sample)
         else:
@@ -244,22 +241,18 @@ class UnifiedLearningSystem:
         """키워드 추출"""
         keywords = []
         
-        # 법령 관련
         if "법" in text:
             laws = re.findall(r'\w+법', text)
             keywords.extend(laws)
         
-        # 조항 관련
         articles = re.findall(r'제\d+조', text)
         keywords.extend(articles)
         
-        # 보안 용어
         security_terms = ["개인정보", "암호화", "보안", "인증", "접근", "통제", "관리", "전자금융", "침해", "유출"]
         for term in security_terms:
             if term in text:
                 keywords.append(term)
         
-        # 문제 유형
         if "정의" in text:
             keywords.append("definition")
         if "해당하지" in text or "적절하지" in text:
@@ -272,28 +265,24 @@ class UnifiedLearningSystem:
     def _learn_mc_pattern(self, sample: LearningData) -> None:
         """객관식 패턴 학습"""
         
-        # 부정형 문제 패턴
         if "해당하지" in sample.question or "적절하지" in sample.question:
             pattern_key = "negative_mc"
             if pattern_key not in self.learned_rules:
                 self.learned_rules[pattern_key] = {
-                    "answers": defaultdict(float),
+                    "answers": defaultdict(_default_float),
                     "confidence": 0.5
                 }
             
             self.learned_rules[pattern_key]["answers"][sample.correct_answer] += 1
             
-            # 성능 추적
             self.rule_performance[pattern_key].append(sample.is_correct)
     
     def _learn_subjective_pattern(self, sample: LearningData) -> None:
         """주관식 패턴 학습"""
         
-        # 한국어 품질이 높은 경우만 학습
         if sample.korean_quality < 0.7:
             return
         
-        # 도메인별 템플릿 학습
         for domain in sample.domain:
             pattern_key = f"subj_{domain}"
             if pattern_key not in self.learned_rules:
@@ -304,16 +293,13 @@ class UnifiedLearningSystem:
                 }
             
             if sample.is_correct and len(sample.correct_answer) > 50:
-                # 성공적인 답변 템플릿 저장
                 self.learned_rules[pattern_key]["templates"].append({
                     "text": sample.correct_answer[:300],
                     "quality": sample.korean_quality,
                     "structure": self._analyze_answer_structure(sample.correct_answer)
                 })
                 
-                # 최대 20개만 유지
                 if len(self.learned_rules[pattern_key]["templates"]) > 20:
-                    # 품질 기준으로 정렬하여 상위 20개만 유지
                     self.learned_rules[pattern_key]["templates"].sort(
                         key=lambda x: x["quality"], reverse=True
                     )
@@ -321,9 +307,8 @@ class UnifiedLearningSystem:
     
     def predict_with_learning(self, question: str, question_type: str,
                             domain: List[str]) -> Tuple[str, float]:
-        """학습 기반 예측 - 한국어 품질 우선"""
+        """학습 기반 예측"""
         
-        # 캐시 확인
         cache_key = hashlib.md5(f"{question}{question_type}".encode()).hexdigest()[:12]
         if cache_key in self.prediction_cache:
             return self.prediction_cache[cache_key]
@@ -333,7 +318,6 @@ class UnifiedLearningSystem:
         else:
             prediction = self._predict_subjective_korean(question, domain)
         
-        # 캐시 저장
         self.prediction_cache[cache_key] = prediction
         
         return prediction
@@ -341,7 +325,6 @@ class UnifiedLearningSystem:
     def _predict_mc(self, question: str, domain: List[str]) -> Tuple[str, float]:
         """객관식 예측"""
         
-        # 부정형 확인
         if "해당하지" in question or "적절하지" in question:
             if "negative_mc" in self.learned_rules:
                 answers = self.learned_rules["negative_mc"]["answers"]
@@ -350,7 +333,6 @@ class UnifiedLearningSystem:
                     confidence = min(best_answer[1] / sum(answers.values()), 0.8)
                     return best_answer[0], confidence
         
-        # 도메인 기반 예측
         for d in domain:
             if d in self.answer_statistics:
                 stats = self.answer_statistics[d]
@@ -360,16 +342,13 @@ class UnifiedLearningSystem:
                     confidence = best_answer[1] / total
                     return best_answer[0], confidence * 0.7
         
-        # 기본값
         return "3", 0.3
     
     def _predict_subjective_korean(self, question: str, domain: List[str]) -> Tuple[str, float]:
-        """주관식 예측 - 한국어 품질 우선"""
+        """주관식 예측"""
         
-        # 성공적인 답변에서 선택
         for d in domain:
             if d in self.successful_answers and self.successful_answers[d]:
-                # 가장 최근의 고품질 답변 선택
                 best_answers = sorted(
                     self.successful_answers[d],
                     key=lambda x: x["confidence"],
@@ -380,17 +359,14 @@ class UnifiedLearningSystem:
                     selected = best_answers[0]
                     return selected["answer"], selected["confidence"] * 0.8
         
-        # 도메인별 템플릿 활용
         for d in domain:
             pattern_key = f"subj_{d}"
             if pattern_key in self.learned_rules:
                 templates = self.learned_rules[pattern_key].get("templates", [])
                 if templates:
-                    # 품질이 가장 높은 템플릿 선택
                     best_template = max(templates, key=lambda x: x["quality"])
                     return best_template["text"], 0.6
         
-        # 기본 한국어 응답
         return self._generate_korean_fallback(domain), 0.4
     
     def _generate_korean_fallback(self, domains: List[str]) -> str:
@@ -417,7 +393,6 @@ class UnifiedLearningSystem:
     def optimize_rules(self) -> None:
         """규칙 최적화"""
         
-        # 성능이 낮은 규칙 제거
         rules_to_remove = []
         
         for rule_name, performance in self.rule_performance.items():
@@ -436,14 +411,14 @@ class UnifiedLearningSystem:
         """학습 데이터 저장"""
         
         save_data = {
-            "training_data": [asdict(d) for d in self.training_data[-1000:]],  # 최근 1000개만
+            "training_data": [asdict(d) for d in self.training_data[-1000:]],
             "pattern_bank": dict(self.pattern_bank),
-            "answer_statistics": dict(self.answer_statistics),
+            "answer_statistics": {k: dict(v) for k, v in self.answer_statistics.items()},
             "learned_rules": self.learned_rules,
-            "rule_performance": dict(self.rule_performance),
+            "rule_performance": {k: list(v) for k, v in self.rule_performance.items()},
             "learning_metrics": self.learning_metrics,
             "korean_quality_stats": self.korean_quality_stats,
-            "successful_answers": dict(self.successful_answers)
+            "successful_answers": {k: list(v) for k, v in self.successful_answers.items()}
         }
         
         with open(filepath, 'wb') as f:
@@ -457,13 +432,27 @@ class UnifiedLearningSystem:
                 data = pickle.load(f)
             
             self.training_data = [LearningData(**d) for d in data.get("training_data", [])]
-            self.pattern_bank = defaultdict(list, data.get("pattern_bank", {}))
-            self.answer_statistics = defaultdict(lambda: defaultdict(int), data.get("answer_statistics", {}))
+            self.pattern_bank = defaultdict(_default_list, data.get("pattern_bank", {}))
+            
+            answer_stats = data.get("answer_statistics", {})
+            self.answer_statistics = defaultdict(_default_int_dict)
+            for k, v in answer_stats.items():
+                self.answer_statistics[k] = defaultdict(_default_int, v)
+            
             self.learned_rules = data.get("learned_rules", {})
-            self.rule_performance = defaultdict(list, data.get("rule_performance", {}))
+            
+            rule_perf = data.get("rule_performance", {})
+            self.rule_performance = defaultdict(_default_list)
+            for k, v in rule_perf.items():
+                self.rule_performance[k] = list(v)
+            
             self.learning_metrics = data.get("learning_metrics", self.learning_metrics)
             self.korean_quality_stats = data.get("korean_quality_stats", self.korean_quality_stats)
-            self.successful_answers = defaultdict(list, data.get("successful_answers", {}))
+            
+            success_answers = data.get("successful_answers", {})
+            self.successful_answers = defaultdict(_default_list)
+            for k, v in success_answers.items():
+                self.successful_answers[k] = list(v)
             
             return True
         except Exception as e:

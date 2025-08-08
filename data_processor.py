@@ -21,30 +21,26 @@ class ProcessedAnswer:
     korean_quality: float
 
 class DataProcessor:
-    """데이터 처리 클래스 - 한국어 특화"""
+    """데이터 처리 클래스"""
     
     def __init__(self):
         self.knowledge_base = FinancialSecurityKnowledgeBase()
         self.answer_extraction_patterns = self._build_extraction_patterns()
         self.validation_rules = self._build_validation_rules()
         
-        # 성능 캐시
         self.structure_cache = {}
         self.pattern_cache = {}
+        self.max_cache_size = 500
         
-        # 컴파일된 정규식
         self.compiled_patterns = self._compile_all_patterns()
         
-        # 통계적 학습 데이터
         self.answer_statistics = self._initialize_statistics()
         
-        # 한국어 정리 패턴 - 확장
         self.korean_cleanup_patterns = self._build_comprehensive_korean_patterns()
         
     def _build_comprehensive_korean_patterns(self) -> Dict[str, str]:
         """포괄적 한국어 정리 패턴"""
         return {
-            # 중국어 간체/번체 -> 한국어
             r'[軟软][件体體]': '소프트웨어',
             r'[硬硬][件体體]': '하드웨어',
             r'[危険險]害': '위험',
@@ -77,31 +73,7 @@ class DataProcessor:
             r'[認认][證证]': '인증',
             r'加密': '암호화',
             r'[網网][路络絡]': '네트워크',
-            r'[數数][據据]': '데이터',
-            r'[檔档]案': '파일',
-            r'[儲储]存': '저장',
-            r'[備备]份': '백업',
-            r'[復复][原元]': '복원',
-            r'[權权]限': '권한',
-            r'[訪访][問问]': '접근',
-            r'[控控]制': '통제',
-            r'[監监][督督]': '감독',
-            r'[審审][計计]': '감사',
-            r'[評评][估价]': '평가',
-            r'[風风][險险]': '위험',
-            r'[對对][策책]': '대책',
-            r'[預预]防': '예방',
-            r'[應应][對对]': '대응',
-            r'[緊紧]急': '긴급',
-            r'[災灾]害': '재해',
-            r'[恢复復]': '복구',
             
-            # 일본어 잔재 제거
-            r'[あ-ん]': '',
-            r'[ア-ン]': '',
-            r'[一-龯]': '',
-            
-            # 영어 기술 용어 -> 한국어
             r'\bsoftware\b': '소프트웨어',
             r'\bhardware\b': '하드웨어',
             r'\bsystem\b': '시스템',
@@ -155,39 +127,31 @@ class DataProcessor:
         }
     
     def _clean_korean_text(self, text: str) -> str:
-        """한국어 텍스트 정리 - 강화 버전"""
+        """한국어 텍스트 정리"""
         
         if not text:
             return ""
         
-        # 1단계: 이상한 유니코드 문자 제거
         text = re.sub(r'[\u0000-\u001f\u007f-\u009f]', '', text)
         
-        # 2단계: 한자/영어 -> 한국어 변환
         for pattern, replacement in self.korean_cleanup_patterns.items():
             text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
         
-        # 3단계: 남은 한자 완전 제거
         text = re.sub(r'[\u4e00-\u9fff]+', '', text)
-        text = re.sub(r'[\u3400-\u4dbf]+', '', text)  # 확장 한자
+        text = re.sub(r'[\u3400-\u4dbf]+', '', text)
         
-        # 4단계: 일본어 문자 제거
-        text = re.sub(r'[\u3040-\u309f]+', '', text)  # 히라가나
-        text = re.sub(r'[\u30a0-\u30ff]+', '', text)  # 가타카나
+        text = re.sub(r'[\u3040-\u309f]+', '', text)
+        text = re.sub(r'[\u30a0-\u30ff]+', '', text)
         
-        # 5단계: 특수문자 정리 (한글, 숫자, 기본 문장부호만 유지)
         text = re.sub(r'[^\w\s가-힣0-9.,!?()·\-\n]', '', text)
         
-        # 6단계: 남은 영어 단어 제거 (괄호 안은 유지)
         text = re.sub(r'\b[A-Za-z]+\b(?!\))', '', text)
         
-        # 7단계: 중복 공백 및 구두점 정리
         text = re.sub(r'\s+', ' ', text)
         text = re.sub(r'\.{2,}', '.', text)
         text = re.sub(r',{2,}', ',', text)
         text = re.sub(r'\n\s*\n', '\n', text)
         
-        # 8단계: 불완전한 문장 보완
         text = text.strip()
         if text and not text[-1] in '.!?':
             text += '.'
@@ -197,21 +161,17 @@ class DataProcessor:
     def _validate_korean_text(self, text: str, question_type: str) -> Tuple[bool, float]:
         """한국어 텍스트 검증"""
         
-        # 객관식은 숫자만 확인
         if question_type == "multiple_choice":
             if re.match(r'^[1-5]$', text.strip()):
                 return True, 1.0
             return False, 0.0
         
-        # 주관식 검증
         if not text or len(text.strip()) < 20:
             return False, 0.0
         
-        # 한자 확인
         if re.search(r'[\u4e00-\u9fff]', text):
             return False, 0.0
         
-        # 한국어 비율 계산
         korean_chars = len(re.findall(r'[가-힣]', text))
         total_chars = len(re.sub(r'[^\w]', '', text))
         
@@ -220,11 +180,9 @@ class DataProcessor:
         
         korean_ratio = korean_chars / total_chars
         
-        # 최소 70% 한국어 필요
         if korean_ratio < 0.7:
             return False, korean_ratio
         
-        # 영어 비율 체크
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
@@ -284,8 +242,8 @@ class DataProcessor:
     def analyze_question_structure(self, question: str) -> Dict:
         """질문 구조 분석"""
         
-        # 캐시 확인
-        q_hash = hashlib.md5(question.encode()).hexdigest()[:12]
+        # 간단한 캐시 키 생성
+        q_hash = hash(question[:200])
         if q_hash in self.structure_cache:
             return self.structure_cache[q_hash]
         
@@ -304,7 +262,6 @@ class DataProcessor:
         question_parts = []
         choices = []
         
-        # 선택지 패턴
         choice_patterns = [
             re.compile(r"^\s*([1-5])\s+(.+)"),
             re.compile(r"^\s*([1-5])[.)]\s*(.+)"),
@@ -339,12 +296,13 @@ class DataProcessor:
         structure["question_type"] = "multiple_choice" if len(choices) >= 2 else "subjective"
         structure["has_negative"] = self._detect_negative_question(structure["question_text"])
         
-        # 분석
-        structure["complexity_score"] = self._calculate_complexity_score(question)
+        # 간단한 분석만 수행
         structure["domain_hints"] = self._extract_domain_hints(question)
-        structure["structural_features"] = self._analyze_structural_features(question, choices)
         
-        # 캐시 저장
+        # 캐시 저장 (크기 제한)
+        if len(self.structure_cache) >= self.max_cache_size:
+            oldest_key = next(iter(self.structure_cache))
+            del self.structure_cache[oldest_key]
         self.structure_cache[q_hash] = structure
         
         return structure
@@ -365,33 +323,6 @@ class DataProcessor:
         compiled_negative = re.compile("|".join(negative_patterns), re.IGNORECASE)
         return bool(compiled_negative.search(question_text))
     
-    def _calculate_complexity_score(self, question: str) -> float:
-        """복잡도 점수 계산"""
-        score = 0.0
-        
-        # 길이 기반
-        length = len(question)
-        score += min(length / 2000, 0.3)
-        
-        # 구조 복잡도
-        line_count = question.count('\n')
-        score += min(line_count / 15, 0.2)
-        
-        # 법령 관련성
-        law_terms = len(re.findall(r'법|조|항|규정|시행령|시행규칙', question))
-        score += min(law_terms * 0.05, 0.2)
-        
-        # 전문 용어 밀도
-        tech_terms = len(re.findall(r'암호화|인증|해시|PKI|SSL|접근제어|보안|시스템', question))
-        score += min(tech_terms * 0.03, 0.15)
-        
-        # 숫자 및 기호 복잡도
-        numbers = len(re.findall(r'\d+', question))
-        symbols = len(re.findall(r'[%@#$&*()]', question))
-        score += min((numbers + symbols) * 0.01, 0.15)
-        
-        return min(score, 1.0)
-    
     def _extract_domain_hints(self, question: str) -> List[str]:
         """도메인 힌트 추출"""
         domain_keywords = {
@@ -411,49 +342,17 @@ class DataProcessor:
             if match_count >= 1:
                 detected_domains.append((domain, match_count / len(keywords)))
         
-        # 신뢰도 순으로 정렬
         detected_domains.sort(key=lambda x: x[1], reverse=True)
         return [domain for domain, confidence in detected_domains if confidence > 0.1]
-    
-    def _analyze_structural_features(self, question: str, choices: List[Dict]) -> Dict:
-        """구조적 특징 분석"""
-        features = {
-            "avg_choice_length": 0,
-            "choice_length_variance": 0,
-            "has_code_snippets": False,
-            "has_tables": False,
-            "has_lists": False,
-            "question_to_choice_ratio": 0
-        }
-        
-        if choices:
-            choice_lengths = [choice["length"] for choice in choices]
-            features["avg_choice_length"] = np.mean(choice_lengths)
-            features["choice_length_variance"] = np.var(choice_lengths)
-            features["question_to_choice_ratio"] = len(question) / np.mean(choice_lengths)
-        
-        # 코드 스니펫 감지
-        features["has_code_snippets"] = bool(re.search(r'```|<code>|{|}|\(\)|function|class', question))
-        
-        # 표 감지
-        features["has_tables"] = bool(re.search(r'\|.*\||\t.*\t', question))
-        
-        # 리스트 감지
-        features["has_lists"] = bool(re.search(r'^\s*[-*]\s+|^\s*\d+\.\s+', question, re.MULTILINE))
-        
-        return features
     
     def extract_mc_answer_fast(self, response: str) -> str:
         """빠른 객관식 답변 추출"""
         
-        # 한국어 정리
         cleaned_response = self._clean_korean_text(response)
         
-        # 단순 숫자 확인
         if re.match(r'^[1-5]$', cleaned_response.strip()):
             return cleaned_response.strip()
         
-        # 패턴 매칭
         for category in ["explicit_answer", "choice_reference"]:
             patterns = self.compiled_patterns.get(category, [])
             for pattern in patterns:
@@ -463,18 +362,15 @@ class DataProcessor:
                     if self.validation_rules["choice_range"](answer):
                         return answer
         
-        # 숫자 검색
         numbers = re.findall(r'[1-5]', cleaned_response)
         if numbers:
             return numbers[0]
         
-        # 기본값
         return "3"
     
     def extract_answer_intelligently(self, response: str, question: str) -> ProcessedAnswer:
         """지능형 답변 추출"""
         
-        # 한국어 정리
         cleaned_response = self._clean_korean_text(response)
         question_structure = self.analyze_question_structure(question)
         
@@ -486,7 +382,6 @@ class DataProcessor:
     def _extract_mc_answer_optimized(self, response: str, question_structure: Dict) -> ProcessedAnswer:
         """최적화 객관식 답변 추출"""
         
-        # 단순 숫자 확인
         if re.match(r'^[1-5]$', response.strip()):
             return ProcessedAnswer(
                 final_answer=response.strip(),
@@ -496,7 +391,6 @@ class DataProcessor:
                 korean_quality=1.0
             )
         
-        # 패턴 매칭
         for category, patterns in self.compiled_patterns.items():
             for pattern in patterns:
                 match = pattern.search(response)
@@ -511,7 +405,6 @@ class DataProcessor:
                             korean_quality=1.0
                         )
         
-        # 숫자 검색
         numbers = re.findall(r'[1-5]', response)
         if numbers:
             return ProcessedAnswer(
@@ -522,7 +415,6 @@ class DataProcessor:
                 korean_quality=1.0
             )
         
-        # 통계적 폴백
         return ProcessedAnswer(
             final_answer="3",
             confidence=0.3,
@@ -535,11 +427,9 @@ class DataProcessor:
                                           question_structure: Dict) -> ProcessedAnswer:
         """최적화 주관식 답변 추출"""
         
-        # 한국어 품질 검증
         is_valid, korean_quality = self._validate_korean_text(response, "subjective")
         
         if not is_valid:
-            # 폴백 답변 생성
             fallback = self._generate_domain_specific_fallback(question_structure)
             return ProcessedAnswer(
                 final_answer=fallback,
@@ -549,7 +439,6 @@ class DataProcessor:
                 korean_quality=0.8
             )
         
-        # 길이 조정
         if len(response) < 50:
             fallback = self._generate_domain_specific_fallback(question_structure)
             return ProcessedAnswer(
@@ -589,20 +478,16 @@ class DataProcessor:
                           question_type: str) -> str:
         """통합 후처리 함수"""
         
-        # 한국어 정리
         cleaned_response = self._clean_korean_text(raw_response)
         
         if question_type == "multiple_choice":
-            # 빠른 추출
             return self.extract_mc_answer_fast(cleaned_response)
         else:
-            # 주관식 처리
             processed = self.extract_answer_intelligently(cleaned_response, question)
             
             if self.validate_final_answer(processed, question, question_type):
                 return processed.final_answer
             else:
-                # 폴백
                 structure = self.analyze_question_structure(question)
                 return self._generate_domain_specific_fallback(structure)
     
@@ -612,14 +497,12 @@ class DataProcessor:
         
         answer = processed_answer.final_answer
         
-        # 기본 검증
         if not self.validation_rules["not_empty"](answer):
             return False
         
         if question_type == "multiple_choice":
             return self.validation_rules["choice_range"](answer)
         else:
-            # 주관식 검증
             validations = [
                 self.validation_rules["length_appropriate"](answer),
                 self.validation_rules["meaningful_content"](answer),
@@ -630,7 +513,6 @@ class DataProcessor:
                 processed_answer.korean_quality > 0.5
             ]
             
-            # 70% 이상 통과하면 유효
             return sum(validations) / len(validations) >= 0.7
     
     def get_processing_statistics(self) -> Dict:
