@@ -39,7 +39,6 @@ class ModelHandler:
         
         print(f"모델 로딩: {model_name}")
         
-        # 빠른 토크나이저 사용
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_name,
             trust_remote_code=True,
@@ -50,7 +49,6 @@ class ModelHandler:
             self.tokenizer.pad_token = self.tokenizer.eos_token
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         
-        # 4-bit 양자화 설정
         model_kwargs = {
             "trust_remote_code": True,
             "torch_dtype": torch.bfloat16,
@@ -67,7 +65,6 @@ class ModelHandler:
             )
             model_kwargs["quantization_config"] = quantization_config
             
-        # Flash Attention 시도
         try:
             import flash_attn
             model_kwargs["attn_implementation"] = "flash_attention_2"
@@ -86,7 +83,6 @@ class ModelHandler:
         
         self.model.eval()
         
-        # torch.compile 시도
         if hasattr(torch, 'compile') and torch.__version__ >= "2.0.0":
             try:
                 self.model = torch.compile(self.model, mode="reduce-overhead")
@@ -96,7 +92,6 @@ class ModelHandler:
         
         self._prepare_korean_tokens()
         
-        # 최적화된 캐시 시스템
         self.response_cache = {}
         self.cache_hits = 0
         self.max_cache_size = 200
@@ -108,7 +103,7 @@ class ModelHandler:
         self.korean_start_tokens = []
         korean_chars = "가나다라마바사아자차카타파하개내대래매배새애재채캐태패해"
         
-        for char in korean_chars[:10]:  # 최적화: 10개만 사용
+        for char in korean_chars[:10]:
             tokens = self.tokenizer.encode(char, add_special_tokens=False)
             if tokens:
                 self.korean_start_tokens.extend(tokens)
@@ -117,22 +112,21 @@ class ModelHandler:
     
     def _create_korean_optimized_prompt(self, prompt: str, question_type: str) -> str:
         """한국어 최적화 프롬프트 생성"""
-        korean_prefix = "### 한국어로만 답변하세요 ###\n\n"
-        
         if question_type == "multiple_choice":
+            korean_prefix = "### 중요: 반드시 1, 2, 3, 4, 5 중 하나의 숫자만 답하세요 ###\n\n"
             korean_example = "\n### 답변 예시\n정답: 2\n\n"
         else:
+            korean_prefix = "### 중요: 반드시 한국어로만 답변하세요 ###\n\n"
             korean_example = "\n### 답변 예시\n관련 법령에 따라 체계적인 관리 방안을 수립하고 지속적인 개선이 필요합니다.\n\n"
         
         return korean_prefix + prompt + korean_example
     
     def generate_response(self, prompt: str, question_type: str,
-                         max_attempts: int = 1) -> InferenceResult:
+                         max_attempts: int = 2) -> InferenceResult:
         """응답 생성"""
         
         start_time = time.time()
         
-        # 캐시 확인
         cache_key = hash(prompt[:100])
         if cache_key in self.response_cache:
             self.cache_hits += 1
@@ -143,17 +137,17 @@ class ModelHandler:
         optimized_prompt = self._create_korean_optimized_prompt(prompt, question_type)
         
         best_result = None
-        best_korean_quality = 0
+        best_score = 0
         
         for attempt in range(max_attempts):
             try:
-                # 최적화된 생성 설정
                 if question_type == "multiple_choice":
                     gen_config = GenerationConfig(
-                        do_sample=False,  # 결정적 생성
-                        temperature=0.0,
-                        max_new_tokens=10,  # 매우 짧게
-                        repetition_penalty=1.0,
+                        do_sample=True,
+                        temperature=0.3,
+                        top_p=0.9,
+                        max_new_tokens=50,
+                        repetition_penalty=1.1,
                         pad_token_id=self.tokenizer.pad_token_id,
                         eos_token_id=self.tokenizer.eos_token_id,
                         early_stopping=True,
@@ -165,7 +159,7 @@ class ModelHandler:
                         temperature=0.7,
                         top_p=0.9,
                         top_k=50,
-                        max_new_tokens=150,  # 줄임
+                        max_new_tokens=200,
                         repetition_penalty=1.05,
                         no_repeat_ngram_size=3,
                         pad_token_id=self.tokenizer.pad_token_id,
@@ -178,7 +172,7 @@ class ModelHandler:
                     optimized_prompt,
                     return_tensors="pt",
                     truncation=True,
-                    max_length=1024  # 줄임
+                    max_length=1024
                 ).to(self.model.device)
                 
                 with torch.no_grad():
@@ -193,115 +187,160 @@ class ModelHandler:
                     skip_special_tokens=True
                 ).strip()
                 
-                korean_quality = self._evaluate_korean_quality(raw_response)
+                print(f"[DEBUG] 시도 {attempt+1} 원본 응답: {raw_response[:100]}")
+                
                 cleaned_response = self._clean_korean_text(raw_response)
+                print(f"[DEBUG] 정리된 응답: {cleaned_response[:100]}")
                 
                 if question_type == "multiple_choice":
-                    numbers = re.findall(r'[1-5]', cleaned_response)
-                    if numbers:
-                        cleaned_response = numbers[0]
-                        korean_quality = 1.0
-                    else:
-                        cleaned_response = "3"
-                        korean_quality = 0.5
-                
-                if question_type != "multiple_choice" and korean_quality < 0.5:
-                    cleaned_response = self._get_korean_fallback_response(prompt)
-                    korean_quality = 0.8
-                
-                result = self._evaluate_response(cleaned_response, question_type)
-                result.korean_quality = korean_quality
-                result.inference_time = time.time() - start_time
-                
-                if korean_quality > best_korean_quality:
-                    best_korean_quality = korean_quality
-                    best_result = result
-                
-                if korean_quality > 0.7:
-                    break
+                    extracted_answer = self._extract_mc_answer_enhanced(cleaned_response)
+                    print(f"[DEBUG] 추출된 답변: {extracted_answer}")
                     
+                    if extracted_answer and extracted_answer.isdigit() and 1 <= int(extracted_answer) <= 5:
+                        result = InferenceResult(
+                            response=extracted_answer,
+                            confidence=0.8,
+                            reasoning_quality=0.7,
+                            analysis_depth=2,
+                            korean_quality=1.0,
+                            inference_time=time.time() - start_time
+                        )
+                        
+                        if len(self.response_cache) >= self.max_cache_size:
+                            oldest_key = next(iter(self.response_cache))
+                            del self.response_cache[oldest_key]
+                        self.response_cache[cache_key] = result
+                        
+                        print(f"[DEBUG] 성공적인 답변 추출: {extracted_answer}")
+                        return result
+                    else:
+                        print(f"[DEBUG] 답변 추출 실패, 계속 시도...")
+                        continue
+                
+                else:
+                    korean_quality = self._evaluate_korean_quality_relaxed(cleaned_response, question_type)
+                    print(f"[DEBUG] 한국어 품질: {korean_quality}")
+                    
+                    if korean_quality > 0.3:
+                        result = self._evaluate_response(cleaned_response, question_type)
+                        result.korean_quality = korean_quality
+                        result.inference_time = time.time() - start_time
+                        
+                        score = korean_quality * result.confidence
+                        if score > best_score:
+                            best_score = score
+                            best_result = result
+                    
+                    if korean_quality > 0.6:
+                        break
+                        
             except Exception as e:
-                print(f"생성 오류 (시도 {attempt+1}): {e}")
+                print(f"[DEBUG] 생성 오류 (시도 {attempt+1}): {e}")
                 continue
         
         if best_result is None:
+            print(f"[DEBUG] 모든 시도 실패, 폴백 생성")
             best_result = self._create_fallback_result(question_type)
             best_result.inference_time = time.time() - start_time
         
-        # 캐시 저장
-        if best_korean_quality > 0.5:
-            if len(self.response_cache) >= self.max_cache_size:
-                oldest_key = next(iter(self.response_cache))
-                del self.response_cache[oldest_key]
-            self.response_cache[cache_key] = best_result
-        
         return best_result
     
-    def _clean_korean_text(self, text: str) -> str:
-        """한국어 텍스트 정리"""
+    def _extract_mc_answer_enhanced(self, text: str) -> str:
+        """강화된 객관식 답변 추출"""
         
-        # 한자 및 외국어 매핑
+        patterns = [
+            r'정답[:\s]*([1-5])',
+            r'답[:\s]*([1-5])',
+            r'최종\s*답[:\s]*([1-5])',
+            r'선택[:\s]*([1-5])',
+            r'번호[:\s]*([1-5])',
+            r'^([1-5])$',
+            r'^([1-5])\s*$',
+            r'([1-5])번',
+            r'선택지\s*([1-5])',
+            r'([1-5])\s*가\s*정답',
+            r'([1-5])\s*이\s*정답',
+            r'따라서\s*([1-5])',
+            r'그러므로\s*([1-5])',
+            r'결론적으로\s*([1-5])',
+            r'분석\s*결과\s*([1-5])',
+            r'종합하면\s*([1-5])'
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE | re.MULTILINE)
+            if matches:
+                answer = matches[0]
+                if answer.isdigit() and 1 <= int(answer) <= 5:
+                    return answer
+        
+        numbers = re.findall(r'[1-5]', text)
+        if numbers:
+            return numbers[0]
+        
+        return ""
+    
+    def _clean_korean_text(self, text: str) -> str:
+        """한국어 텍스트 정리 (완화)"""
+        
+        if not text:
+            return ""
+        
         chinese_to_korean = {
             r'軟件|软件': '소프트웨어',
             r'金融': '금융',
             r'交易': '거래',
             r'安全': '안전',
-            r'資訊|资讯': '정보',
-            r'系統|系统': '시스템',
             r'管理': '관리',
-            r'技術|技术': '기술',
             r'個人|个人': '개인',
-            r'電子|电子': '전자',
-            r'認證|认证': '인증',
-            r'加密': '암호화'
+            r'資訊|资讯': '정보',
+            r'電子|电子': '전자'
         }
         
         for pattern, replacement in chinese_to_korean.items():
             text = re.sub(pattern, replacement, text)
         
-        # 한자 제거
         text = re.sub(r'[\u4e00-\u9fff]+', '', text)
-        
-        # 영어 단어 제거 (괄호 안은 제외)
-        text = re.sub(r'\b[A-Za-z]+\b(?!\))', '', text)
-        
-        # 특수문자 정리
-        text = re.sub(r'[^\w\s가-힣0-9.,!?()·\-]', '', text)
-        
-        # 공백 정리
+        text = re.sub(r'[^\w\s가-힣0-9.,!?()·\-\n]', ' ', text)
         text = re.sub(r'\s+', ' ', text)
-        text = re.sub(r'\n\s*\n', '\n', text)
         
         return text.strip()
     
-    def _evaluate_korean_quality(self, text: str) -> float:
-        """한국어 품질 평가"""
+    def _evaluate_korean_quality_relaxed(self, text: str, question_type: str) -> float:
+        """완화된 한국어 품질 평가"""
         
         if not text:
             return 0.0
         
-        # 한자 확인
+        if question_type == "multiple_choice":
+            if re.match(r'^[1-5]$', text.strip()):
+                return 1.0
+            if re.search(r'[1-5]', text):
+                return 0.8
+            return 0.0
+        
         if re.search(r'[\u4e00-\u9fff]', text):
-            return 0.2
+            return 0.1
         
-        korean_chars = len(re.findall(r'[가-힣]', text))
         total_chars = len(re.sub(r'[^\w]', '', text))
-        
         if total_chars == 0:
             return 0.0
         
+        korean_chars = len(re.findall(r'[가-힣]', text))
         korean_ratio = korean_chars / total_chars
+        
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
-        # 품질 점수 계산
-        quality = korean_ratio * 0.8
-        quality -= english_ratio * 0.6
+        quality = korean_ratio * 0.6
+        quality -= english_ratio * 0.2
         
-        # 전문 용어 보너스
-        professional_terms = ['법', '규정', '조치', '관리', '보안', '체계', '정책']
+        professional_terms = ['법', '규정', '조치', '관리', '보안', '체계']
         prof_count = sum(1 for term in professional_terms if term in text)
-        quality += min(prof_count * 0.05, 0.2)
+        quality += min(prof_count * 0.1, 0.3)
+        
+        if len(text) > 30:
+            quality += 0.1
         
         return max(0, min(1, quality))
     
@@ -314,8 +353,6 @@ class ModelHandler:
             return "전자금융거래법에 따라 전자적 장치를 통한 금융거래의 안전성을 확보하고 이용자를 보호하기 위한 방안이 요구됩니다."
         elif "보안" in prompt or "암호" in prompt:
             return "정보보안 관리체계를 통해 체계적인 보안 관리와 지속적인 위험 평가 및 개선이 필요합니다."
-        elif "관리체계" in prompt or "ISMS" in prompt:
-            return "정보보호관리체계는 조직의 정보자산 보호를 위한 정책과 절차, 기술적 대책을 종합적으로 관리하는 체계입니다."
         else:
             return "관련 법령과 규정에 따라 적절한 보안 조치를 수립하고 지속적인 관리와 개선이 필요합니다."
     
@@ -324,9 +361,9 @@ class ModelHandler:
         
         if question_type == "multiple_choice":
             return InferenceResult(
-                response="3",
-                confidence=0.4,
-                reasoning_quality=0.4,
+                response="2",
+                confidence=0.3,
+                reasoning_quality=0.3,
                 analysis_depth=1,
                 korean_quality=1.0
             )
@@ -365,14 +402,14 @@ class ModelHandler:
             reasoning = 0.5
             
             length = len(response)
-            if 80 <= length <= 400:
+            if 50 <= length <= 500:
                 confidence += 0.2
-            elif 50 <= length < 80:
+            elif 30 <= length < 50:
                 confidence += 0.1
             
-            keywords = ['법', '규정', '보안', '관리', '조치', '정책', '체계', '보호', '안전']
+            keywords = ['법', '규정', '보안', '관리', '조치', '정책', '체계']
             keyword_count = sum(1 for k in keywords if k in response)
-            if keyword_count >= 3:
+            if keyword_count >= 2:
                 confidence += 0.2
                 reasoning += 0.2
             elif keyword_count >= 1:
