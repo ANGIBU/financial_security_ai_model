@@ -32,12 +32,14 @@ class ModelHandler:
     """모델 핸들러"""
     
     def __init__(self, model_name: str, device: str = "cuda", 
-                 load_in_4bit: bool = True, max_memory_gb: int = 22):
+                 load_in_4bit: bool = True, max_memory_gb: int = 22, verbose: bool = False):
         self.model_name = model_name
         self.device = device
         self.max_memory_gb = max_memory_gb
+        self.verbose = verbose
         
-        print(f"모델 로딩: {model_name}")
+        if self.verbose:
+            print(f"모델 로딩: {model_name}")
         
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_name,
@@ -68,13 +70,16 @@ class ModelHandler:
         try:
             import flash_attn
             model_kwargs["attn_implementation"] = "flash_attention_2"
-            print("Flash Attention 2 활성화")
+            if self.verbose:
+                print("Flash Attention 2 활성화")
         except ImportError:
             if hasattr(torch.nn.functional, 'scaled_dot_product_attention'):
                 model_kwargs["attn_implementation"] = "sdpa"
-                print("SDPA Attention 활성화")
+                if self.verbose:
+                    print("SDPA Attention 활성화")
             else:
-                print("Standard Attention 사용")
+                if self.verbose:
+                    print("Standard Attention 사용")
         
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
@@ -86,40 +91,57 @@ class ModelHandler:
         if hasattr(torch, 'compile') and torch.__version__ >= "2.0.0":
             try:
                 self.model = torch.compile(self.model, mode="reduce-overhead")
-                print("Torch Compile 활성화")
+                if self.verbose:
+                    print("Torch Compile 활성화")
             except Exception:
-                print("Torch Compile 실패, 기본 모델 사용")
+                if self.verbose:
+                    print("Torch Compile 실패, 기본 모델 사용")
         
-        self._prepare_korean_tokens()
+        self._prepare_korean_optimization()
         
         self.response_cache = {}
         self.cache_hits = 0
         self.max_cache_size = 200
         
-        print("모델 로딩 완료")
+        if self.verbose:
+            print("모델 로딩 완료")
     
-    def _prepare_korean_tokens(self):
-        """한국어 토큰 준비"""
-        self.korean_start_tokens = []
-        korean_chars = "가나다라마바사아자차카타파하개내대래매배새애재채캐태패해"
+    def _prepare_korean_optimization(self):
+        """한국어 최적화 준비"""
+        self.korean_tokens = []
+        korean_chars = "가나다라마바사아자차카타파하개내대래매배새애재채캐태패해는을의에서과도"
         
-        for char in korean_chars[:10]:
+        for char in korean_chars:
             tokens = self.tokenizer.encode(char, add_special_tokens=False)
             if tokens:
-                self.korean_start_tokens.extend(tokens)
+                self.korean_tokens.extend(tokens)
         
-        self.korean_start_tokens = list(set(self.korean_start_tokens))
+        self.korean_tokens = list(set(self.korean_tokens))
+        
+        self.bad_words_ids = []
+        bad_patterns = [
+            ["软", "件"], ["軟", "件"], ["金", "融"], ["電", "子"], ["個", "人"],
+            ["資", "訊"], ["管", "理"], ["安", "全"], ["交", "易"]
+        ]
+        
+        for pattern in bad_patterns:
+            try:
+                tokens = self.tokenizer.encode("".join(pattern), add_special_tokens=False)
+                if tokens:
+                    self.bad_words_ids.append(tokens)
+            except:
+                continue
     
     def _create_korean_optimized_prompt(self, prompt: str, question_type: str) -> str:
-        """한국어 최적화 프롬프트 생성 (더욱 강화)"""
+        """한국어 최적화 프롬프트 생성"""
         if question_type == "multiple_choice":
-            korean_prefix = "### 매우 중요: 절대로 1, 2, 3, 4, 5 중 하나의 숫자만 답하세요. 한자나 외국어 절대 금지 ###\n\n"
-            korean_example = "\n### 올바른 답변 예시\n정답: 2\n\n### 절대 금지\n- 한자 사용 금지\n- 영어 사용 금지\n- 설명 금지\n\n"
+            korean_prefix = "### 지시사항: 반드시 1, 2, 3, 4, 5 중 하나의 숫자만 답하세요 ###\n\n"
+            korean_suffix = "\n\n### 중요: 숫자만 답하세요 ###\n정답:"
         else:
-            korean_prefix = "### 매우 중요: 반드시 순수 한국어로만 답변하세요. 한자, 영어, 일본어 등 모든 외국어 절대 금지 ###\n\n"
-            korean_example = "\n### 올바른 답변 예시\n트로이 목마는 정상 프로그램으로 위장한 악성코드입니다.\n\n### 절대 금지\n- 한자 절대 금지\n- 영어 절대 금지\n- 일본어 절대 금지\n- 중국어 절대 금지\n\n"
+            korean_prefix = "### 지시사항: 반드시 순수 한국어로만 답변하세요. 한자나 영어 절대 금지 ###\n\n"
+            korean_suffix = "\n\n### 중요: 순수 한국어만 사용하세요 ###\n답변:"
         
-        return korean_prefix + prompt + korean_example
+        return korean_prefix + prompt + korean_suffix
     
     def generate_response(self, prompt: str, question_type: str,
                          max_attempts: int = 2) -> InferenceResult:
@@ -144,28 +166,31 @@ class ModelHandler:
                 if question_type == "multiple_choice":
                     gen_config = GenerationConfig(
                         do_sample=True,
-                        temperature=0.3,
-                        top_p=0.9,
-                        max_new_tokens=50,
-                        repetition_penalty=1.1,
+                        temperature=0.2,
+                        top_p=0.8,
+                        top_k=20,
+                        max_new_tokens=30,
+                        repetition_penalty=1.05,
                         pad_token_id=self.tokenizer.pad_token_id,
                         eos_token_id=self.tokenizer.eos_token_id,
                         early_stopping=True,
-                        use_cache=True
+                        use_cache=True,
+                        bad_words_ids=self.bad_words_ids
                     )
                 else:
                     gen_config = GenerationConfig(
                         do_sample=True,
-                        temperature=0.7,
-                        top_p=0.9,
-                        top_k=50,
-                        max_new_tokens=200,
-                        repetition_penalty=1.05,
+                        temperature=0.4,
+                        top_p=0.85,
+                        top_k=40,
+                        max_new_tokens=150,
+                        repetition_penalty=1.02,
                         no_repeat_ngram_size=3,
                         pad_token_id=self.tokenizer.pad_token_id,
                         eos_token_id=self.tokenizer.eos_token_id,
                         early_stopping=True,
-                        use_cache=True
+                        use_cache=True,
+                        bad_words_ids=self.bad_words_ids
                     )
                 
                 inputs = self.tokenizer(
@@ -187,20 +212,16 @@ class ModelHandler:
                     skip_special_tokens=True
                 ).strip()
                 
-                print(f"[DEBUG] 시도 {attempt+1} 원본 응답: {raw_response[:100]}")
-                
-                cleaned_response = self._clean_korean_text(raw_response)
-                print(f"[DEBUG] 정리된 응답: {cleaned_response[:100]}")
+                cleaned_response = self._clean_korean_text_enhanced(raw_response)
                 
                 if question_type == "multiple_choice":
                     extracted_answer = self._extract_mc_answer_enhanced(cleaned_response)
-                    print(f"[DEBUG] 추출된 답변: {extracted_answer}")
                     
                     if extracted_answer and extracted_answer.isdigit() and 1 <= int(extracted_answer) <= 5:
                         result = InferenceResult(
                             response=extracted_answer,
-                            confidence=0.8,
-                            reasoning_quality=0.7,
+                            confidence=0.85,
+                            reasoning_quality=0.75,
                             analysis_depth=2,
                             korean_quality=1.0,
                             inference_time=time.time() - start_time
@@ -211,17 +232,14 @@ class ModelHandler:
                             del self.response_cache[oldest_key]
                         self.response_cache[cache_key] = result
                         
-                        print(f"[DEBUG] 성공적인 답변 추출: {extracted_answer}")
                         return result
                     else:
-                        print(f"[DEBUG] 답변 추출 실패, 계속 시도...")
                         continue
                 
                 else:
-                    korean_quality = self._evaluate_korean_quality_relaxed(cleaned_response, question_type)
-                    print(f"[DEBUG] 한국어 품질: {korean_quality}")
+                    korean_quality = self._evaluate_korean_quality_enhanced(cleaned_response)
                     
-                    if korean_quality > 0.3:
+                    if korean_quality > 0.5:
                         result = self._evaluate_response(cleaned_response, question_type)
                         result.korean_quality = korean_quality
                         result.inference_time = time.time() - start_time
@@ -231,15 +249,15 @@ class ModelHandler:
                             best_score = score
                             best_result = result
                     
-                    if korean_quality > 0.6:
+                    if korean_quality > 0.7:
                         break
                         
             except Exception as e:
-                print(f"[DEBUG] 생성 오류 (시도 {attempt+1}): {e}")
+                if self.verbose:
+                    print(f"생성 오류 (시도 {attempt+1}): {e}")
                 continue
         
         if best_result is None:
-            print(f"[DEBUG] 모든 시도 실패, 폴백 생성")
             best_result = self._create_fallback_result(question_type)
             best_result.inference_time = time.time() - start_time
         
@@ -251,20 +269,8 @@ class ModelHandler:
         patterns = [
             r'정답[:\s]*([1-5])',
             r'답[:\s]*([1-5])',
-            r'최종\s*답[:\s]*([1-5])',
-            r'선택[:\s]*([1-5])',
-            r'번호[:\s]*([1-5])',
             r'^([1-5])$',
-            r'^([1-5])\s*$',
-            r'([1-5])번',
-            r'선택지\s*([1-5])',
-            r'([1-5])\s*가\s*정답',
-            r'([1-5])\s*이\s*정답',
-            r'따라서\s*([1-5])',
-            r'그러므로\s*([1-5])',
-            r'결론적으로\s*([1-5])',
-            r'분석\s*결과\s*([1-5])',
-            r'종합하면\s*([1-5])'
+            r'^([1-5])\s*$'
         ]
         
         for pattern in patterns:
@@ -280,46 +286,51 @@ class ModelHandler:
         
         return ""
     
-    def _clean_korean_text(self, text: str) -> str:
-        """한국어 텍스트 정리 (완화)"""
+    def _clean_korean_text_enhanced(self, text: str) -> str:
+        """강화된 한국어 텍스트 정리"""
         
         if not text:
             return ""
         
         chinese_to_korean = {
-            r'軟件|软件': '소프트웨어',
+            r'軟[体體]件|软件': '소프트웨어',
             r'金融': '금융',
             r'交易': '거래',
             r'安全': '안전',
             r'管理': '관리',
             r'個人|个人': '개인',
-            r'資訊|资讯': '정보',
-            r'電子|电子': '전자'
+            r'資[讯訊]|资讯': '정보',
+            r'電子|电子': '전자',
+            r'系[统統]|系统': '시스템',
+            r'保[护護]|保护': '보호',
+            r'認[证證]|认证': '인증',
+            r'加密': '암호화'
         }
         
         for pattern, replacement in chinese_to_korean.items():
             text = re.sub(pattern, replacement, text)
         
         text = re.sub(r'[\u4e00-\u9fff]+', '', text)
+        text = re.sub(r'[\u3040-\u309f]+', '', text)
+        text = re.sub(r'[\u30a0-\u30ff]+', '', text)
+        
         text = re.sub(r'[^\w\s가-힣0-9.,!?()·\-\n]', ' ', text)
         text = re.sub(r'\s+', ' ', text)
         
+        text = re.sub(r'([a-zA-Z])\s+([a-zA-Z])', r'\1\2', text)
+        
         return text.strip()
     
-    def _evaluate_korean_quality_relaxed(self, text: str, question_type: str) -> float:
-        """완화된 한국어 품질 평가"""
+    def _evaluate_korean_quality_enhanced(self, text: str) -> float:
+        """강화된 한국어 품질 평가"""
         
         if not text:
             return 0.0
         
-        if question_type == "multiple_choice":
-            if re.match(r'^[1-5]$', text.strip()):
-                return 1.0
-            if re.search(r'[1-5]', text):
-                return 0.8
-            return 0.0
-        
         if re.search(r'[\u4e00-\u9fff]', text):
+            return 0.1
+        
+        if re.search(r'[а-яё]', text.lower()):
             return 0.1
         
         total_chars = len(re.sub(r'[^\w]', '', text))
@@ -332,29 +343,21 @@ class ModelHandler:
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
-        quality = korean_ratio * 0.6
-        quality -= english_ratio * 0.2
+        quality = korean_ratio * 0.8
+        quality -= english_ratio * 0.3
         
-        professional_terms = ['법', '규정', '조치', '관리', '보안', '체계']
+        professional_terms = ['법', '규정', '조치', '관리', '보안', '체계', '정책', '절차', '방안']
         prof_count = sum(1 for term in professional_terms if term in text)
-        quality += min(prof_count * 0.1, 0.3)
+        quality += min(prof_count * 0.05, 0.2)
         
-        if len(text) > 30:
+        if 50 <= len(text) <= 300:
             quality += 0.1
         
-        return max(0, min(1, quality))
-    
-    def _get_korean_fallback_response(self, prompt: str) -> str:
-        """한국어 폴백 응답"""
+        structure_markers = ['첫째', '둘째', '따라서', '그러므로']
+        if any(marker in text for marker in structure_markers):
+            quality += 0.05
         
-        if "개인정보" in prompt:
-            return "개인정보보호법에 따라 개인정보의 안전한 관리와 정보주체의 권리 보호를 위한 체계적인 조치가 필요합니다."
-        elif "전자금융" in prompt:
-            return "전자금융거래법에 따라 전자적 장치를 통한 금융거래의 안전성을 확보하고 이용자를 보호하기 위한 방안이 요구됩니다."
-        elif "보안" in prompt or "암호" in prompt:
-            return "정보보안 관리체계를 통해 체계적인 보안 관리와 지속적인 위험 평가 및 개선이 필요합니다."
-        else:
-            return "관련 법령과 규정에 따라 적절한 보안 조치를 수립하고 지속적인 관리와 개선이 필요합니다."
+        return max(0, min(1, quality))
     
     def _create_fallback_result(self, question_type: str) -> InferenceResult:
         """폴백 결과 생성"""
@@ -362,15 +365,15 @@ class ModelHandler:
         if question_type == "multiple_choice":
             return InferenceResult(
                 response="2",
-                confidence=0.3,
+                confidence=0.4,
                 reasoning_quality=0.3,
                 analysis_depth=1,
                 korean_quality=1.0
             )
         else:
             return InferenceResult(
-                response="관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 개선이 필요합니다.",
-                confidence=0.5,
+                response="관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 개선을 수행해야 합니다.",
+                confidence=0.6,
                 reasoning_quality=0.5,
                 analysis_depth=1,
                 korean_quality=0.9
@@ -384,11 +387,11 @@ class ModelHandler:
             reasoning = 0.5
             
             if re.match(r'^[1-5]$', response.strip()):
-                confidence = 0.8
-                reasoning = 0.7
+                confidence = 0.85
+                reasoning = 0.75
             elif re.search(r'[1-5]', response):
-                confidence = 0.6
-                reasoning = 0.5
+                confidence = 0.65
+                reasoning = 0.55
             
             return InferenceResult(
                 response=response,
@@ -398,20 +401,23 @@ class ModelHandler:
             )
         
         else:
-            confidence = 0.5
-            reasoning = 0.5
+            confidence = 0.6
+            reasoning = 0.6
             
             length = len(response)
-            if 50 <= length <= 500:
+            if 50 <= length <= 400:
                 confidence += 0.2
             elif 30 <= length < 50:
                 confidence += 0.1
             
-            keywords = ['법', '규정', '보안', '관리', '조치', '정책', '체계']
+            keywords = ['법', '규정', '보안', '관리', '조치', '정책', '체계', '방안']
             keyword_count = sum(1 for k in keywords if k in response)
-            if keyword_count >= 2:
+            if keyword_count >= 3:
                 confidence += 0.2
                 reasoning += 0.2
+            elif keyword_count >= 2:
+                confidence += 0.15
+                reasoning += 0.15
             elif keyword_count >= 1:
                 confidence += 0.1
                 reasoning += 0.1
@@ -425,7 +431,8 @@ class ModelHandler:
     
     def cleanup(self):
         """메모리 정리"""
-        print(f"캐시 히트: {self.cache_hits}회")
+        if self.verbose:
+            print(f"캐시 히트: {self.cache_hits}회")
         
         if hasattr(self, 'model'):
             del self.model

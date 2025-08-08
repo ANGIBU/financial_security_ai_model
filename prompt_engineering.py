@@ -27,7 +27,7 @@ class PromptEngineer:
         }
     
     def _build_korean_templates(self) -> Dict[str, str]:
-        """한국어 전용 템플릿 (강화)"""
+        """한국어 전용 템플릿"""
         templates = {}
         
         templates["mc_basic"] = """당신은 한국의 금융보안 전문가입니다.
@@ -39,9 +39,6 @@ class PromptEngineer:
 
 ### 문제
 {question}
-
-### 예시
-정답: 2
 
 정답:"""
 
@@ -79,62 +76,30 @@ class PromptEngineer:
 
 정답:"""
 
-        templates["mc_risk_management"] = """당신은 한국의 위험관리 전문가입니다.
+        templates["subj_enhanced"] = """당신은 한국의 금융보안 전문가입니다.
 
-### 절대 규칙
-1. 반드시 1, 2, 3, 4, 5 중 하나만 답하세요
-2. 위험관리 계획 수립 관련 문제입니다
-3. 표준 위험관리 절차를 적용하세요
+### 매우 중요한 규칙
+1. 반드시 순수 한국어로만 답변하세요
+2. 한자, 영어, 일본어, 중국어 등 모든 외국어 절대 금지
+3. 100-250자 내외로 답변하세요
+4. 전문적이고 명확한 한국어만 사용
 
-### 문제
+### 질문
 {question}
 
-### 위험관리 요소
-- 필수 요소: 대상, 기간, 수행인력, 위험 대응 전략
-- 위험 수용은 대응 전략의 하나이지 별도 요소가 아님
+### 답변 형식
+관련 법령과 규정에 따라 구체적으로 설명하되,
+순수 한국어만 사용하여 답변하세요.
 
-정답:"""
-
-        templates["mc_management_system"] = """당신은 한국의 관리체계 전문가입니다.
-
-### 절대 규칙
-1. 반드시 1, 2, 3, 4, 5 중 하나만 답하세요
-2. 관리체계 수립 관련 문제입니다
-3. 정책 수립 단계의 핵심을 찾으세요
-
-### 문제
-{question}
-
-### 관리체계 수립 핵심
-- 정책 수립 단계에서 가장 중요한 것은 경영진의 참여와 지원
-- 최고책임자 지정, 자원 할당은 후속 단계
-- 정책 제정은 기본 요구사항
-
-정답:"""
-
-        templates["mc_disaster_recovery"] = """당신은 한국의 재해복구 전문가입니다.
-
-### 절대 규칙
-1. 반드시 1, 2, 3, 4, 5 중 하나만 답하세요
-2. 재해복구 계획 관련 문제입니다
-3. 재해복구와 관련 없는 것을 찾으세요
-
-### 문제
-{question}
-
-### 재해복구 요소
-- 필수 요소: 복구 절차, 비상연락체계, 복구 목표시간
-- 개인정보 파기는 재해복구와 직접 관련 없음
-
-정답:"""
+답변:"""
 
         templates["subj_trojan"] = """당신은 한국의 사이버보안 전문가입니다.
 
 ### 매우 중요한 규칙
 1. 반드시 순수 한국어로만 답변하세요
 2. 한자, 영어, 일본어, 중국어 등 모든 외국어 절대 금지
-3. 150-300자 내외로 답변하세요
-4. 트로이 목마와 RAT에 대해 전문적으로 설명하세요
+3. 120-220자 내외로 답변하세요
+4. 트로이 목마와 원격 제어 악성코드에 대해 전문적으로 설명하세요
 
 ### 질문
 {question}
@@ -152,31 +117,11 @@ class PromptEngineer:
 - 모든 영어 단어 한국어로 변환 필수
 
 답변:"""
-
-        templates["subj_basic"] = """당신은 한국의 금융보안 전문가입니다.
-
-### 매우 중요한 규칙
-1. 반드시 순수 한국어로만 답변하세요
-2. 한자, 영어, 일본어, 중국어 등 모든 외국어 절대 금지
-3. 50자 이상 300자 이내로 답변
-4. 전문적이고 명확한 한국어만 사용
-
-### 질문
-{question}
-
-### 답변 형식
-관련 법령과 규정에 따라 구체적으로 설명하되,
-순수 한국어만 사용하여 답변하세요.
-
-### 외국어 사용 절대 금지
-모든 전문 용어를 한국어로 표현하세요.
-
-답변:"""
         
         return templates
     
     def _build_korean_examples(self) -> Dict[str, Dict]:
-        """한국어 예시 (강화)"""
+        """한국어 예시"""
         examples = {
             "mc_financial": {
                 "question": "금융투자업의 구분에 해당하지 않는 것은?",
@@ -188,16 +133,6 @@ class PromptEngineer:
                 "answer": "2",
                 "reasoning": "위험 수용은 대응 전략의 하나"
             },
-            "mc_management": {
-                "question": "관리체계 수립의 정책 수립 단계에서 가장 중요한 요소는?",
-                "answer": "2",
-                "reasoning": "경영진의 참여가 가장 중요"
-            },
-            "mc_disaster": {
-                "question": "재해 복구 계획 수립 시 고려해야 할 요소로 옳지 않은 것은?",
-                "answer": "3",
-                "reasoning": "개인정보 파기는 재해복구와 무관"
-            },
             "subj_trojan": {
                 "question": "트로이 목마 기반 원격제어 악성코드의 특징과 탐지 지표를 설명하세요.",
                 "answer": "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 원격 접근 트로이 목마는 공격자가 감염된 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결, 시스템 리소스 사용 증가, 알 수 없는 프로세스 실행, 방화벽 규칙 변경 등이 있습니다."
@@ -207,7 +142,7 @@ class PromptEngineer:
     
     def create_prompt(self, question: str, question_type: str, 
                      analysis: Dict, structure: Dict) -> str:
-        """프롬프트 생성 (강화)"""
+        """프롬프트 생성"""
         
         cache_key = hash(f"{question[:100]}{question_type}")
         if cache_key in self.prompt_cache:
@@ -231,27 +166,9 @@ class PromptEngineer:
     def _create_mc_prompt_enhanced(self, question: str, analysis: Dict, structure: Dict) -> str:
         """강화된 객관식 프롬프트 생성"""
         
-        print(f"[DEBUG] 프롬프트 생성 - 질문 분석: {analysis}")
-        
         if "금융투자업" in question or "소비자금융업" in question:
             prompt = self.templates["mc_financial_basic"].format(question=question)
             self.stats["template_usage"]["mc_financial_basic"] = self.stats["template_usage"].get("mc_financial_basic", 0) + 1
-            print(f"[DEBUG] 금융업 템플릿 사용")
-            
-        elif "위험" in question and "관리" in question and "계획" in question:
-            prompt = self.templates["mc_risk_management"].format(question=question)
-            self.stats["template_usage"]["mc_risk_management"] = self.stats["template_usage"].get("mc_risk_management", 0) + 1
-            print(f"[DEBUG] 위험관리 템플릿 사용")
-            
-        elif "관리체계" in question and "정책" in question and "수립" in question:
-            prompt = self.templates["mc_management_system"].format(question=question)
-            self.stats["template_usage"]["mc_management_system"] = self.stats["template_usage"].get("mc_management_system", 0) + 1
-            print(f"[DEBUG] 관리체계 템플릿 사용")
-            
-        elif "재해" in question and "복구" in question:
-            prompt = self.templates["mc_disaster_recovery"].format(question=question)
-            self.stats["template_usage"]["mc_disaster_recovery"] = self.stats["template_usage"].get("mc_disaster_recovery", 0) + 1
-            print(f"[DEBUG] 재해복구 템플릿 사용")
             
         elif structure.get("has_negative", False):
             negative_keywords = ["해당하지 않는", "적절하지 않은", "옳지 않은", "틀린"]
@@ -262,33 +179,27 @@ class PromptEngineer:
                 keyword=keyword
             )
             self.stats["template_usage"]["mc_negative"] = self.stats["template_usage"].get("mc_negative", 0) + 1
-            print(f"[DEBUG] 부정형 템플릿 사용: {keyword}")
             
         else:
             prompt = self.templates["mc_basic"].format(question=question)
             self.stats["template_usage"]["mc_basic"] = self.stats["template_usage"].get("mc_basic", 0) + 1
-            print(f"[DEBUG] 기본 객관식 템플릿 사용")
         
         return prompt
     
     def _create_subj_prompt_enhanced(self, question: str, analysis: Dict, structure: Dict) -> str:
         """강화된 주관식 프롬프트 생성"""
         
-        if "트로이" in question and "RAT" in question:
+        if "트로이" in question and ("RAT" in question or "원격" in question):
             prompt = self.templates["subj_trojan"].format(question=question)
             self.stats["template_usage"]["subj_trojan"] = self.stats["template_usage"].get("subj_trojan", 0) + 1
-            print(f"[DEBUG] 트로이 목마 전용 템플릿 사용")
         else:
-            prompt = self.templates["subj_basic"].format(question=question)
-            self.stats["template_usage"]["subj_basic"] = self.stats["template_usage"].get("subj_basic", 0) + 1
-            print(f"[DEBUG] 기본 주관식 템플릿 사용")
+            prompt = self.templates["subj_enhanced"].format(question=question)
+            self.stats["template_usage"]["subj_enhanced"] = self.stats["template_usage"].get("subj_enhanced", 0) + 1
         
         return prompt
     
     def create_korean_reinforced_prompt(self, question: str, question_type: str) -> str:
-        """한국어 강화 프롬프트 생성 (최적화)"""
-        
-        print(f"[DEBUG] 한국어 강화 프롬프트 생성 - 유형: {question_type}")
+        """한국어 강화 프롬프트 생성"""
         
         if question_type == "multiple_choice":
             
@@ -301,9 +212,6 @@ class PromptEngineer:
 ### 핵심 힌트
 금융투자업에는 투자매매업, 투자중개업, 투자자문업, 투자일임업이 포함됩니다.
 소비자금융업과 보험중개업은 금융투자업이 아닙니다.
-
-### 답변 형식
-정답: [숫자]
 
 정답:"""
                 
@@ -356,7 +264,7 @@ class PromptEngineer:
 
 정답:"""
         else:
-            if "트로이" in question and "RAT" in question:
+            if "트로이" in question and ("RAT" in question or "원격" in question or "악성코드" in question):
                 prompt = f"""### 매우 중요: 반드시 순수 한국어로만 답변하세요. 한자, 영어, 일본어 등 모든 외국어 절대 금지 ###
 
 ### 질문
@@ -366,7 +274,7 @@ class PromptEngineer:
 1. 트로이 목마의 특징을 먼저 설명 (한국어로만)
 2. 원격 접근 트로이 목마의 기능 설명 (한국어로만)
 3. 주요 탐지 지표를 나열 (한국어로만)
-4. 150-300자 내외로 작성
+4. 120-200자 내외로 작성
 5. 절대로 외국어 사용 금지
 
 ### 외국어 변환 필수
@@ -376,13 +284,6 @@ class PromptEngineer:
 - Access → 접근
 - Control → 제어
 - Malware → 악성코드
-- Detection → 탐지
-- Network → 네트워크
-- Process → 프로세스
-- System → 시스템
-
-### 올바른 답변 예시
-트로이 목마는 정상 프로그램으로 위장한 악성코드입니다. 원격 접근 트로이 목마는 공격자가 감염된 시스템을 원격으로 제어할 수 있게 합니다.
 
 답변:"""
             else:
@@ -393,17 +294,13 @@ class PromptEngineer:
 
 ### 답변 규칙
 1. 순수 한국어만 사용
-2. 50자 이상 300자 이내
+2. 80자 이상 200자 이내
 3. 관련 법령과 규정 언급
 4. 구체적 방안 제시
 5. 절대로 외국어 사용 금지
 
-### 올바른 답변 예시
-개인정보보호법에 따라 개인정보의 안전한 관리와 정보주체의 권리 보호를 위한 체계적인 조치가 필요합니다.
-
 답변:"""
         
-        print(f"[DEBUG] 생성된 프롬프트 길이: {len(prompt)}")
         return prompt
     
     def create_few_shot_prompt(self, question: str, question_type: str,
@@ -417,10 +314,6 @@ class PromptEngineer:
                 example = self.examples["mc_financial"]
             elif "위험" in question and "관리" in question:
                 example = self.examples["mc_risk"]
-            elif "관리체계" in question:
-                example = self.examples["mc_management"]
-            elif "재해" in question and "복구" in question:
-                example = self.examples["mc_disaster"]
             else:
                 example = self.examples["mc_financial"]
             
@@ -476,12 +369,9 @@ class PromptEngineer:
     def cleanup(self):
         """리소스 정리"""
         if self.stats["template_usage"]:
-            print(f"프롬프트 생성: {sum(self.stats['template_usage'].values())}개")
-            print(f"캐시 히트: {self.stats['cache_hits']}회")
-            
-            if self.stats["template_usage"]:
+            total = sum(self.stats["template_usage"].values())
+            if total > 0:
                 most_used = max(self.stats["template_usage"].items(), key=lambda x: x[1])
-                print(f"주요 템플릿: {most_used[0]} ({most_used[1]}회)")
         
         self.prompt_cache.clear()
         self.template_cache.clear()

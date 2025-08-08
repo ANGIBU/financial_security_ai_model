@@ -37,9 +37,10 @@ from auto_learner import AutoLearner
 class FinancialAIInference:
     """금융 AI 추론 엔진"""
     
-    def __init__(self, enable_learning: bool = False):
+    def __init__(self, enable_learning: bool = False, verbose: bool = False):
         self.start_time = time.time()
         self.enable_learning = enable_learning
+        self.verbose = verbose
         
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -51,7 +52,8 @@ class FinancialAIInference:
             model_name="upstage/SOLAR-10.7B-Instruct-v1.0",
             device="cuda" if torch.cuda.is_available() else "cpu",
             load_in_4bit=True,
-            max_memory_gb=22
+            max_memory_gb=22,
+            verbose=self.verbose
         )
         
         self.data_processor = DataProcessor()
@@ -60,7 +62,6 @@ class FinancialAIInference:
         self.pattern_learner = AnswerPatternLearner()
         
         if self.enable_learning:
-            print("학습 시스템 초기화 중...")
             self.learning_system = UnifiedLearningSystem()
             self.correction_system = ManualCorrectionSystem()
             self.auto_learner = AutoLearner()
@@ -85,36 +86,36 @@ class FinancialAIInference:
     
     def _load_existing_learning_data(self) -> None:
         """학습 데이터 로드"""
-        if self.learning_system.load_learning_data():
-            print(f"학습 데이터 로드: {self.learning_system.learning_metrics['total_samples']}개")
-        
-        if self.auto_learner.load_model():
-            print(f"자동 학습 모델 로드: {len(self.auto_learner.pattern_weights)}개 패턴")
-        
-        corrections = self.correction_system.load_corrections_from_csv("./corrections.csv")
-        if corrections > 0:
-            print(f"교정 데이터 로드: {corrections}개")
+        try:
+            if self.learning_system.load_learning_data():
+                if self.verbose:
+                    print(f"학습 데이터 로드: {self.learning_system.learning_metrics['total_samples']}개")
+            
+            if self.auto_learner.load_model():
+                if self.verbose:
+                    print(f"자동 학습 모델 로드: {len(self.auto_learner.pattern_weights)}개 패턴")
+            
+            corrections = self.correction_system.load_corrections_from_csv("./corrections.csv")
+            if corrections > 0 and self.verbose:
+                print(f"교정 데이터 로드: {corrections}개")
+        except Exception as e:
+            if self.verbose:
+                print(f"학습 데이터 로드 오류: {e}")
     
     def _validate_korean_quality(self, text: str, question_type: str) -> Tuple[bool, float]:
-        """완화된 한국어 품질 검증"""
-        print(f"[DEBUG] 한국어 품질 검증: {text[:50]}")
+        """한국어 품질 검증"""
         
         if question_type == "multiple_choice":
             if re.match(r'^[1-5]$', text.strip()):
-                print(f"[DEBUG] 객관식 숫자 검증 통과: {text.strip()}")
                 return True, 1.0
             if re.search(r'[1-5]', text):
-                print(f"[DEBUG] 객관식 숫자 포함 검증 통과")
                 return True, 0.8
-            print(f"[DEBUG] 객관식 숫자 검증 실패")
             return False, 0.0
         
         if not text or len(text.strip()) < 20:
-            print(f"[DEBUG] 길이 부족: {len(text)}")
             return False, 0.0
         
         if re.search(r'[\u4e00-\u9fff]', text):
-            print(f"[DEBUG] 한자 포함으로 실패")
             return False, 0.0
         
         korean_chars = len(re.findall(r'[가-힣]', text))
@@ -127,54 +128,40 @@ class FinancialAIInference:
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
-        print(f"[DEBUG] 한국어 비율: {korean_ratio:.2f}, 영어 비율: {english_ratio:.2f}")
-        
-        if korean_ratio < 0.3:
-            print(f"[DEBUG] 한국어 비율 부족")
+        if korean_ratio < 0.5:
             return False, korean_ratio
         
-        if english_ratio > 0.5:
-            print(f"[DEBUG] 영어 비율 과다")
+        if english_ratio > 0.3:
             return False, 1 - english_ratio
         
-        quality_score = korean_ratio * 0.8 - english_ratio * 0.3
+        quality_score = korean_ratio * 0.8 - english_ratio * 0.2
         
         professional_terms = ['법', '규정', '조치', '관리', '보안', '체계', '정책']
         prof_count = sum(1 for term in professional_terms if term in text)
-        quality_score += min(prof_count * 0.05, 0.2)
+        quality_score += min(prof_count * 0.05, 0.15)
         
         final_quality = max(0, min(1, quality_score))
-        print(f"[DEBUG] 최종 품질 점수: {final_quality:.2f}")
         
-        return final_quality > 0.4, final_quality
+        return final_quality > 0.6, final_quality
     
     def _get_domain_specific_fallback(self, question: str, question_type: str) -> str:
-        """도메인별 폴백 답변 (강화)"""
-        print(f"[DEBUG] 폴백 답변 생성 - 유형: {question_type}")
+        """도메인별 폴백 답변"""
         
         if question_type == "multiple_choice":
             structure = self.data_processor.analyze_question_structure(question)
             
-            print(f"[DEBUG] 스마트 힌트 시스템 사용")
             hint, conf = self.optimizer.get_smart_answer_hint(question, structure)
             
-            if conf > 0.6:
-                print(f"[DEBUG] 스마트 힌트 성공: {hint} (신뢰도: {conf:.3f})")
-                self.stats["smart_hints_used"] += 1
-                return hint
-            elif conf > 0.4:
-                print(f"[DEBUG] 스마트 힌트 중간: {hint} (신뢰도: {conf:.3f})")
+            if conf > 0.5:
                 self.stats["smart_hints_used"] += 1
                 return hint
             else:
-                print(f"[DEBUG] 스마트 힌트 실패, 기본 폴백 사용")
                 return "2"
         
         question_lower = question.lower()
         
-        # 트로이 목마 관련 특별 처리
-        if "트로이" in question or "악성코드" in question or "RAT" in question.upper() or "원격제어" in question or "원격 제어" in question:
-            return "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 원격 접근 트로이 목마는 공격자가 감염된 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결, 시스템 리소스 사용 증가, 알 수 없는 프로세스 실행, 방화벽 규칙 변경, 레지스트리 변경, 이상한 파일 생성 등이 있습니다. 탐지를 위해서는 네트워크 모니터링, 행위 기반 탐지, 시그니처 기반 검사를 종합적으로 활용해야 합니다."
+        if "트로이" in question or "악성코드" in question or "RAT" in question.upper():
+            return "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 원격 접근 트로이 목마는 공격자가 감염된 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결, 시스템 리소스 사용 증가, 알 수 없는 프로세스 실행, 방화벽 규칙 변경, 레지스트리 변경, 이상한 파일 생성 등이 있습니다."
         
         if "개인정보" in question_lower:
             if "유출" in question_lower:
@@ -200,29 +187,17 @@ class FinancialAIInference:
         if "암호" in question_lower:
             return "암호화는 정보의 기밀성과 무결성을 보장하기 위한 핵심 보안 기술입니다. 대칭키 암호화와 공개키 암호화를 적절히 활용하고, 안전한 키 관리 체계를 구축해야 합니다. 중요 정보는 전송 구간과 저장 시 모두 암호화해야 합니다."
         
-        if "관리체계" in question_lower or "ISMS" in question_lower:
-            return "정보보호관리체계는 조직의 정보자산 보호를 위한 관리적, 기술적, 물리적 보안대책을 체계적으로 수립하고 운영하는 종합 관리체계입니다. 위험평가를 통해 위험을 식별하고, 적절한 보호대책을 구현하며, 지속적으로 개선해야 합니다."
-        
         return "관련 법령과 규정에 따라 체계적인 보안 관리 방안을 수립하고, 지속적인 모니터링과 개선을 통해 안전성을 확보해야 합니다."
     
     def process_question(self, question: str, question_id: str, idx: int) -> str:
-        """문제 처리 (강화된 디버깅)"""
-        print(f"\n[DEBUG] ===== 문제 {idx+1} 처리 시작 =====")
-        print(f"[DEBUG] 질문 ID: {question_id}")
-        print(f"[DEBUG] 질문: {question[:100]}")
+        """문제 처리"""
         
         try:
             structure = self.data_processor.analyze_question_structure(question)
             analysis = self.prompt_engineer.knowledge_base.analyze_question(question)
             
-            print(f"[DEBUG] 문제 유형: {structure['question_type']}")
-            print(f"[DEBUG] 부정형: {structure.get('has_negative', False)}")
-            print(f"[DEBUG] 도메인: {analysis.get('domain', [])}")
-            
             difficulty = self.optimizer.evaluate_question_difficulty(question, structure)
             is_mc = structure["question_type"] == "multiple_choice"
-            
-            print(f"[DEBUG] 난이도: {difficulty.score:.3f}")
             
             if self.enable_learning:
                 learned_answer, learned_confidence = self.auto_learner.predict_with_patterns(
@@ -236,34 +211,27 @@ class FinancialAIInference:
                 if correction_conf > 0.8:
                     is_valid, quality = self._validate_korean_quality(corrected_answer, structure["question_type"])
                     if is_valid:
-                        print(f"[DEBUG] 교정 시스템에서 성공: {corrected_answer}")
                         return corrected_answer
             
             hint_answer, hint_confidence = self.optimizer.get_smart_answer_hint(question, structure)
-            print(f"[DEBUG] 스마트 힌트: {hint_answer} (신뢰도: {hint_confidence:.3f})")
             
             if is_mc and hint_confidence > 0.7:
-                print(f"[DEBUG] 높은 신뢰도 힌트 사용: {hint_answer}")
                 self.stats["smart_hints_used"] += 1
                 return hint_answer
             
-            if difficulty.score > 0.85 or self.stats["total"] > 300:
+            if difficulty.score > 0.8 or self.stats["total"] > 300:
                 if is_mc and hint_confidence > 0.5:
-                    print(f"[DEBUG] 중간 신뢰도 힌트 사용: {hint_answer}")
                     self.stats["smart_hints_used"] += 1
                     return hint_answer
                 elif not is_mc:
-                    print(f"[DEBUG] 주관식 폴백 사용")
                     self.stats["fallback_used"] += 1
                     return self._get_domain_specific_fallback(question, structure["question_type"])
             
-            print(f"[DEBUG] 모델 생성 시작")
             prompt = self.prompt_engineer.create_korean_reinforced_prompt(
                 question, structure["question_type"]
             )
             
             max_attempts = 1 if self.stats["total"] > 100 else 2
-            print(f"[DEBUG] 최대 시도 횟수: {max_attempts}")
             
             result = self.model_handler.generate_response(
                 prompt=prompt,
@@ -271,41 +239,31 @@ class FinancialAIInference:
                 max_attempts=max_attempts
             )
             
-            print(f"[DEBUG] 모델 응답: {result.response[:100]}")
-            print(f"[DEBUG] 모델 신뢰도: {result.confidence:.3f}")
-            
             if is_mc:
                 extracted = self.data_processor.extract_mc_answer_fast(result.response)
-                print(f"[DEBUG] 추출된 답변: '{extracted}'")
                 
                 if extracted and extracted.isdigit() and 1 <= int(extracted) <= 5:
-                    print(f"[DEBUG] 모델 생성 성공: {extracted}")
                     self.stats["model_generation_success"] += 1
                     self.stats["pattern_extraction_success"] += 1
                     answer = extracted
                 else:
-                    print(f"[DEBUG] 추출 실패, 스마트 힌트 사용: {hint_answer}")
                     answer = hint_answer if hint_confidence > 0.3 else "2"
                     self.stats["smart_hints_used"] += 1
             else:
                 answer = self.data_processor._clean_korean_text(result.response)
                 
                 is_valid, quality = self._validate_korean_quality(answer, structure["question_type"])
-                print(f"[DEBUG] 한국어 검증: {is_valid}, 품질: {quality:.3f}")
                 
-                if not is_valid or quality < 0.4:
-                    print(f"[DEBUG] 한국어 품질 불량, 폴백 사용")
+                if not is_valid or quality < 0.6:
                     self.stats["korean_failures"] += 1
                     answer = self._get_domain_specific_fallback(question, structure["question_type"])
                     self.stats["korean_fixes"] += 1
                     self.stats["fallback_used"] += 1
                     self.stats["model_generation_success"] += 1
                 else:
-                    print(f"[DEBUG] 한국어 품질 양호")
                     self.stats["model_generation_success"] += 1
                 
                 if len(answer) < 30:
-                    print(f"[DEBUG] 길이 부족, 폴백 사용")
                     answer = self._get_domain_specific_fallback(question, structure["question_type"])
                     self.stats["fallback_used"] += 1
                 elif len(answer) > 800:
@@ -329,19 +287,18 @@ class FinancialAIInference:
                     )
                     self.stats["learned"] += 1
             
-            print(f"[DEBUG] 최종 답변: {answer[:50]}")
             return answer
             
         except Exception as e:
             self.stats["errors"] += 1
-            print(f"[DEBUG] 처리 오류: {e}")
+            if self.verbose:
+                print(f"처리 오류: {e}")
             
             self.stats["fallback_used"] += 1
             fallback = self._get_domain_specific_fallback(
                 question, 
                 structure.get("question_type", "subjective") if 'structure' in locals() else "subjective"
             )
-            print(f"[DEBUG] 오류 폴백: {fallback[:50]}")
             return fallback
     
     def execute_inference(self, test_file: str, submission_file: str,
@@ -378,7 +335,9 @@ class FinancialAIInference:
         answers = [""] * len(test_df)
         
         print("추론 시작...")
-        for q_data in tqdm(questions_data, desc="추론", ncols=80):
+        progress_bar = tqdm(questions_data, desc="추론", ncols=80, disable=not self.verbose)
+        
+        for q_data in progress_bar:
             idx = q_data["idx"]
             question_id = q_data["id"]
             question = q_data["question"]
@@ -387,6 +346,9 @@ class FinancialAIInference:
             answers[idx] = answer
             
             self.stats["total"] += 1
+            
+            if not self.verbose and self.stats["total"] % 100 == 0:
+                print(f"진행률: {self.stats['total']}/{len(test_df)}")
             
             if self.stats["total"] % 50 == 0:
                 torch.cuda.empty_cache()
@@ -409,13 +371,17 @@ class FinancialAIInference:
         if self.enable_learning:
             try:
                 if self.learning_system.save_learning_data():
-                    print("학습 데이터 저장 완료")
+                    if self.verbose:
+                        print("학습 데이터 저장 완료")
                 if self.auto_learner.save_model():
-                    print("자동 학습 모델 저장 완료")
+                    if self.verbose:
+                        print("자동 학습 모델 저장 완료")
                 if self.correction_system.save_corrections_to_csv():
-                    print("교정 데이터 저장 완료")
+                    if self.verbose:
+                        print("교정 데이터 저장 완료")
             except Exception as e:
-                print(f"데이터 저장 오류: {e}")
+                if self.verbose:
+                    print(f"데이터 저장 오류: {e}")
         
         elapsed_time = time.time() - self.start_time
         
@@ -451,9 +417,9 @@ class FinancialAIInference:
         print(f"  한국어 수정: {self.stats['korean_fixes']}회")
         print(f"  평균 품질 점수: {avg_korean_quality:.2f}")
         
-        if avg_korean_quality > 0.7:
+        if avg_korean_quality > 0.8:
             print("  한국어 품질 우수")
-        elif avg_korean_quality > 0.5:
+        elif avg_korean_quality > 0.6:
             print("  한국어 품질 보통")
         else:
             print("  한국어 품질 개선 필요")
@@ -523,7 +489,8 @@ class FinancialAIInference:
             gc.collect()
             
         except Exception as e:
-            print(f"정리 중 오류: {e}")
+            if self.verbose:
+                print(f"정리 중 오류: {e}")
 
 def main():
     """메인 함수"""
@@ -547,10 +514,11 @@ def main():
         sys.exit(1)
     
     enable_learning = False
+    verbose = False
     
     engine = None
     try:
-        engine = FinancialAIInference(enable_learning=enable_learning)
+        engine = FinancialAIInference(enable_learning=enable_learning, verbose=verbose)
         results = engine.execute_inference(
             test_file, 
             submission_file,
@@ -568,9 +536,9 @@ def main():
                 print(f"스마트 힌트 활용: {processing_stats['smart_hints']}회")
             
             quality = results["korean_quality"]["avg_score"]
-            if quality > 0.7:
+            if quality > 0.8:
                 print("한국어 품질 우수")
-            elif quality > 0.5:
+            elif quality > 0.6:
                 print("한국어 품질 보통")
             else:
                 print("한국어 품질 개선 필요")
