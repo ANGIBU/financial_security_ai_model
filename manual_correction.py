@@ -7,6 +7,7 @@ import json
 import csv
 import os
 import re
+import tempfile
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 import hashlib
@@ -22,6 +23,31 @@ class CorrectionEntry:
     confidence_boost: float
     korean_quality: float = 0.0
 
+def atomic_save_csv(data: List[Dict], filepath: str) -> bool:
+    """원자적 CSV 저장"""
+    try:
+        directory = os.path.dirname(filepath)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        
+        fd, temp_path = tempfile.mkstemp(dir=directory, suffix='.csv')
+        try:
+            with os.fdopen(fd, 'w', newline='', encoding='utf-8-sig') as f:
+                if data:
+                    fieldnames = data[0].keys()
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(data)
+            os.replace(temp_path, filepath)
+            return True
+        except Exception:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+            raise
+    except Exception as e:
+        print(f"CSV 저장 실패: {e}")
+        return False
+
 class ManualCorrectionSystem:
     """수동 교정 시스템"""
     
@@ -35,24 +61,19 @@ class ManualCorrectionSystem:
             "korean_improvements": 0
         }
         
-        # 핵심 한국어 교정만 유지
         self.korean_correction_patterns = self._initialize_korean_corrections()
-        
-        # 간소화된 캐시
         self.correction_cache = {}
         self.max_cache_size = 100
         
     def _initialize_korean_corrections(self) -> Dict[str, str]:
         """핵심 한국어 교정 패턴"""
         return {
-            # 주요 한자 -> 한국어
             r'個人情報|个人信息': '개인정보',
             r'電子金融|电子金融': '전자금융',
             r'情報保安|信息安全': '정보보안',
             r'暗號化|加密': '암호화',
             r'管理體系|管理体系': '관리체계',
             
-            # 주요 영어 -> 한국어
             r'\bsecurity\b': '보안',
             r'\bprivacy\b': '개인정보보호',
             r'\bencryption\b': '암호화',
@@ -60,7 +81,6 @@ class ManualCorrectionSystem:
             r'\bmanagement\b': '관리',
             r'\bsystem\b': '시스템',
             
-            # 띄어쓰기 교정
             r'개인 정보': '개인정보',
             r'전자 금융': '전자금융',
             r'정보 보안': '정보보안',
@@ -74,15 +94,12 @@ class ManualCorrectionSystem:
         if not text:
             return 0.0
         
-        # 객관식 확인
         if re.match(r'^[1-5]$', text.strip()):
             return 1.0
         
-        # 한자 확인
         if re.search(r'[\u4e00-\u9fff]', text):
             return 0.0
         
-        # 한국어 비율
         korean_chars = len(re.findall(r'[가-힣]', text))
         total_chars = len(re.sub(r'[^\w]', '', text))
         
@@ -92,7 +109,6 @@ class ManualCorrectionSystem:
         korean_ratio = korean_chars / total_chars
         english_ratio = len(re.findall(r'[A-Za-z]', text)) / total_chars
         
-        # 간단한 품질 점수
         quality = korean_ratio * 0.8 - english_ratio * 0.3
         return max(0, min(1, quality))
     
@@ -101,14 +117,10 @@ class ManualCorrectionSystem:
         
         corrected = text
         
-        # 교정 패턴 적용
         for pattern, replacement in self.korean_correction_patterns.items():
             corrected = re.sub(pattern, replacement, corrected, flags=re.IGNORECASE)
         
-        # 한자 제거
         corrected = re.sub(r'[\u4e00-\u9fff]+', '', corrected)
-        
-        # 공백 정리
         corrected = re.sub(r'\s+', ' ', corrected)
         
         return corrected.strip()
@@ -121,14 +133,11 @@ class ManualCorrectionSystem:
         if question_id is None:
             question_id = hashlib.md5(question.encode()).hexdigest()[:8]
         
-        # 한국어 교정 적용
         corrected_answer = self._apply_korean_corrections(correct)
         
-        # 품질 평가
         original_quality = self._evaluate_korean_quality(predicted)
         corrected_quality = self._evaluate_korean_quality(corrected_answer)
         
-        # 신뢰도 계산
         if predicted == corrected_answer:
             confidence_boost = 0.1
         elif corrected_quality > original_quality:
@@ -150,22 +159,19 @@ class ManualCorrectionSystem:
         self.corrections.append(entry)
         self.correction_stats["total_corrections"] += 1
         
-        # 객관식/주관식 구분
         if corrected_answer.isdigit() and 1 <= int(corrected_answer) <= 5:
             self.correction_stats["mc_corrections"] += 1
         else:
             self.correction_stats["subj_corrections"] += 1
         
-        # 패턴 학습
         self._learn_correction_pattern(entry)
     
     def _learn_correction_pattern(self, entry: CorrectionEntry) -> None:
         """간소화된 패턴 학습"""
         
-        # 핵심 키워드만 추출
         keywords = self._extract_key_phrases_simple(entry.question)
         
-        for keyword in keywords[:3]:  # 최대 3개만
+        for keyword in keywords[:3]:
             if keyword not in self.correction_patterns:
                 self.correction_patterns[keyword] = {}
             
@@ -185,13 +191,11 @@ class ManualCorrectionSystem:
         phrases = []
         text_lower = text.lower()
         
-        # 핵심 용어만
         key_terms = ["개인정보", "전자금융", "암호화", "보안", "관리체계"]
         for term in key_terms:
             if term in text_lower:
                 phrases.append(term)
         
-        # 문제 유형
         if "해당하지" in text_lower or "적절하지" in text_lower:
             phrases.append("부정형")
         if "정의" in text_lower:
@@ -202,19 +206,16 @@ class ManualCorrectionSystem:
     def apply_corrections(self, question: str, predicted: str) -> Tuple[str, float]:
         """교정 적용"""
         
-        # 캐시 확인
         cache_key = hash(f"{question[:50]}{predicted}")
         if cache_key in self.correction_cache:
             return self.correction_cache[cache_key]
         
-        # 직접 매칭
         for correction in self.corrections:
             if correction.question == question:
                 result = (correction.corrected_answer, 0.9)
                 self._cache_result(cache_key, result)
                 return result
         
-        # 패턴 기반 교정
         keywords = self._extract_key_phrases_simple(question)
         answer_candidates = {}
         
@@ -229,7 +230,6 @@ class ManualCorrectionSystem:
                     )
         
         if answer_candidates:
-            # 최고 점수 답변 선택
             best_answer = max(
                 answer_candidates.items(),
                 key=lambda x: x[1]["score"] * 0.7 + x[1]["quality"] * 0.3
@@ -241,7 +241,6 @@ class ManualCorrectionSystem:
             self._cache_result(cache_key, result)
             return result
         
-        # 기본 한국어 교정
         corrected = self._apply_korean_corrections(predicted)
         if corrected != predicted:
             self.correction_stats["korean_improvements"] += 1
@@ -284,26 +283,24 @@ class ManualCorrectionSystem:
         
         return loaded
     
-    def save_corrections_to_csv(self, filepath: str = "./corrections.csv") -> None:
+    def save_corrections_to_csv(self, filepath: str = "./corrections.csv") -> bool:
         """CSV 저장"""
         
-        try:
-            with open(filepath, 'w', newline='', encoding='utf-8-sig') as f:
-                fieldnames = ['id', 'question', 'predicted', 'correct', 'reason', 'korean_quality']
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                
-                writer.writeheader()
-                for correction in self.corrections:
-                    writer.writerow({
-                        'id': correction.question_id,
-                        'question': correction.question[:200],
-                        'predicted': correction.predicted_answer,
-                        'correct': correction.corrected_answer,
-                        'reason': correction.correction_reason,
-                        'korean_quality': f"{correction.korean_quality:.2f}"
-                    })
-        except Exception:
-            pass
+        if not self.corrections:
+            return True
+        
+        correction_data = []
+        for correction in self.corrections:
+            correction_data.append({
+                'id': correction.question_id,
+                'question': correction.question[:200],
+                'predicted': correction.predicted_answer,
+                'correct': correction.corrected_answer,
+                'reason': correction.correction_reason,
+                'korean_quality': f"{correction.korean_quality:.2f}"
+            })
+        
+        return atomic_save_csv(correction_data, filepath)
     
     def interactive_correction(self, questions: List[Dict], 
                              predictions: List[str]) -> int:
@@ -317,10 +314,9 @@ class ManualCorrectionSystem:
         
         for i, (q_data, pred) in enumerate(zip(questions, predictions)):
             print(f"\n[{i+1}/{len(questions)}]")
-            print(f"문제: {q_data['question'][:150]}...")
+            print(f"문제: {q_data['question'][:150]}")
             print(f"예측 답변: {pred}")
             
-            # 한국어 품질 표시
             quality = self._evaluate_korean_quality(pred)
             if quality < 0.5:
                 print(f"한국어 품질 낮음 ({quality:.2f})")

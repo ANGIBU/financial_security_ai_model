@@ -18,7 +18,7 @@ class PromptEngineer:
         
         self.prompt_cache = {}
         self.template_cache = {}
-        self.max_cache_size = 200
+        self.max_cache_size = 150
         
         self.stats = {
             "cache_hits": 0,
@@ -34,7 +34,7 @@ class PromptEngineer:
 
 ### 절대 규칙
 1. 오직 한국어로만 답변하세요
-2. 한자(漢字), 영어(English), 일본어, 중국어 등 외국어 사용 금지
+2. 한자, 영어, 일본어, 중국어 등 외국어 사용 금지
 3. 답변은 반드시 1, 2, 3, 4, 5 중 하나의 숫자만 선택
 
 ### 문제
@@ -66,9 +66,9 @@ class PromptEngineer:
 
 ### 절대 규칙
 1. 반드시 한국어로만 답변하세요
-2. 한자(中文), 영어(English) 등 외국어 절대 사용 금지
+2. 한자, 영어 등 외국어 절대 사용 금지
 3. 전문적이고 명확한 한국어 사용
-4. 80자 이상 600자 이내로 답변
+4. 80자 이상 500자 이내로 답변
 
 ### 질문
 {question}
@@ -150,7 +150,6 @@ class PromptEngineer:
                      analysis: Dict, structure: Dict) -> str:
         """프롬프트 생성"""
         
-        # 간단한 캐시 키 생성
         cache_key = hash(f"{question[:100]}{question_type}")
         if cache_key in self.prompt_cache:
             self.stats["cache_hits"] += 1
@@ -161,7 +160,6 @@ class PromptEngineer:
         else:
             prompt = self._create_subj_prompt(question, analysis, structure)
         
-        # 캐시 저장 (크기 제한)
         if len(self.prompt_cache) >= self.max_cache_size:
             oldest_key = next(iter(self.prompt_cache))
             del self.prompt_cache[oldest_key]
@@ -230,13 +228,13 @@ class PromptEngineer:
             prompt = f"""### 시스템 메시지
 당신은 한국의 금융보안 전문가입니다.
 모든 답변을 순수 한국어로만 작성하세요.
-한자(漢字), 영어(English) 등 외국어는 절대 사용하지 마세요.
+한자, 영어 등 외국어는 절대 사용하지 마세요.
 
 ### 질문
 {question}
 
 ### 답변 규칙
-1. 80자 이상 600자 이내
+1. 80자 이상 500자 이내
 2. 관련 법령 언급
 3. 구체적 방안 제시
 4. 순수 한국어만 사용

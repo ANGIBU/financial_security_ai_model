@@ -8,6 +8,8 @@ import pickle
 import hashlib
 import numpy as np
 import re
+import os
+import tempfile
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, asdict
 from collections import defaultdict
@@ -28,6 +30,39 @@ def _default_float():
 def _default_int_dict():
     """기본 정수 딕셔너리 반환"""
     return defaultdict(_default_int)
+
+def atomic_save(obj, filepath: str) -> bool:
+    """원자적 파일 저장"""
+    try:
+        directory = os.path.dirname(filepath)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        
+        fd, temp_path = tempfile.mkstemp(dir=directory)
+        try:
+            with os.fdopen(fd, 'wb') as f:
+                pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+            os.replace(temp_path, filepath)
+            return True
+        except Exception:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+            raise
+    except Exception as e:
+        print(f"원자적 저장 실패: {e}")
+        return False
+
+def atomic_load(filepath: str):
+    """안전한 파일 로드"""
+    if not os.path.exists(filepath):
+        return None
+    
+    try:
+        with open(filepath, 'rb') as f:
+            return pickle.load(f)
+    except Exception as e:
+        print(f"파일 로드 실패: {e}")
+        return None
 
 @dataclass
 class LearningData:
@@ -128,7 +163,6 @@ class UnifiedLearningSystem:
             return 0.0
         
         korean_ratio = korean_chars / total_chars
-        
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
@@ -136,8 +170,8 @@ class UnifiedLearningSystem:
         prof_count = sum(1 for term in professional_terms if term in text)
         prof_bonus = min(prof_count * 0.05, 0.2)
         
-        quality = korean_ratio * 0.7
-        quality -= english_ratio * 0.3
+        quality = korean_ratio * 0.8
+        quality -= english_ratio * 0.4
         quality += prof_bonus
         quality = max(0, min(1, quality))
         
@@ -180,8 +214,8 @@ class UnifiedLearningSystem:
                     "confidence": confidence,
                     "structure": self._analyze_answer_structure(predicted_answer)
                 })
-                if len(self.successful_answers[d]) > 50:
-                    self.successful_answers[d] = self.successful_answers[d][-50:]
+                if len(self.successful_answers[d]) > 30:
+                    self.successful_answers[d] = self.successful_answers[d][-30:]
         
         self._extract_patterns(sample)
     
@@ -274,7 +308,6 @@ class UnifiedLearningSystem:
                 }
             
             self.learned_rules[pattern_key]["answers"][sample.correct_answer] += 1
-            
             self.rule_performance[pattern_key].append(sample.is_correct)
     
     def _learn_subjective_pattern(self, sample: LearningData) -> None:
@@ -299,11 +332,11 @@ class UnifiedLearningSystem:
                     "structure": self._analyze_answer_structure(sample.correct_answer)
                 })
                 
-                if len(self.learned_rules[pattern_key]["templates"]) > 20:
+                if len(self.learned_rules[pattern_key]["templates"]) > 15:
                     self.learned_rules[pattern_key]["templates"].sort(
                         key=lambda x: x["quality"], reverse=True
                     )
-                    self.learned_rules[pattern_key]["templates"] = self.learned_rules[pattern_key]["templates"][:20]
+                    self.learned_rules[pattern_key]["templates"] = self.learned_rules[pattern_key]["templates"][:15]
     
     def predict_with_learning(self, question: str, question_type: str,
                             domain: List[str]) -> Tuple[str, float]:
@@ -402,16 +435,18 @@ class UnifiedLearningSystem:
                     rules_to_remove.append(rule_name)
         
         for rule in rules_to_remove:
-            del self.learned_rules[rule]
-            del self.rule_performance[rule]
+            if rule in self.learned_rules:
+                del self.learned_rules[rule]
+            if rule in self.rule_performance:
+                del self.rule_performance[rule]
         
         self.learning_metrics["rules_created"] = len(self.learned_rules)
     
-    def save_learning_data(self, filepath: str = "./learning_data.pkl") -> None:
+    def save_learning_data(self, filepath: str = "./learning_data.pkl") -> bool:
         """학습 데이터 저장"""
         
         save_data = {
-            "training_data": [asdict(d) for d in self.training_data[-1000:]],
+            "training_data": [asdict(d) for d in self.training_data[-500:]],
             "pattern_bank": dict(self.pattern_bank),
             "answer_statistics": {k: dict(v) for k, v in self.answer_statistics.items()},
             "learned_rules": self.learned_rules,
@@ -421,16 +456,16 @@ class UnifiedLearningSystem:
             "successful_answers": {k: list(v) for k, v in self.successful_answers.items()}
         }
         
-        with open(filepath, 'wb') as f:
-            pickle.dump(save_data, f)
+        return atomic_save(save_data, filepath)
     
     def load_learning_data(self, filepath: str = "./learning_data.pkl") -> bool:
         """학습 데이터 로드"""
         
+        data = atomic_load(filepath)
+        if data is None:
+            return False
+        
         try:
-            with open(filepath, 'rb') as f:
-                data = pickle.load(f)
-            
             self.training_data = [LearningData(**d) for d in data.get("training_data", [])]
             self.pattern_bank = defaultdict(_default_list, data.get("pattern_bank", {}))
             
@@ -456,7 +491,7 @@ class UnifiedLearningSystem:
             
             return True
         except Exception as e:
-            print(f"학습 데이터 로드 실패: {e}")
+            print(f"학습 데이터 파싱 실패: {e}")
             return False
     
     def get_learning_report(self) -> Dict:

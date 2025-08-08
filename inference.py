@@ -50,7 +50,7 @@ class FinancialAIInference:
         self.model_handler = ModelHandler(
             model_name="upstage/SOLAR-10.7B-Instruct-v1.0",
             device="cuda" if torch.cuda.is_available() else "cpu",
-            load_in_4bit=False,
+            load_in_4bit=True,
             max_memory_gb=22
         )
         
@@ -117,13 +117,13 @@ class FinancialAIInference:
         
         korean_ratio = korean_chars / total_chars
         
-        if korean_ratio < 0.6:
+        if korean_ratio < 0.7:
             return False, korean_ratio
         
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
-        if english_ratio > 0.3:
+        if english_ratio > 0.15:
             return False, 1 - english_ratio
         
         return True, korean_ratio
@@ -190,7 +190,7 @@ class FinancialAIInference:
             
             hint_answer, hint_confidence = self.optimizer.get_smart_answer_hint(question, structure)
             
-            if difficulty.score > 0.85 or self.stats["total"] > 400:
+            if difficulty.score > 0.85 or self.stats["total"] > 300:
                 if is_mc and hint_confidence > 0.6:
                     return hint_answer
                 elif not is_mc:
@@ -201,7 +201,7 @@ class FinancialAIInference:
                 question, structure["question_type"]
             )
             
-            max_attempts = 1 if self.stats["total"] > 200 else 2
+            max_attempts = 1 if self.stats["total"] > 100 else 2
             result = self.model_handler.generate_response(
                 prompt=prompt,
                 question_type=structure["question_type"],
@@ -219,7 +219,7 @@ class FinancialAIInference:
                 
                 is_valid, quality = self._validate_korean_quality(answer, structure["question_type"])
                 
-                if not is_valid or quality < 0.5:
+                if not is_valid or quality < 0.6:
                     self.stats["korean_failures"] += 1
                     answer = self._get_domain_specific_fallback(question, structure["question_type"])
                     self.stats["korean_fixes"] += 1
@@ -228,8 +228,8 @@ class FinancialAIInference:
                 if len(answer) < 50:
                     answer = self._get_domain_specific_fallback(question, structure["question_type"])
                     self.stats["fallback_used"] += 1
-                elif len(answer) > 800:
-                    answer = answer[:797] + "..."
+                elif len(answer) > 600:
+                    answer = answer[:597] + "..."
             
             if self.enable_learning and result.confidence > 0.5:
                 self.auto_learner.learn_from_prediction(
@@ -295,7 +295,7 @@ class FinancialAIInference:
         answers = [""] * len(test_df)
         
         print("추론 시작...")
-        for q_data in tqdm(questions_data, desc="추론"):
+        for q_data in tqdm(questions_data, desc="추론", ncols=80):
             idx = q_data["idx"]
             question_id = q_data["id"]
             question = q_data["question"]
@@ -325,11 +325,14 @@ class FinancialAIInference:
         
         if self.enable_learning:
             try:
-                self.learning_system.save_learning_data()
-                self.auto_learner.save_model()
-                self.correction_system.save_corrections_to_csv()
+                if self.learning_system.save_learning_data():
+                    print("학습 데이터 저장 완료")
+                if self.auto_learner.save_model():
+                    print("자동 학습 모델 저장 완료")
+                if self.correction_system.save_corrections_to_csv():
+                    print("교정 데이터 저장 완료")
             except Exception as e:
-                print(f"학습 데이터 저장 오류: {e}")
+                print(f"데이터 저장 오류: {e}")
         
         elapsed_time = time.time() - self.start_time
         
@@ -442,7 +445,6 @@ def main():
         print(f"오류: {submission_file} 파일 없음")
         sys.exit(1)
     
-    # 추론 단계에서는 학습 비활성화
     enable_learning = False
     
     engine = None

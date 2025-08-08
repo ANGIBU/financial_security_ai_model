@@ -148,7 +148,7 @@ def test_korean_generation():
             result = handler.generate_response(
                 test["prompt"], 
                 test["type"],
-                max_attempts=2
+                max_attempts=1
             )
             elapsed = time.time() - start_time
             
@@ -190,7 +190,6 @@ def test_small_inference_korean(sample_size: int = 5, with_learning: bool = Fals
         print(f"데이터 부족. {sample_size}개만 테스트합니다.")
     
     sample_df = test_df.head(sample_size).copy()
-    
     sample_df.to_csv("test_sample.csv", index=False)
     
     engine = None
@@ -208,7 +207,7 @@ def test_small_inference_korean(sample_size: int = 5, with_learning: bool = Fals
             
             print(f"\n문제 {idx+1}/{sample_size}:")
             print(f"ID: {question_id}")
-            print(f"질문: {question[:100]}...")
+            print(f"질문: {question[:100]}")
             
             answer = engine.process_question(question, question_id, idx)
             answers.append(answer)
@@ -217,7 +216,7 @@ def test_small_inference_korean(sample_size: int = 5, with_learning: bool = Fals
             korean_quality_results.append(quality)
             
             if len(answer) > 100:
-                print(f"답변: {answer[:100]}...")
+                print(f"답변: {answer[:100]}")
             else:
                 print(f"답변: {answer}")
             
@@ -276,7 +275,7 @@ def test_small_inference_korean(sample_size: int = 5, with_learning: bool = Fals
         if subj_answers:
             print(f"\n주관식 답변 ({len(subj_answers)}개)")
             for i, ans in enumerate(subj_answers[:3]):
-                print(f"  {i+1}. {ans[:50]}...")
+                print(f"  {i+1}. {ans[:50]}")
                 quality = korean_quality_results[len(mc_answers) + i] if len(mc_answers) + i < len(korean_quality_results) else None
                 if quality and quality['has_chinese']:
                     print(f"     한자 포함: {quality['chinese_chars'][:3]}")
@@ -322,7 +321,7 @@ def test_patterns():
     
     for i, question in enumerate(test_questions, 1):
         print(f"\n테스트 {i}:")
-        print(f"질문: {question[:80]}...")
+        print(f"질문: {question[:80]}")
         
         cleaned = processor._clean_korean_text(question)
         quality = test_korean_quality(cleaned)
@@ -341,25 +340,6 @@ def test_patterns():
             print("패턴 매칭 없음")
             answer, confidence = learner.predict_answer(question, structure)
             print(f"통계적 예측: {answer}번 (신뢰도: {confidence:.2f})")
-
-def show_menu():
-    """메뉴 표시"""
-    print("\n" + "="*50)
-    print("금융 AI Challenge 테스트 시스템")
-    print("="*50)
-    print("\n실행 옵션:")
-    print("1. 기본 시스템 체크")
-    print("2. 한국어 생성 품질 테스트")
-    print("3. 소규모 추론 테스트 (5문항)")
-    print("4. 중규모 추론 테스트 (10문항)")
-    print("5. 학습 포함 추론 테스트 (5문항)")
-    print("6. 패턴 학습 테스트")
-    print("7. 속도 성능 테스트")
-    print("8. 수동 교정 테스트")
-    print("9. 수동 교정 사용법 가이드")
-    print("10. 전체 추론 실행 (515문항)")
-    print("0. 종료")
-    print("-"*50)
 
 def test_manual_correction():
     """수동 교정 테스트"""
@@ -393,7 +373,7 @@ def test_manual_correction():
             correct=correction["correct"],
             reason=correction["reason"]
         )
-        print(f"  {i}. {correction['question'][:30]}... -> {correction['correct'][:20]}...")
+        print(f"  {i}. {correction['question'][:30]} -> {correction['correct'][:20]}")
     
     print(f"\n교정 적용 테스트:")
     test_questions = [
@@ -547,7 +527,7 @@ def test_speed():
             korean_quality_scores.append(quality['is_good_quality'])
             
             print(f"시도 {i+1}: {elapsed:.2f}초")
-            print(f"  답변: {result.response[:50]}...")
+            print(f"  답변: {result.response[:50]}")
             print(f"  한국어 품질: {'양호' if quality['is_good_quality'] else '개선필요'}")
             if quality['has_chinese']:
                 print(f"  한자 발견: {quality['chinese_chars'][:3]}")
@@ -573,49 +553,63 @@ def test_speed():
         import traceback
         traceback.print_exc()
 
+def show_menu():
+    """메뉴 표시"""
+    print("실행 옵션:")
+    print("1. 기본 시스템 체크")
+    print("2. 한국어 생성 품질 테스트")
+    print("3. 소규모 추론 테스트 (5문항)")
+    print("4. 중규모 추론 테스트 (10문항)")
+    print("5. 학습 포함 추론 테스트 (5문항)")
+    print("6. 패턴 학습 테스트")
+    print("7. 속도 성능 테스트")
+    print("8. 수동 교정 테스트")
+    print("9. 수동 교정 사용법 가이드")
+    print("10. 전체 추론 실행 (515문항)")
+    print("0. 종료")
+    print("-"*50)
+
 def interactive_mode():
     """대화형 모드"""
-    while True:
-        show_menu()
+    show_menu()
+    
+    try:
+        choice = input("\n선택하세요 (0-10): ").strip()
         
-        try:
-            choice = input("\n선택하세요 (0-10): ").strip()
-            
-            if choice == "0":
-                print("종료합니다.")
-                break
-            elif choice == "1":
-                test_basic()
-            elif choice == "2":
-                test_korean_generation()
-            elif choice == "3":
-                test_small_inference_korean(5, with_learning=False)
-            elif choice == "4":
-                test_small_inference_korean(10, with_learning=False)
-            elif choice == "5":
-                test_small_inference_korean(5, with_learning=True)
-            elif choice == "6":
-                test_patterns()
-            elif choice == "7":
-                test_speed()
-            elif choice == "8":
-                test_manual_correction()
-            elif choice == "9":
-                show_correction_guide()
-            elif choice == "10":
-                confirm = input("전체 515문항을 실행합니다. 계속하시겠습니까? (y/n): ")
-                if confirm.lower() == 'y':
-                    os.system("python inference.py")
-                else:
-                    print("취소되었습니다.")
+        if choice == "0":
+            print("종료합니다.")
+            return
+        elif choice == "1":
+            test_basic()
+        elif choice == "2":
+            test_korean_generation()
+        elif choice == "3":
+            test_small_inference_korean(5, with_learning=False)
+        elif choice == "4":
+            test_small_inference_korean(10, with_learning=False)
+        elif choice == "5":
+            test_small_inference_korean(5, with_learning=True)
+        elif choice == "6":
+            test_patterns()
+        elif choice == "7":
+            test_speed()
+        elif choice == "8":
+            test_manual_correction()
+        elif choice == "9":
+            show_correction_guide()
+        elif choice == "10":
+            confirm = input("전체 515문항을 실행합니다. 계속하시겠습니까? (y/n): ")
+            if confirm.lower() == 'y':
+                os.system("python inference.py")
             else:
-                print("잘못된 선택입니다.")
-                
-        except KeyboardInterrupt:
-            print("\n\n종료합니다.")
-            break
-        except Exception as e:
-            print(f"오류: {e}")
+                print("취소되었습니다.")
+        else:
+            print("잘못된 선택입니다.")
+            
+    except KeyboardInterrupt:
+        print("\n\n종료합니다.")
+    except Exception as e:
+        print(f"오류: {e}")
 
 def main():
     """메인 함수"""

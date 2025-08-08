@@ -30,12 +30,10 @@ class DataProcessor:
         
         self.structure_cache = {}
         self.pattern_cache = {}
-        self.max_cache_size = 500
+        self.max_cache_size = 300
         
         self.compiled_patterns = self._compile_all_patterns()
-        
         self.answer_statistics = self._initialize_statistics()
-        
         self.korean_cleanup_patterns = self._build_comprehensive_korean_patterns()
         
     def _build_comprehensive_korean_patterns(self) -> Dict[str, str]:
@@ -45,7 +43,6 @@ class DataProcessor:
             r'[硬硬][件体體]': '하드웨어',
             r'[危険險]害': '위험',
             r'可能性': '가능성',
-            r'[存在]': '존재',
             r'程[式序]': '프로그램',
             r'金融': '금융',
             r'交易': '거래',
@@ -82,48 +79,27 @@ class DataProcessor:
             r'\bdata\b': '데이터',
             r'\bserver\b': '서버',
             r'\bclient\b': '클라이언트',
-            r'\bbackup\b': '백업',
             r'\bpassword\b': '비밀번호',
             r'\baccess\b': '접근',
             r'\bcontrol\b': '통제',
             r'\bmanagement\b': '관리',
             r'\bpolicy\b': '정책',
             r'\bprocedure\b': '절차',
-            r'\bprocess\b': '프로세스',
             r'\bservice\b': '서비스',
-            r'\bapplication\b': '애플리케이션',
-            r'\bdatabase\b': '데이터베이스',
             r'\bencryption\b': '암호화',
             r'\bauthentication\b': '인증',
-            r'\bauthorization\b': '권한부여',
             r'\bfirewall\b': '방화벽',
             r'\bvirus\b': '바이러스',
             r'\bmalware\b': '악성코드',
-            r'\bransomware\b': '랜섬웨어',
             r'\bphishing\b': '피싱',
             r'\bhacking\b': '해킹',
-            r'\bincident\b': '사고',
-            r'\bresponse\b': '대응',
-            r'\brecovery\b': '복구',
             r'\bfinancial\b': '금융',
             r'\btransaction\b': '거래',
             r'\bpayment\b': '결제',
-            r'\btransfer\b': '이체',
             r'\baccount\b': '계정',
-            r'\bbalance\b': '잔액',
-            r'\bcredit\b': '신용',
-            r'\bdebit\b': '직불',
-            r'\binsurance\b': '보험',
             r'\brisk\b': '위험',
-            r'\bcompliance\b': '준수',
             r'\baudit\b': '감사',
-            r'\breport\b': '보고서',
-            r'\banalysis\b': '분석',
-            r'\bmonitoring\b': '모니터링',
-            r'\bprevention\b': '예방',
-            r'\bdetection\b': '탐지',
-            r'\binvestigation\b': '조사',
-            r'\bforensic\b': '포렌식'
+            r'\bmonitoring\b': '모니터링'
         }
     
     def _clean_korean_text(self, text: str) -> str:
@@ -132,25 +108,35 @@ class DataProcessor:
         if not text:
             return ""
         
+        # 제어 문자 제거
         text = re.sub(r'[\u0000-\u001f\u007f-\u009f]', '', text)
         
+        # 한자 및 외국어 매핑
         for pattern, replacement in self.korean_cleanup_patterns.items():
             text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
         
+        # 한자 제거
         text = re.sub(r'[\u4e00-\u9fff]+', '', text)
         text = re.sub(r'[\u3400-\u4dbf]+', '', text)
         
+        # 일본어 제거
         text = re.sub(r'[\u3040-\u309f]+', '', text)
         text = re.sub(r'[\u30a0-\u30ff]+', '', text)
         
+        # 특수문자 정리
         text = re.sub(r'[^\w\s가-힣0-9.,!?()·\-\n]', '', text)
         
+        # 영어 단어 제거 (괄호 안은 제외)
         text = re.sub(r'\b[A-Za-z]+\b(?!\))', '', text)
         
+        # 공백 정리
         text = re.sub(r'\s+', ' ', text)
         text = re.sub(r'\.{2,}', '.', text)
         text = re.sub(r',{2,}', ',', text)
         text = re.sub(r'\n\s*\n', '\n', text)
+        
+        # 질문 끝의 ... 제거
+        text = re.sub(r'\.{3,}$', '', text.strip())
         
         text = text.strip()
         if text and not text[-1] in '.!?':
@@ -186,7 +172,7 @@ class DataProcessor:
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
-        if english_ratio > 0.2:
+        if english_ratio > 0.15:
             return False, korean_ratio * (1 - english_ratio)
         
         return True, korean_ratio
@@ -229,12 +215,12 @@ class DataProcessor:
         """검증 규칙"""
         rules = {
             "choice_range": lambda x: x.isdigit() and 1 <= int(x) <= 5,
-            "length_appropriate": lambda x: 20 <= len(x) <= 1500,
+            "length_appropriate": lambda x: 20 <= len(x) <= 1200,
             "not_empty": lambda x: x.strip() != "",
             "meaningful_content": lambda x: len(x.split()) >= 5 if not x.isdigit() else True,
             "korean_content": lambda x: bool(re.search(r'[가-힣]', x)),
             "no_chinese_chars": lambda x: not bool(re.search(r'[\u4e00-\u9fff]', x)),
-            "minimal_english": lambda x: len(re.findall(r'[A-Za-z]', x)) < len(x) * 0.2,
+            "minimal_english": lambda x: len(re.findall(r'[A-Za-z]', x)) < len(x) * 0.15,
             "professional_content": lambda x: any(term in x for term in ['법', '규정', '보안', '관리', '정책', '조치', '체계']) if len(x) > 50 else True
         }
         return rules
@@ -242,12 +228,15 @@ class DataProcessor:
     def analyze_question_structure(self, question: str) -> Dict:
         """질문 구조 분석"""
         
-        # 간단한 캐시 키 생성
+        # 캐시 확인
         q_hash = hash(question[:200])
         if q_hash in self.structure_cache:
             return self.structure_cache[q_hash]
         
-        lines = question.strip().split("\n")
+        # 질문 전처리 (... 제거)
+        cleaned_question = re.sub(r'\.{3,}', '', question.strip())
+        
+        lines = cleaned_question.strip().split("\n")
         structure = {
             "question_text": "",
             "choices": [],
@@ -295,11 +284,9 @@ class DataProcessor:
         structure["choice_count"] = len(choices)
         structure["question_type"] = "multiple_choice" if len(choices) >= 2 else "subjective"
         structure["has_negative"] = self._detect_negative_question(structure["question_text"])
+        structure["domain_hints"] = self._extract_domain_hints(cleaned_question)
         
-        # 간단한 분석만 수행
-        structure["domain_hints"] = self._extract_domain_hints(question)
-        
-        # 캐시 저장 (크기 제한)
+        # 캐시 저장
         if len(self.structure_cache) >= self.max_cache_size:
             oldest_key = next(iter(self.structure_cache))
             del self.structure_cache[oldest_key]
@@ -433,7 +420,7 @@ class DataProcessor:
             fallback = self._generate_domain_specific_fallback(question_structure)
             return ProcessedAnswer(
                 final_answer=fallback,
-                confidence=0.5,
+                confidence=0.6,
                 extraction_method="fallback",
                 validation_passed=True,
                 korean_quality=0.8
@@ -443,17 +430,17 @@ class DataProcessor:
             fallback = self._generate_domain_specific_fallback(question_structure)
             return ProcessedAnswer(
                 final_answer=fallback,
-                confidence=0.5,
+                confidence=0.6,
                 extraction_method="length_fallback",
                 validation_passed=True,
                 korean_quality=0.8
             )
-        elif len(response) > 800:
-            response = response[:797] + "..."
+        elif len(response) > 600:
+            response = response[:597] + "..."
         
         return ProcessedAnswer(
             final_answer=response.strip(),
-            confidence=0.7,
+            confidence=0.8,
             extraction_method="subjective_processing",
             validation_passed=True,
             korean_quality=korean_quality
@@ -510,7 +497,7 @@ class DataProcessor:
                 self.validation_rules["no_chinese_chars"](answer),
                 self.validation_rules["minimal_english"](answer),
                 self.validation_rules["professional_content"](answer),
-                processed_answer.korean_quality > 0.5
+                processed_answer.korean_quality > 0.6
             ]
             
             return sum(validations) / len(validations) >= 0.7

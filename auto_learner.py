@@ -6,6 +6,8 @@
 import numpy as np
 import pickle
 import re
+import os
+import tempfile
 from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
 
@@ -29,13 +31,46 @@ def _default_int_dict():
     """기본 정수 딕셔너리 반환"""
     return defaultdict(_default_int)
 
+def atomic_save_model(obj, filepath: str) -> bool:
+    """원자적 모델 저장"""
+    try:
+        directory = os.path.dirname(filepath)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        
+        fd, temp_path = tempfile.mkstemp(dir=directory)
+        try:
+            with os.fdopen(fd, 'wb') as f:
+                pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+            os.replace(temp_path, filepath)
+            return True
+        except Exception:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+            raise
+    except Exception as e:
+        print(f"모델 저장 실패: {e}")
+        return False
+
+def atomic_load_model(filepath: str):
+    """안전한 모델 로드"""
+    if not os.path.exists(filepath):
+        return None
+    
+    try:
+        with open(filepath, 'rb') as f:
+            return pickle.load(f)
+    except Exception as e:
+        print(f"모델 로드 실패: {e}")
+        return None
+
 class AutoLearner:
     """자동 학습 엔진"""
     
     def __init__(self):
         self.learning_rate = 0.1
         self.confidence_threshold = 0.7
-        self.min_samples = 5
+        self.min_samples = 3
         
         self.pattern_weights = defaultdict(_default_float_dict)
         self.pattern_counts = defaultdict(_default_int)
@@ -120,6 +155,9 @@ class AutoLearner:
             "korean_quality": korean_quality,
             "patterns": len(patterns)
         })
+        
+        if len(self.learning_history) > 200:
+            self.learning_history = self.learning_history[-200:]
     
     def _evaluate_korean_quality(self, text: str, question_type: str) -> float:
         """한국어 품질 평가"""
@@ -139,7 +177,6 @@ class AutoLearner:
             return 0.0
         
         korean_ratio = korean_chars / total_chars
-        
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
@@ -194,25 +231,20 @@ class AutoLearner:
         else:
             patterns.append("medium_question")
         
-        if question.count('\n') > 5:
-            patterns.append("complex_structure")
-        if len(re.findall(r'[1-5]', question)) >= 5:
-            patterns.append("has_choices")
-        
         return patterns
     
     def _learn_korean_patterns(self, text: str, domains: List[str]) -> None:
         """한국어 패턴 학습"""
         
-        if len(text) > 50 and len(text) < 800:
+        if len(text) > 50 and len(text) < 600:
             self.successful_korean_templates.append({
                 "text": text,
                 "domains": domains,
                 "structure": self._analyze_text_structure(text)
             })
             
-            if len(self.successful_korean_templates) > 100:
-                self.successful_korean_templates = self.successful_korean_templates[-100:]
+            if len(self.successful_korean_templates) > 50:
+                self.successful_korean_templates = self.successful_korean_templates[-50:]
         
         for domain in domains:
             self.korean_quality_patterns[domain].append({
@@ -342,8 +374,10 @@ class AutoLearner:
                 patterns_to_remove.append(pattern)
         
         for pattern in patterns_to_remove:
-            del self.pattern_weights[pattern]
-            del self.pattern_counts[pattern]
+            if pattern in self.pattern_weights:
+                del self.pattern_weights[pattern]
+            if pattern in self.pattern_counts:
+                del self.pattern_counts[pattern]
             removed += 1
         
         for pattern in self.pattern_weights:
@@ -365,7 +399,7 @@ class AutoLearner:
         if not self.learning_history:
             return {"status": "학습 데이터 없음"}
         
-        recent_history = self.learning_history[-100:]
+        recent_history = self.learning_history[-50:]
         
         confidences = [h["confidence"] for h in recent_history]
         confidence_trend = np.mean(confidences) if confidences else 0
@@ -374,7 +408,6 @@ class AutoLearner:
         korean_quality_trend = np.mean(korean_qualities) if korean_qualities else 0
         
         pattern_diversity = len(self.pattern_weights)
-        
         mc_distribution = dict(self.answer_distribution["mc"])
         
         return {
@@ -388,7 +421,7 @@ class AutoLearner:
             "successful_templates": len(self.successful_korean_templates)
         }
     
-    def save_model(self, filepath: str = "./auto_learner_model.pkl") -> None:
+    def save_model(self, filepath: str = "./auto_learner_model.pkl") -> bool:
         """모델 저장"""
         
         model_data = {
@@ -400,8 +433,8 @@ class AutoLearner:
                 "negative": dict(self.answer_distribution["negative"])
             },
             "korean_quality_patterns": dict(self.korean_quality_patterns),
-            "successful_korean_templates": self.successful_korean_templates[-50:],
-            "learning_history": self.learning_history[-1000:],
+            "successful_korean_templates": self.successful_korean_templates[-30:],
+            "learning_history": self.learning_history[-100:],
             "parameters": {
                 "learning_rate": self.learning_rate,
                 "confidence_threshold": self.confidence_threshold,
@@ -409,16 +442,16 @@ class AutoLearner:
             }
         }
         
-        with open(filepath, 'wb') as f:
-            pickle.dump(model_data, f)
+        return atomic_save_model(model_data, filepath)
     
     def load_model(self, filepath: str = "./auto_learner_model.pkl") -> bool:
         """모델 로드"""
         
+        model_data = atomic_load_model(filepath)
+        if model_data is None:
+            return False
+        
         try:
-            with open(filepath, 'rb') as f:
-                model_data = pickle.load(f)
-            
             self.pattern_weights = defaultdict(_default_float_dict)
             for k, v in model_data["pattern_weights"].items():
                 self.pattern_weights[k] = defaultdict(_default_float, v)
@@ -437,16 +470,16 @@ class AutoLearner:
             
             self.korean_quality_patterns = defaultdict(_default_list, model_data.get("korean_quality_patterns", {}))
             self.successful_korean_templates = model_data.get("successful_korean_templates", [])
-            self.learning_history = model_data["learning_history"]
+            self.learning_history = model_data.get("learning_history", [])
             
             params = model_data.get("parameters", {})
             self.learning_rate = params.get("learning_rate", 0.1)
             self.confidence_threshold = params.get("confidence_threshold", 0.7)
-            self.min_samples = params.get("min_samples", 5)
+            self.min_samples = params.get("min_samples", 3)
             
             return True
         except Exception as e:
-            print(f"모델 로드 실패: {e}")
+            print(f"모델 파싱 실패: {e}")
             return False
     
     def cleanup(self):
