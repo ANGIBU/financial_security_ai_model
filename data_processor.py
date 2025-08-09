@@ -79,7 +79,7 @@ class DataProcessor:
         }
     
     def _clean_korean_text(self, text: str) -> str:
-        """한국어 텍스트 정리 (완화)"""
+        """한국어 텍스트 정리"""
         
         if not text:
             return ""
@@ -102,7 +102,7 @@ class DataProcessor:
         return text
     
     def _validate_korean_text(self, text: str, question_type: str) -> Tuple[bool, float]:
-        """한국어 텍스트 검증 (완화)"""
+        """한국어 텍스트 검증"""
         
         if question_type == "multiple_choice":
             if re.match(r'^[1-5]$', text.strip()):
@@ -136,7 +136,7 @@ class DataProcessor:
         return True, korean_ratio
     
     def _build_extraction_patterns(self) -> Dict[str, List[str]]:
-        """답변 추출 패턴 (강화)"""
+        """답변 추출 패턴"""
         patterns = {
             "explicit_answer": [
                 r'정답[:\s]*([1-5])',
@@ -185,7 +185,7 @@ class DataProcessor:
         }
     
     def _build_validation_rules(self) -> Dict[str, callable]:
-        """검증 규칙 (완화)"""
+        """검증 규칙"""
         rules = {
             "choice_range": lambda x: x.isdigit() and 1 <= int(x) <= 5,
             "length_appropriate": lambda x: 15 <= len(x) <= 1500,
@@ -199,9 +199,9 @@ class DataProcessor:
         return rules
     
     def analyze_question_structure(self, question: str) -> Dict:
-        """질문 구조 분석"""
+        """질문 구조 분석 강화"""
         
-        q_hash = hash(question[:200])
+        q_hash = hash(question[:200] + str(id(question)))
         if q_hash in self.structure_cache:
             return self.structure_cache[q_hash]
         
@@ -216,7 +216,9 @@ class DataProcessor:
             "question_type": "subjective",
             "complexity_score": 0.0,
             "domain_hints": [],
-            "structural_features": {}
+            "structural_features": {},
+            "is_definitional": False,
+            "is_procedural": False
         }
         
         question_parts = []
@@ -253,9 +255,43 @@ class DataProcessor:
         structure["question_text"] = " ".join(question_parts)
         structure["choices"] = choices
         structure["choice_count"] = len(choices)
-        structure["question_type"] = "multiple_choice" if len(choices) >= 2 else "subjective"
+        
+        # 강화된 질문 유형 분류
+        full_text = structure["question_text"].lower()
+        
+        # 명확한 주관식 지표 확인
+        subjective_indicators = [
+            "설명하세요", "기술하세요", "서술하세요", "논하세요", "작성하세요",
+            "특징을", "방법을", "과정을", "절차를", "방안을",
+            "어떻게", "무엇인지", "왜", "어떤",
+            "트로이", "악성코드", "탐지지표", "원격제어"
+        ]
+        
+        has_subjective_indicators = any(indicator in full_text for indicator in subjective_indicators)
+        
+        # 객관식 확실 지표
+        has_multiple_choices = len(choices) >= 3
+        has_choice_question = any(phrase in full_text for phrase in [
+            "다음 중", "가장 적절한", "옳은 것", "해당하는 것", "틀린 것"
+        ])
+        
+        # 질문 유형 결정 로직 강화
+        if has_subjective_indicators and not (has_multiple_choices and has_choice_question):
+            structure["question_type"] = "subjective"
+        elif has_multiple_choices and has_choice_question:
+            structure["question_type"] = "multiple_choice"
+        elif len(choices) >= 3:
+            structure["question_type"] = "multiple_choice"
+        elif has_subjective_indicators:
+            structure["question_type"] = "subjective"
+        else:
+            # 기본적으로 선택지가 있으면 객관식, 없으면 주관식
+            structure["question_type"] = "multiple_choice" if len(choices) >= 2 else "subjective"
+        
         structure["has_negative"] = self._detect_negative_question(structure["question_text"])
         structure["domain_hints"] = self._extract_domain_hints(cleaned_question)
+        structure["is_definitional"] = "정의" in full_text or "의미" in full_text
+        structure["is_procedural"] = any(word in full_text for word in ["절차", "순서", "단계", "과정"])
         
         if len(self.structure_cache) >= self.max_cache_size:
             oldest_key = next(iter(self.structure_cache))
@@ -282,7 +318,7 @@ class DataProcessor:
         return bool(compiled_negative.search(question_text))
     
     def _extract_domain_hints(self, question: str) -> List[str]:
-        """도메인 힌트 추출 (강화)"""
+        """도메인 힌트 추출"""
         domain_keywords = {
             "개인정보보호": ["개인정보", "정보주체", "개인정보처리", "동의", "수집", "이용"],
             "전자금융": ["전자금융", "전자적장치", "전자거래", "접근매체", "전자서명"],
@@ -307,7 +343,7 @@ class DataProcessor:
         return [domain for domain, confidence in detected_domains if confidence > 0.1]
     
     def extract_mc_answer_fast(self, response: str) -> str:
-        """빠른 객관식 답변 추출 (강화)"""
+        """빠른 객관식 답변 추출"""
         
         self._debug_print(f"답변 추출 시도: {response[:100]}")
         
@@ -433,7 +469,9 @@ class DataProcessor:
         """도메인별 맞춤 폴백 생성"""
         domain_hints = structure.get("domain_hints", [])
         
-        if "개인정보보호" in domain_hints:
+        if "사이버보안" in domain_hints or "트로이" in str(structure.get("question_text", "")).lower():
+            return "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 원격 접근 트로이 목마는 공격자가 감염된 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결, 시스템 리소스 사용 증가, 알 수 없는 프로세스 실행, 방화벽 규칙 변경 등이 있습니다."
+        elif "개인정보보호" in domain_hints:
             return "개인정보보호법에 따라 개인정보의 안전한 관리와 정보주체의 권리 보호를 위한 체계적인 조치가 필요합니다. 개인정보 처리방침을 수립하고, 안전성 확보조치를 구현하며, 정기적인 점검과 개선을 수행해야 합니다."
         elif "전자금융" in domain_hints:
             return "전자금융거래법에 따라 전자적 장치를 통한 금융거래의 안전성을 확보하고 이용자를 보호해야 합니다. 접근매체를 안전하게 관리하고, 거래내역을 통지하며, 사고 발생 시 신속한 대응체계를 구축해야 합니다."
@@ -475,7 +513,7 @@ class DataProcessor:
     
     def validate_final_answer(self, processed_answer: ProcessedAnswer,
                             question: str, question_type: str) -> bool:
-        """최종 답변 검증 (완화)"""
+        """최종 답변 검증"""
         
         answer = processed_answer.final_answer
         

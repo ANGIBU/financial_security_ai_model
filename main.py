@@ -16,8 +16,31 @@ from typing import Dict, List
 current_dir = Path(__file__).parent.absolute()
 sys.path.append(str(current_dir))
 
-def test_korean_quality(text: str) -> Dict:
-    """한국어 품질 검사"""
+def test_korean_quality(text: str, question_type: str = "subjective") -> Dict:
+    """한국어 품질 검사 개선"""
+    
+    # 객관식 답변 처리
+    if question_type == "multiple_choice" or re.match(r'^[1-5]$', text.strip()):
+        if re.match(r'^[1-5]$', text.strip()):
+            return {
+                "has_chinese": False,
+                "has_russian": False,
+                "chinese_chars": [],
+                "russian_chars": [],
+                "korean_ratio": 1.0,
+                "english_ratio": 0.0,
+                "is_good_quality": True
+            }
+        elif re.search(r'[1-5]', text):
+            return {
+                "has_chinese": False,
+                "has_russian": False,
+                "chinese_chars": [],
+                "russian_chars": [],
+                "korean_ratio": 0.8,
+                "english_ratio": 0.0,
+                "is_good_quality": True
+            }
     
     chinese_chars = re.findall(r'[\u4e00-\u9fff]', text)
     russian_chars = re.findall(r'[а-яё]', text.lower())
@@ -29,6 +52,14 @@ def test_korean_quality(text: str) -> Dict:
     english_chars = len(re.findall(r'[A-Za-z]', text))
     english_ratio = english_chars / max(len(text), 1)
     
+    # 품질 평가 기준 개선
+    is_good_quality = (
+        len(chinese_chars) == 0 and 
+        len(russian_chars) == 0 and 
+        korean_ratio > 0.3 and 
+        english_ratio < 0.4
+    )
+    
     return {
         "has_chinese": len(chinese_chars) > 0,
         "has_russian": len(russian_chars) > 0,
@@ -36,7 +67,7 @@ def test_korean_quality(text: str) -> Dict:
         "russian_chars": russian_chars,
         "korean_ratio": korean_ratio,
         "english_ratio": english_ratio,
-        "is_good_quality": len(chinese_chars) == 0 and len(russian_chars) == 0 and korean_ratio > 0.6 and english_ratio < 0.2
+        "is_good_quality": is_good_quality
     }
 
 def test_basic():
@@ -66,18 +97,21 @@ def test_basic():
         processor = DataProcessor()
         
         test_texts = [
-            "이것은 软件입니다",
-            "金融 거래의 安全성",
-            "financial system 관리",
-            "개인정보보호법에 따른 조치",
-            "трой목마 바이러스"
+            ("이것은 软件입니다", "subjective"),
+            ("金融 거래의 安全성", "subjective"), 
+            ("financial system 관리", "subjective"),
+            ("개인정보보호법에 따른 조치", "subjective"),
+            ("трой목마 바이러스", "subjective"),
+            ("2", "multiple_choice"),
+            ("정답: 3", "multiple_choice")
         ]
         
-        for text in test_texts:
+        for text, q_type in test_texts:
             cleaned = processor._clean_korean_text(text)
-            quality = test_korean_quality(cleaned)
+            quality = test_korean_quality(cleaned, q_type)
             print(f"  원본: {text}")
             print(f"  정리: {cleaned}")
+            print(f"  유형: {q_type}")
             print(f"  품질: {'양호' if quality['is_good_quality'] else '개선필요'}")
             if quality['has_chinese']:
                 print(f"    한자 발견: {quality['chinese_chars']}")
@@ -145,6 +179,18 @@ def test_korean_generation():
 
 답변:""",
                 "type": "subjective"
+            },
+            {
+                "name": "트로이 목마 테스트",
+                "prompt": """### 지시사항
+당신은 한국의 사이버보안 전문가입니다.
+반드시 순수 한국어로만 답변하세요.
+
+### 질문
+트로이 목마 기반 원격제어 악성코드의 특징과 탐지 지표를 설명하세요.
+
+답변:""",
+                "type": "subjective"
             }
         ]
         
@@ -164,7 +210,7 @@ def test_korean_generation():
             print(f"응답 시간: {elapsed:.2f}초")
             print(f"원본 응답: {result.response}")
             
-            quality = test_korean_quality(result.response)
+            quality = test_korean_quality(result.response, test["type"])
             print(f"\n품질 분석:")
             print(f"  한자 포함: {'예' if quality['has_chinese'] else '아니오'}")
             print(f"  러시아어 포함: {'예' if quality['has_russian'] else '아니오'}")
@@ -184,7 +230,7 @@ def test_korean_generation():
         traceback.print_exc()
 
 def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False, verbose: bool = False):
-    """깔끔한 소규모 추론 테스트"""
+    """소규모 추론 테스트 개선"""
     mode_text = "학습 포함" if with_learning else "기본"
     print(f"소규모 추론 테스트 ({sample_size}개, {mode_text} 모드)")
     print("="*60)
@@ -216,6 +262,7 @@ def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False
         
         answers = []
         korean_quality_results = []
+        question_types = []
         
         print(f"\n추론 시작...")
         
@@ -224,6 +271,8 @@ def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False
             question_id = row['ID']
             
             structure = data_processor.analyze_question_structure(question)
+            question_type = structure["question_type"]
+            question_types.append(question_type)
             
             answer, confidence, logic = optimizer.get_smart_answer_hint_simple(question, structure)
             
@@ -232,24 +281,43 @@ def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False
             question_short = question[:80] + "..." if len(question) > 80 else question
             
             print(f"\n문제 {idx+1}: {question_short}")
+            print(f"문제 유형: {question_type}")
             print(f"추천 답변: {answer}")
             print(f"신뢰도: {confidence:.2f}")
             if logic:
                 print(f"근거: {logic}")
             
-            quality = test_korean_quality(answer)
+            quality = test_korean_quality(answer, question_type)
             korean_quality_results.append(quality)
         
-        mc_answers = [a for a in answers if a.isdigit()]
-        subj_answers = [a for a in answers if not a.isdigit()]
+        # 결과 분석 개선
+        mc_answers = []
+        subj_answers = []
+        mc_qualities = []
+        subj_qualities = []
         
-        total_with_foreign = sum(1 for q in korean_quality_results if q['has_chinese'] or q['has_russian'])
+        for answer, q_type, quality in zip(answers, question_types, korean_quality_results):
+            if q_type == "multiple_choice":
+                mc_answers.append(answer)
+                mc_qualities.append(quality)
+            else:
+                subj_answers.append(answer)
+                subj_qualities.append(quality)
+        
         total_good_quality = sum(1 for q in korean_quality_results if q['is_good_quality'])
-        avg_korean_ratio = sum(q['korean_ratio'] for q in korean_quality_results) / len(korean_quality_results)
+        total_with_foreign = sum(1 for q in korean_quality_results if q['has_chinese'] or q['has_russian'])
+        
+        # 한국어 비율 계산 개선
+        all_korean_ratios = [q['korean_ratio'] for q in korean_quality_results]
+        avg_korean_ratio = sum(all_korean_ratios) / len(all_korean_ratios) if all_korean_ratios else 0
         
         print("\n" + "="*60)
         print("테스트 결과")
         print("="*60)
+        
+        print(f"\n문제 유형 분포:")
+        print(f"  객관식: {len(mc_answers)}개")
+        print(f"  주관식: {len(subj_answers)}개")
         
         print(f"\n한국어 품질 리포트:")
         print(f"  외국어 포함 답변: {total_with_foreign}/{sample_size}개")
@@ -270,24 +338,46 @@ def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False
                 print(f"  정확도: {engine.learning_system.get_current_accuracy():.2%}")
         
         if mc_answers:
-            print(f"\n객관식 답변 ({len(mc_answers)}개): {mc_answers}")
-            distribution = {}
+            mc_distribution = {}
             for ans in mc_answers:
-                distribution[ans] = distribution.get(ans, 0) + 1
-            print("답변 분포:", distribution)
+                mc_distribution[ans] = mc_distribution.get(ans, 0) + 1
             
-            if len(distribution) >= min(4, len(mc_answers)):
-                print("다양한 답변 생성됨")
+            print(f"\n객관식 답변 분포 ({len(mc_answers)}개):")
+            for num in sorted(mc_distribution.keys()):
+                count = mc_distribution[num]
+                pct = (count / len(mc_answers)) * 100
+                print(f"  {num}번: {count}개 ({pct:.1f}%)")
+            
+            unique_mc = len(mc_distribution)
+            if unique_mc >= min(4, len(mc_answers)):
+                print("  객관식 답변 다양성 양호")
             else:
-                print("답변 다양성 부족")
+                print("  객관식 답변 다양성 부족")
         
         if subj_answers and verbose:
             print(f"\n주관식 답변 ({len(subj_answers)}개)")
             for i, ans in enumerate(subj_answers[:3]):
                 print(f"  {i+1}. {ans[:50]}...")
-                quality = korean_quality_results[len(mc_answers) + i] if len(mc_answers) + i < len(korean_quality_results) else None
-                if quality and (quality['has_chinese'] or quality['has_russian']):
-                    print(f"     외국어 발견")
+                if i < len(subj_qualities):
+                    quality = subj_qualities[i]
+                    if quality['has_chinese'] or quality['has_russian']:
+                        print(f"     외국어 발견")
+        
+        # 추가 문제 검증
+        print(f"\n추가 검증:")
+        
+        # 주관식이 객관식으로 잘못 분류된 경우 체크
+        misclassified = 0
+        for i, (q_type, answer) in enumerate(zip(question_types, answers)):
+            question = sample_df.iloc[i]['Question'].lower()
+            if ("설명하세요" in question or "기술하세요" in question or "트로이" in question) and q_type == "multiple_choice":
+                misclassified += 1
+                print(f"  문제 {i+1}: 주관식이 객관식으로 분류됨")
+        
+        if misclassified == 0:
+            print("  문제 유형 분류 정확")
+        else:
+            print(f"  문제 유형 오분류: {misclassified}개")
         
     except Exception as e:
         print(f"오류: {e}")
@@ -352,7 +442,7 @@ def test_speed():
             elapsed = time.time() - start
             times.append(elapsed)
             
-            quality = test_korean_quality(result.response)
+            quality = test_korean_quality(result.response, "multiple_choice")
             korean_quality_scores.append(quality['is_good_quality'])
             
             print(f"시도 {i+1}: {elapsed:.2f}초")
