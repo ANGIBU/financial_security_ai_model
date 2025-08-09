@@ -17,9 +17,8 @@ current_dir = Path(__file__).parent.absolute()
 sys.path.append(str(current_dir))
 
 def test_korean_quality(text: str, question_type: str = "subjective") -> Dict:
-    """한국어 품질 검사 개선"""
+    """한국어 품질 검사"""
     
-    # 객관식 답변 처리
     if question_type == "multiple_choice" or re.match(r'^[1-5]$', text.strip()):
         if re.match(r'^[1-5]$', text.strip()):
             return {
@@ -52,7 +51,6 @@ def test_korean_quality(text: str, question_type: str = "subjective") -> Dict:
     english_chars = len(re.findall(r'[A-Za-z]', text))
     english_ratio = english_chars / max(len(text), 1)
     
-    # 품질 평가 기준 개선
     is_good_quality = (
         len(chinese_chars) == 0 and 
         len(russian_chars) == 0 and 
@@ -230,7 +228,7 @@ def test_korean_generation():
         traceback.print_exc()
 
 def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False, verbose: bool = False):
-    """소규모 추론 테스트 개선"""
+    """실제 추론 엔진을 사용한 소규모 테스트"""
     mode_text = "학습 포함" if with_learning else "기본"
     print(f"소규모 추론 테스트 ({sample_size}개, {mode_text} 모드)")
     print("="*60)
@@ -240,8 +238,6 @@ def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False
         return
     
     from inference import FinancialAIInference
-    from advanced_optimizer import SystemOptimizer
-    from data_processor import DataProcessor
     
     test_df = pd.read_csv("test.csv")
     
@@ -250,15 +246,11 @@ def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False
         print(f"데이터 부족. {sample_size}개만 테스트합니다.")
     
     sample_df = test_df.head(sample_size).copy()
-    sample_df.to_csv("test_sample.csv", index=False)
     
     engine = None
     try:
         print(f"\n모델 로딩 중...")
-        engine = FinancialAIInference(enable_learning=with_learning, verbose=False)
-        
-        data_processor = DataProcessor()
-        optimizer = SystemOptimizer(debug_mode=False)
+        engine = FinancialAIInference(enable_learning=with_learning, verbose=verbose)
         
         answers = []
         korean_quality_results = []
@@ -270,27 +262,25 @@ def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False
             question = row['Question']
             question_id = row['ID']
             
-            structure = data_processor.analyze_question_structure(question)
+            structure = engine.data_processor.analyze_question_structure(question)
             question_type = structure["question_type"]
             question_types.append(question_type)
             
-            answer, confidence, logic = optimizer.get_smart_answer_hint_simple(question, structure)
-            
+            answer = engine.process_question(question, question_id, idx)
             answers.append(answer)
             
             question_short = question[:80] + "..." if len(question) > 80 else question
             
             print(f"\n문제 {idx+1}: {question_short}")
             print(f"문제 유형: {question_type}")
-            print(f"추천 답변: {answer}")
-            print(f"신뢰도: {confidence:.2f}")
-            if logic:
-                print(f"근거: {logic}")
+            print(f"답변: {answer}")
+            
+            if verbose and question_type == "subjective":
+                print(f"답변 전문: {answer}")
             
             quality = test_korean_quality(answer, question_type)
             korean_quality_results.append(quality)
         
-        # 결과 분석 개선
         mc_answers = []
         subj_answers = []
         mc_qualities = []
@@ -307,7 +297,6 @@ def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False
         total_good_quality = sum(1 for q in korean_quality_results if q['is_good_quality'])
         total_with_foreign = sum(1 for q in korean_quality_results if q['has_chinese'] or q['has_russian'])
         
-        # 한국어 비율 계산 개선
         all_korean_ratios = [q['korean_ratio'] for q in korean_quality_results]
         avg_korean_ratio = sum(all_korean_ratios) / len(all_korean_ratios) if all_korean_ratios else 0
         
@@ -329,6 +318,9 @@ def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False
             print("  외국어 혼재 문제 해결됨")
         else:
             print("  일부 답변에 외국어 포함")
+            for i, quality in enumerate(korean_quality_results):
+                if quality['has_chinese'] or quality['has_russian']:
+                    print(f"    문제 {i+1}: 외국어 발견")
         
         if with_learning:
             print(f"\n학습 통계:")
@@ -354,19 +346,18 @@ def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False
             else:
                 print("  객관식 답변 다양성 부족")
         
-        if subj_answers and verbose:
-            print(f"\n주관식 답변 ({len(subj_answers)}개)")
-            for i, ans in enumerate(subj_answers[:3]):
-                print(f"  {i+1}. {ans[:50]}...")
-                if i < len(subj_qualities):
-                    quality = subj_qualities[i]
-                    if quality['has_chinese'] or quality['has_russian']:
-                        print(f"     외국어 발견")
+        if subj_answers:
+            print(f"\n주관식 답변 품질 ({len(subj_answers)}개):")
+            for i, (ans, quality) in enumerate(zip(subj_answers, subj_qualities)):
+                print(f"  답변 {i+1}: {ans[:50]}...")
+                print(f"    품질: {'우수' if quality['is_good_quality'] else '개선필요'}")
+                if quality['has_chinese'] or quality['has_russian']:
+                    print(f"    외국어 발견")
+                if verbose:
+                    print(f"    전문: {ans}")
         
-        # 추가 문제 검증
         print(f"\n추가 검증:")
         
-        # 주관식이 객관식으로 잘못 분류된 경우 체크
         misclassified = 0
         for i, (q_type, answer) in enumerate(zip(question_types, answers)):
             question = sample_df.iloc[i]['Question'].lower()
@@ -379,6 +370,23 @@ def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False
         else:
             print(f"  문제 유형 오분류: {misclassified}개")
         
+        wrong_mc_answers = 0
+        for i, (q_type, answer) in enumerate(zip(question_types, answers)):
+            if q_type == "multiple_choice":
+                if not (answer.isdigit() and 1 <= int(answer) <= 5):
+                    wrong_mc_answers += 1
+                    print(f"  문제 {i+1}: 객관식 답변 형식 오류 - '{answer}'")
+        
+        wrong_subj_answers = 0
+        for i, (q_type, answer) in enumerate(zip(question_types, answers)):
+            if q_type == "subjective":
+                if re.match(r'^[1-5]$', answer.strip()):
+                    wrong_subj_answers += 1
+                    print(f"  문제 {i+1}: 주관식에 객관식 답변 - '{answer}'")
+        
+        if wrong_mc_answers == 0 and wrong_subj_answers == 0:
+            print("  답변 형식 정확")
+        
     except Exception as e:
         print(f"오류: {e}")
         import traceback
@@ -386,9 +394,6 @@ def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False
     finally:
         if engine:
             engine.cleanup()
-        
-        if os.path.exists("test_sample.csv"):
-            os.remove("test_sample.csv")
 
 def test_small_inference_korean(sample_size: int = 5, with_learning: bool = False, verbose: bool = False):
     """기존 인터페이스 유지용 래퍼"""
