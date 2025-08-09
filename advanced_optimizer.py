@@ -66,8 +66,9 @@ class SystemOptimizer:
         self.max_workers = min(mp.cpu_count(), 8)
         self.processing_queue = []
         
-        # 각 문제별 독립적 분석을 위한 상태 초기화
         self.current_analysis_context = {}
+        self.answer_diversity_tracker = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
+        self.total_answers_given = 0
         
     def _debug_print(self, message: str):
         """디버그 출력 (조건부)"""
@@ -79,7 +80,7 @@ class SystemOptimizer:
         return {
             "금융투자업_분류": {
                 "patterns": ["금융투자업", "구분", "해당하지않는", "소비자금융업", "투자매매업", "투자중개업", "투자자문업", "보험중개업"],
-                "preferred_answers": {"1": 0.80, "5": 0.10, "2": 0.05, "3": 0.03, "4": 0.02},
+                "preferred_answers": {"1": 0.65, "5": 0.25, "2": 0.05, "3": 0.03, "4": 0.02},
                 "confidence": 0.90,
                 "context_multipliers": {"소비자금융업": 1.3, "해당하지않는": 1.2, "금융투자업": 1.1},
                 "domain_boost": 0.20,
@@ -87,7 +88,7 @@ class SystemOptimizer:
             },
             "위험관리_계획": {
                 "patterns": ["위험관리", "계획수립", "고려", "요소", "적절하지않은", "수행인력", "위험수용", "대응전략", "대상", "기간"],
-                "preferred_answers": {"2": 0.75, "1": 0.15, "3": 0.05, "4": 0.03, "5": 0.02},
+                "preferred_answers": {"2": 0.60, "4": 0.20, "3": 0.10, "1": 0.06, "5": 0.04},
                 "confidence": 0.85,
                 "context_multipliers": {"위험수용": 1.4, "적절하지않은": 1.2, "위험관리": 1.1},
                 "domain_boost": 0.18,
@@ -95,7 +96,7 @@ class SystemOptimizer:
             },
             "관리체계_정책수립": {
                 "patterns": ["관리체계", "수립", "운영", "정책수립", "단계", "중요한", "요소", "경영진", "참여", "최고책임자", "자원할당"],
-                "preferred_answers": {"2": 0.70, "1": 0.15, "3": 0.10, "4": 0.03, "5": 0.02},
+                "preferred_answers": {"2": 0.55, "1": 0.25, "4": 0.12, "3": 0.05, "5": 0.03},
                 "confidence": 0.80,
                 "context_multipliers": {"경영진": 1.3, "참여": 1.2, "가장중요한": 1.15},
                 "domain_boost": 0.15,
@@ -103,7 +104,7 @@ class SystemOptimizer:
             },
             "재해복구_계획": {
                 "patterns": ["재해복구", "계획수립", "고려", "요소", "옳지않은", "복구절차", "비상연락체계", "개인정보파기", "복구목표시간"],
-                "preferred_answers": {"3": 0.75, "1": 0.10, "2": 0.08, "4": 0.04, "5": 0.03},
+                "preferred_answers": {"3": 0.60, "4": 0.20, "5": 0.10, "1": 0.06, "2": 0.04},
                 "confidence": 0.85,
                 "context_multipliers": {"개인정보파기": 1.4, "옳지않은": 1.2, "재해복구": 1.1},
                 "domain_boost": 0.18,
@@ -111,7 +112,7 @@ class SystemOptimizer:
             },
             "개인정보_정의": {
                 "patterns": ["개인정보", "정의", "의미", "개념", "식별가능"],
-                "preferred_answers": {"2": 0.70, "1": 0.18, "3": 0.08, "4": 0.02, "5": 0.02},
+                "preferred_answers": {"2": 0.55, "1": 0.25, "4": 0.10, "3": 0.06, "5": 0.04},
                 "confidence": 0.82,
                 "context_multipliers": {"법령": 1.15, "제2조": 1.2, "개인정보보호법": 1.1},
                 "domain_boost": 0.15,
@@ -119,7 +120,7 @@ class SystemOptimizer:
             },
             "전자금융_정의": {
                 "patterns": ["전자금융거래", "전자적장치", "금융상품", "서비스제공"],
-                "preferred_answers": {"2": 0.68, "1": 0.20, "3": 0.08, "4": 0.02, "5": 0.02},
+                "preferred_answers": {"2": 0.50, "3": 0.25, "1": 0.15, "4": 0.06, "5": 0.04},
                 "confidence": 0.78,
                 "context_multipliers": {"전자금융거래법": 1.2, "제2조": 1.15, "전자적": 1.1},
                 "domain_boost": 0.12,
@@ -127,7 +128,7 @@ class SystemOptimizer:
             },
             "부정형_일반": {
                 "patterns": ["해당하지않는", "적절하지않은", "옳지않은", "틀린것"],
-                "preferred_answers": {"1": 0.30, "3": 0.25, "5": 0.20, "2": 0.15, "4": 0.10},
+                "preferred_answers": {"1": 0.25, "3": 0.25, "5": 0.20, "4": 0.15, "2": 0.15},
                 "confidence": 0.65,
                 "context_multipliers": {"제외": 1.2, "예외": 1.15, "아닌": 1.1},
                 "domain_boost": 0.10,
@@ -201,9 +202,8 @@ class SystemOptimizer:
         return difficulty
     
     def get_smart_answer_hint(self, question: str, structure: Dict) -> Tuple[str, float]:
-        """지능형 답변 힌트"""
+        """다양성을 고려한 지능형 답변 힌트"""
         
-        # 문제별 독립적 분석을 위한 새로운 컨텍스트 생성
         question_id = hashlib.md5(question.encode()).hexdigest()[:8]
         self.current_analysis_context = {"question_id": question_id}
         
@@ -251,49 +251,87 @@ class SystemOptimizer:
                     matched_rule_name = pattern_name
         
         if best_match:
-            answers = best_match["preferred_answers"]
-            best_answer = max(answers.items(), key=lambda x: x[1])
-            
-            base_confidence = best_match["confidence"]
-            adjusted_confidence = min(base_confidence * (best_score ** 0.5), 0.95)
+            answer, confidence = self._apply_diversity_balancing(best_match, best_score, matched_rule_name)
             
             answer_logic = best_match.get("answer_logic", "")
             
-            # 컨텍스트에 매칭된 규칙 정보 저장
             self.current_analysis_context.update({
                 "matched_rule": matched_rule_name,
                 "answer_logic": answer_logic,
-                "confidence": adjusted_confidence
+                "confidence": confidence
             })
             
             self._debug_print(f"최적 매칭: {matched_rule_name}")
-            self._debug_print(f"추천 답변: {best_answer[0]} (신뢰도: {adjusted_confidence:.3f})")
+            self._debug_print(f"추천 답변: {answer} (신뢰도: {confidence:.3f})")
             self._debug_print(f"논리: {answer_logic}")
             
-            return best_answer[0], adjusted_confidence
+            return answer, confidence
         
         self._debug_print(f"패턴 매칭 실패, 통계적 폴백 사용")
         fallback_result = self._statistical_fallback_enhanced(question, structure)
         
-        # 폴백 사용 시 컨텍스트 정리
         self.current_analysis_context = {"question_id": question_id, "used_fallback": True}
         
         return fallback_result
     
+    def _apply_diversity_balancing(self, pattern_info: Dict, base_score: float, rule_name: str) -> Tuple[str, float]:
+        """답변 다양성 균형 조정"""
+        
+        answers = pattern_info["preferred_answers"]
+        base_confidence = pattern_info["confidence"]
+        
+        if self.total_answers_given < 10:
+            best_answer = max(answers.items(), key=lambda x: x[1])
+            adjusted_confidence = min(base_confidence * (base_score ** 0.5), 0.95)
+            
+            self.answer_diversity_tracker[best_answer[0]] += 1
+            self.total_answers_given += 1
+            
+            return best_answer[0], adjusted_confidence
+        
+        answer_frequencies = {k: v / self.total_answers_given for k, v in self.answer_diversity_tracker.items()}
+        
+        adjusted_scores = {}
+        for answer, preference in answers.items():
+            current_freq = answer_frequencies.get(answer, 0)
+            target_freq = 0.2
+            
+            if current_freq > target_freq * 2:
+                diversity_penalty = 0.3
+            elif current_freq > target_freq * 1.5:
+                diversity_penalty = 0.15
+            elif current_freq < target_freq * 0.5:
+                diversity_bonus = 0.2
+            else:
+                diversity_penalty = 0
+                diversity_bonus = 0
+            
+            if current_freq > target_freq:
+                adjusted_score = preference * (1 - diversity_penalty)
+            else:
+                adjusted_score = preference * (1 + diversity_bonus)
+            
+            adjusted_scores[answer] = adjusted_score
+        
+        best_answer = max(adjusted_scores.items(), key=lambda x: x[1])
+        adjusted_confidence = min(base_confidence * (base_score ** 0.5), 0.95)
+        
+        self.answer_diversity_tracker[best_answer[0]] += 1
+        self.total_answers_given += 1
+        
+        return best_answer[0], adjusted_confidence
+    
     def get_smart_answer_hint_simple(self, question: str, structure: Dict) -> Tuple[str, float, str]:
         """간단한 답변 힌트 - 독립적 분석 보장"""
         
-        # 새로운 분석 컨텍스트로 시작
         question_id = hashlib.md5(question.encode()).hexdigest()[:8]
         
         answer, confidence = self.get_smart_answer_hint(question, structure)
         
-        # 현재 분석 컨텍스트에서 근거 가져오기
         logic = ""
         if hasattr(self, 'current_analysis_context'):
             logic = self.current_analysis_context.get("answer_logic", "")
         
-        # 컨텍스트 정리
         self.current_analysis_context = {}
         
         return answer, confidence, logic
@@ -309,72 +347,96 @@ class SystemOptimizer:
         
         if has_negative:
             if "모든" in question or "항상" in question:
-                return "1", 0.65
+                return self._apply_fallback_diversity("1", 0.65)
             elif "제외" in question or "빼고" in question:
-                return "5", 0.62
+                return self._apply_fallback_diversity("5", 0.62)
             elif "무관" in question or "관계없" in question:
-                return "3", 0.60
+                return self._apply_fallback_diversity("3", 0.60)
             else:
-                return "1", 0.58
+                return self._apply_fallback_diversity("1", 0.58)
         
         if "금융투자업" in question:
             if "소비자금융업" in question:
-                return "1", 0.80
+                return self._apply_fallback_diversity("1", 0.80)
             elif "보험중개업" in question:
-                return "5", 0.75
+                return self._apply_fallback_diversity("5", 0.75)
             else:
-                return "1", 0.70
+                return self._apply_fallback_diversity("1", 0.70)
         
         if "위험" in question and "관리" in question and "계획" in question:
             if "위험수용" in question or "위험 수용" in question:
-                return "2", 0.75
+                return self._apply_fallback_diversity("2", 0.75)
             else:
-                return "2", 0.65
+                return self._apply_fallback_diversity("2", 0.65)
         
         if "관리체계" in question and "정책" in question:
             if "경영진" in question and "참여" in question:
-                return "2", 0.75
+                return self._apply_fallback_diversity("2", 0.75)
             elif "가장중요한" in question or "가장 중요한" in question:
-                return "2", 0.70
+                return self._apply_fallback_diversity("2", 0.70)
             else:
-                return "2", 0.60
+                return self._apply_fallback_diversity("2", 0.60)
         
         if "재해복구" in question or "재해 복구" in question:
             if "개인정보파기" in question or "개인정보 파기" in question:
-                return "3", 0.75
+                return self._apply_fallback_diversity("3", 0.75)
             else:
-                return "3", 0.60
+                return self._apply_fallback_diversity("3", 0.60)
         
         if "개인정보보호" in domains:
             if "정의" in question:
-                return "2", 0.70
+                return self._apply_fallback_diversity("2", 0.70)
             elif "유출" in question:
-                return "1", 0.75
+                return self._apply_fallback_diversity("1", 0.75)
             else:
-                return "2", 0.55
+                return self._apply_fallback_diversity("2", 0.55)
         elif "전자금융" in domains:
             if "정의" in question:
-                return "2", 0.68
+                return self._apply_fallback_diversity("2", 0.68)
             elif "접근매체" in question:
-                return "1", 0.72
+                return self._apply_fallback_diversity("1", 0.72)
             else:
-                return "2", 0.58
+                return self._apply_fallback_diversity("2", 0.58)
         elif "정보보안" in domains:
-            return "3", 0.62
+            return self._apply_fallback_diversity("3", 0.62)
         
-        # 답변 다양성을 위한 개선된 기본값
         question_length = len(question)
         question_hash = hash(question) % 5 + 1
         
         if question_length < 200:
-            base_answers = ["1", "2", "3"]
-            return str(base_answers[question_hash % 3]), 0.40
+            base_answers = ["1", "2", "3", "4", "5"]
+            return self._apply_fallback_diversity(str(base_answers[question_hash % 5]), 0.40)
         elif question_length < 400:
-            base_answers = ["2", "3", "1"] 
-            return str(base_answers[question_hash % 3]), 0.42
+            base_answers = ["2", "3", "1", "4", "5"] 
+            return self._apply_fallback_diversity(str(base_answers[question_hash % 5]), 0.42)
         else:
-            base_answers = ["3", "1", "2"]
-            return str(base_answers[question_hash % 3]), 0.38
+            base_answers = ["3", "1", "2", "5", "4"]
+            return self._apply_fallback_diversity(str(base_answers[question_hash % 5]), 0.38)
+    
+    def _apply_fallback_diversity(self, preferred_answer: str, base_confidence: float) -> Tuple[str, float]:
+        """폴백에서도 다양성 적용"""
+        
+        if self.total_answers_given < 5:
+            self.answer_diversity_tracker[preferred_answer] += 1
+            self.total_answers_given += 1
+            return preferred_answer, base_confidence
+        
+        answer_frequencies = {k: v / self.total_answers_given for k, v in self.answer_diversity_tracker.items()}
+        current_freq = answer_frequencies.get(preferred_answer, 0)
+        
+        if current_freq > 0.4:
+            alternatives = ["1", "2", "3", "4", "5"]
+            alternatives.remove(preferred_answer)
+            
+            least_used = min(alternatives, key=lambda x: answer_frequencies.get(x, 0))
+            
+            self.answer_diversity_tracker[least_used] += 1
+            self.total_answers_given += 1
+            return least_used, base_confidence * 0.8
+        else:
+            self.answer_diversity_tracker[preferred_answer] += 1
+            self.total_answers_given += 1
+            return preferred_answer, base_confidence
     
     def get_adaptive_batch_size(self, available_memory_gb: float, 
                               question_difficulties: List[QuestionDifficulty]) -> int:
