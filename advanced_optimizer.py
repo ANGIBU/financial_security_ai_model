@@ -38,7 +38,8 @@ class SystemPerformanceMetrics:
 class SystemOptimizer:
     """시스템 최적화 클래스"""
     
-    def __init__(self):
+    def __init__(self, debug_mode: bool = False):
+        self.debug_mode = debug_mode
         self.difficulty_cache = {}
         self.performance_cache = {}
         
@@ -64,6 +65,11 @@ class SystemOptimizer:
         
         self.max_workers = min(mp.cpu_count(), 8)
         self.processing_queue = []
+        
+    def _debug_print(self, message: str):
+        """디버그 출력 (조건부)"""
+        if self.debug_mode:
+            print(f"[DEBUG] {message}")
         
     def _initialize_enhanced_patterns(self) -> Dict:
         """강화된 패턴 초기화"""
@@ -94,7 +100,7 @@ class SystemOptimizer:
             },
             "재해복구_계획": {
                 "patterns": ["재해복구", "계획수립", "고려", "요소", "옳지않은", "복구절차", "비상연락체계", "개인정보파기", "복구목표시간"],
-                "preferred_answers": {"3": 0.75, "1": 0.10, "2": 0.08, "4": 0.04, "5": 0.03},
+                "preferred_answers": {"3": 0.75, "1": 0.10, "2": 0.08, "4": 0.02, "5": 0.03},
                 "confidence": 0.85,
                 "context_multipliers": {"개인정보파기": 1.4, "옳지않은": 1.2, "재해복구": 1.1},
                 "domain_boost": 0.18,
@@ -196,7 +202,7 @@ class SystemOptimizer:
         
         question_normalized = re.sub(r'\s+', '', question.lower())
         
-        print(f"[DEBUG] 스마트 힌트 분석: {question_normalized[:100]}")
+        self._debug_print(f"스마트 힌트 분석: {question_normalized[:100]}")
         
         best_match = None
         best_score = 0
@@ -220,7 +226,7 @@ class SystemOptimizer:
                 for context, multiplier in context_multipliers.items():
                     if context.replace(" ", "") in question_normalized:
                         context_boost *= multiplier
-                        print(f"[DEBUG] 컨텍스트 매칭: {context} (x{multiplier})")
+                        self._debug_print(f"컨텍스트 매칭: {context} (x{multiplier})")
                 
                 domain_boost = pattern_info.get("domain_boost", 0)
                 if structure.get("domain"):
@@ -228,7 +234,7 @@ class SystemOptimizer:
                 
                 final_score = normalized_score * context_boost * (1 + domain_boost)
                 
-                print(f"[DEBUG] 패턴 {pattern_name}: 점수={final_score:.3f}, 매칭={matched_patterns}")
+                self._debug_print(f"패턴 {pattern_name}: 점수={final_score:.3f}, 매칭={matched_patterns}")
                 
                 if final_score > best_score:
                     best_score = final_score
@@ -245,14 +251,30 @@ class SystemOptimizer:
             rule_name = best_match.get("matched_rule", "unknown")
             answer_logic = best_match.get("answer_logic", "")
             
-            print(f"[DEBUG] 최적 매칭: {rule_name}")
-            print(f"[DEBUG] 추천 답변: {best_answer[0]} (신뢰도: {adjusted_confidence:.3f})")
-            print(f"[DEBUG] 논리: {answer_logic}")
+            self._debug_print(f"최적 매칭: {rule_name}")
+            self._debug_print(f"추천 답변: {best_answer[0]} (신뢰도: {adjusted_confidence:.3f})")
+            self._debug_print(f"논리: {answer_logic}")
             
             return best_answer[0], adjusted_confidence
         
-        print(f"[DEBUG] 패턴 매칭 실패, 통계적 폴백 사용")
+        self._debug_print(f"패턴 매칭 실패, 통계적 폴백 사용")
         return self._statistical_fallback_enhanced(question, structure)
+    
+    def get_smart_answer_hint_simple(self, question: str, structure: Dict) -> Tuple[str, float, str]:
+        """간단한 답변 힌트 (출력용)"""
+        answer, confidence = self.get_smart_answer_hint(question, structure)
+        
+        question_normalized = re.sub(r'\s+', '', question.lower())
+        
+        for pattern_name, pattern_info in self.answer_patterns.items():
+            patterns = pattern_info["patterns"]
+            match_count = sum(1 for pattern in patterns if pattern.replace(" ", "") in question_normalized)
+            
+            if match_count >= 2:
+                logic = pattern_info.get("answer_logic", "")
+                return answer, confidence, logic
+        
+        return answer, confidence, ""
     
     def _statistical_fallback_enhanced(self, question: str, structure: Dict) -> Tuple[str, float]:
         """강화된 통계적 폴백"""
@@ -261,7 +283,7 @@ class SystemOptimizer:
         domains = structure.get("domain", [])
         has_negative = structure.get("has_negative", False)
         
-        print(f"[DEBUG] 폴백 분석 - 부정형: {has_negative}, 도메인: {domains}")
+        self._debug_print(f"폴백 분석 - 부정형: {has_negative}, 도메인: {domains}")
         
         if has_negative:
             if "모든" in question or "항상" in question:
@@ -452,12 +474,10 @@ class PerformanceMonitor:
         
         if metrics.memory_usage > self.alert_thresholds["gpu_memory"]:
             if current_time - self.last_alert_time.get("memory", 0) > 60:
-                print(f"GPU 메모리 사용률 높음: {metrics.memory_usage:.1%}")
                 self.last_alert_time["memory"] = current_time
         
         if metrics.thermal_status == "high":
             if current_time - self.last_alert_time.get("thermal", 0) > 120:
-                print(f"GPU 온도 주의: {metrics.thermal_status}")
                 self.last_alert_time["thermal"] = current_time
     
     def get_performance_summary(self) -> Dict:
@@ -707,5 +727,3 @@ def cleanup_optimization_resources():
     
     import gc
     gc.collect()
-    
-    print("최적화 리소스 정리 완료")

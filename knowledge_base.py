@@ -33,7 +33,8 @@ class LegalArticle:
 class FinancialSecurityKnowledgeBase:
     """금융보안 지식 베이스"""
     
-    def __init__(self):
+    def __init__(self, debug_mode: bool = False):
+        self.debug_mode = debug_mode
         self.concepts = self._build_concept_database()
         self.laws = self._build_law_database()
         self.legal_articles = self._build_legal_articles_database()
@@ -41,15 +42,12 @@ class FinancialSecurityKnowledgeBase:
         self.domain_keywords = self._build_domain_keywords()
         self.case_studies = self._build_case_studies()
         
-        # 성능 최적화 캐시
         self.analysis_cache = {}
         self.pattern_cache = {}
         self.concept_cache = {}
         
-        # 컴파일된 패턴들
         self.compiled_patterns = self._compile_all_patterns()
         
-        # 지식 베이스 통계
         self.usage_stats = {
             "concept_queries": {},
             "domain_classifications": {},
@@ -57,11 +55,15 @@ class FinancialSecurityKnowledgeBase:
             "cache_performance": {"hits": 0, "misses": 0}
         }
     
+    def _debug_print(self, message: str):
+        """디버그 출력 (조건부)"""
+        if self.debug_mode:
+            print(f"[DEBUG] {message}")
+    
     def _build_concept_database(self) -> Dict[str, FinancialConcept]:
         """포괄적 금융보안 개념 데이터베이스"""
         concepts = {}
         
-        # 개인정보보호
         concepts["개인정보보호"] = FinancialConcept(
             name="개인정보보호",
             definition="개인을 식별할 수 있는 정보의 수집, 이용, 제공, 보관, 파기 등 처리 전 과정에서의 보호",
@@ -90,7 +92,6 @@ class FinancialSecurityKnowledgeBase:
             related_concepts=["정보주체 권리", "개인정보처리자", "안전성확보조치"]
         )
         
-        # 전자금융거래
         concepts["전자금융거래"] = FinancialConcept(
             name="전자금융거래",
             definition="전자적 장치를 통하여 금융상품과 서비스를 제공하고 이용하는 거래",
@@ -118,7 +119,6 @@ class FinancialSecurityKnowledgeBase:
             related_concepts=["접근매체", "전자서명", "공인인증서"]
         )
         
-        # 정보보호관리체계
         concepts["ISMS"] = FinancialConcept(
             name="정보보호관리체계",
             definition="조직의 정보자산을 보호하기 위한 정책, 조직, 기술적 대책의 종합적 관리체계",
@@ -146,7 +146,6 @@ class FinancialSecurityKnowledgeBase:
             related_concepts=["위험관리", "접근통제", "암호화", "침해사고대응"]
         )
         
-        # 금융보안
         concepts["금융보안"] = FinancialConcept(
             name="금융보안",
             definition="금융거래 및 금융정보의 안전성과 신뢰성 확보를 위한 종합적 보안 활동",
@@ -174,7 +173,6 @@ class FinancialSecurityKnowledgeBase:
             related_concepts=["피싱", "파밍", "스미싱", "보이스피싱"]
         )
         
-        # 암호화
         concepts["암호화"] = FinancialConcept(
             name="암호화",
             definition="정보의 기밀성과 무결성을 보장하기 위해 평문을 암호문으로 변환하는 기술",
@@ -266,7 +264,6 @@ class FinancialSecurityKnowledgeBase:
         """법령 조항 데이터베이스"""
         articles = []
         
-        # 개인정보보호법 주요 조항
         articles.extend([
             LegalArticle(
                 law_name="개인정보보호법",
@@ -286,7 +283,6 @@ class FinancialSecurityKnowledgeBase:
             )
         ])
         
-        # 전자금융거래법 주요 조항
         articles.extend([
             LegalArticle(
                 law_name="전자금융거래법",
@@ -437,7 +433,6 @@ class FinancialSecurityKnowledgeBase:
     def analyze_question(self, question: str) -> Dict:
         """문제 분석"""
         
-        # 캐시 확인
         q_hash = hashlib.md5(question.encode()).hexdigest()[:16]
         if q_hash in self.analysis_cache:
             self.usage_stats["cache_performance"]["hits"] += 1
@@ -457,10 +452,8 @@ class FinancialSecurityKnowledgeBase:
             "difficulty_indicators": self._identify_difficulty_indicators(question)
         }
         
-        # 캐시 저장
         self.analysis_cache[q_hash] = analysis
         
-        # 통계 업데이트
         self._update_usage_stats(analysis)
         
         return analysis
@@ -491,7 +484,6 @@ class FinancialSecurityKnowledgeBase:
                     matched_keywords.append(keyword)
             
             if score > 0:
-                # 키워드 밀도 계산
                 density = score / len(keywords)
                 domain_scores[domain] = {
                     "score": score,
@@ -499,12 +491,10 @@ class FinancialSecurityKnowledgeBase:
                     "keywords": matched_keywords
                 }
         
-        # 점수 기반 정렬
         sorted_domains = sorted(domain_scores.items(), 
                               key=lambda x: (x[1]["score"], x[1]["density"]), 
                               reverse=True)
         
-        # 상위 도메인들 선택
         for domain, info in sorted_domains:
             if info["score"] >= 2 or info["density"] >= 0.1:
                 domains.append(domain)
@@ -515,20 +505,16 @@ class FinancialSecurityKnowledgeBase:
         """복잡도 평가"""
         complexity_score = 0.0
         
-        # 길이 기반 복잡도
         length = len(question)
         complexity_score += min(length / 2000, 0.25)
         
-        # 구조적 복잡도
         line_count = question.count('\n')
         choice_count = len(re.findall(r'^\s*[1-5]\s*[.)]', question, re.MULTILINE))
         complexity_score += min((line_count + choice_count) / 15, 0.2)
         
-        # 법령 관련 복잡도
         law_references = len(re.findall(r'법|조|항|규정|시행령', question))
         complexity_score += min(law_references / 8, 0.2)
         
-        # 전문 용어 복잡도
         all_keywords = []
         for keywords in self.domain_keywords.values():
             all_keywords.extend(keywords)
@@ -536,12 +522,10 @@ class FinancialSecurityKnowledgeBase:
         term_count = sum(1 for term in all_keywords if term in question)
         complexity_score += min(term_count / 10, 0.15)
         
-        # 숫자 및 특수 문자 복잡도
         numbers = len(re.findall(r'\d+', question))
         special_chars = len(re.findall(r'[%@#$&*()]', question))
         complexity_score += min((numbers + special_chars) / 20, 0.1)
         
-        # 부정형 보너스
         if self._is_negative_question(question):
             complexity_score += 0.1
         
@@ -552,12 +536,10 @@ class FinancialSecurityKnowledgeBase:
         related = []
         question_lower = question.lower()
         
-        # 직접 매칭
         for concept_name in self.concepts.keys():
             if concept_name.lower() in question_lower:
                 related.append(concept_name)
         
-        # 키워드 기반 추론
         concept_keywords = {
             "개인정보보호": ["동의", "수집", "이용", "제공", "파기"],
             "전자금융거래": ["전자적", "거래", "접근매체", "인증"],
@@ -578,12 +560,10 @@ class FinancialSecurityKnowledgeBase:
         relevant = []
         question_lower = question.lower()
         
-        # 직접 법령명 매칭
         for law_name in self.laws.keys():
             if law_name.replace("법", "") in question_lower:
                 relevant.append(law_name)
         
-        # 키워드 기반 법령 추론
         law_indicators = {
             "개인정보보호법": ["개인정보", "정보주체", "개인정보처리자", "동의"],
             "전자금융거래법": ["전자금융", "전자적장치", "접근매체", "전자금융업"],
@@ -603,19 +583,15 @@ class FinancialSecurityKnowledgeBase:
         """핵심 힌트 생성"""
         hints = []
         
-        # 부정형 문제 힌트
         if self._is_negative_question(question):
             hints.append("부정형 문제: 틀린 것 또는 해당하지 않는 것을 찾으세요")
         
-        # 정의 문제 힌트
         if "정의" in question or "의미" in question:
             hints.append("정의 문제: 법령상 정확한 정의를 확인하세요")
         
-        # 법령 문제 힌트
         if re.search(r'법.*따르면', question):
             hints.append("법령 문제: 해당 법령의 조항을 정확히 적용하세요")
         
-        # 절차 문제 힌트
         if any(word in question for word in ["절차", "순서", "단계"]):
             hints.append("절차 문제: 올바른 순서와 단계를 확인하세요")
         
@@ -627,25 +603,22 @@ class FinancialSecurityKnowledgeBase:
         question_lower = question.lower()
         
         for article in self.legal_articles:
-            # 키워드 매칭
             keyword_matches = sum(1 for keyword in article.key_keywords 
                                 if keyword.lower() in question_lower)
             
             if keyword_matches >= 1:
                 relevant_articles.append(article)
         
-        # 관련성 순으로 정렬
         relevant_articles.sort(key=lambda x: sum(1 for kw in x.key_keywords 
                                                if kw.lower() in question_lower), 
                              reverse=True)
         
-        return relevant_articles[:3]  # 상위 3개만 반환
+        return relevant_articles[:3]
     
     def _identify_difficulty_indicators(self, question: str) -> List[str]:
         """난이도 지표 식별"""
         indicators = []
         
-        # 난이도 지표
         if len(question) > 500:
             indicators.append("긴 문제")
         
@@ -689,7 +662,6 @@ class FinancialSecurityKnowledgeBase:
         if result:
             self.concept_cache[cache_key] = result
             
-            # 통계 업데이트
             if concept not in self.usage_stats["concept_queries"]:
                 self.usage_stats["concept_queries"][concept] = 0
             self.usage_stats["concept_queries"][concept] += 1
@@ -709,24 +681,21 @@ class FinancialSecurityKnowledgeBase:
         
         context_parts = []
         
-        # 관련 법령 정보
         if analysis['relevant_laws']:
             law_info = []
-            for law in analysis['relevant_laws'][:2]:  # 최대 2개
+            for law in analysis['relevant_laws'][:2]:
                 info = self.get_law_info(law)
                 if info:
                     law_info.append(f"{law}: {info['목적']}")
             if law_info:
                 context_parts.append("관련 법령:\n" + "\n".join(law_info))
         
-        # 핵심 힌트
         if analysis['key_hints']:
             context_parts.append("중요 사항:\n" + "\n".join(f"- {hint}" for hint in analysis['key_hints']))
         
-        # 관련 조항
         if analysis['legal_articles']:
             article_info = []
-            for article in analysis['legal_articles'][:1]:  # 최대 1개
+            for article in analysis['legal_articles'][:1]:
                 article_info.append(f"{article.law_name} {article.article_number}: {article.practical_impact}")
             if article_info:
                 context_parts.append("관련 조항:\n" + "\n".join(article_info))
@@ -735,7 +704,6 @@ class FinancialSecurityKnowledgeBase:
     
     def _update_usage_stats(self, analysis: Dict):
         """사용 통계 업데이트"""
-        # 도메인 분류 통계
         for domain in analysis["domain"]:
             if domain not in self.usage_stats["domain_classifications"]:
                 self.usage_stats["domain_classifications"][domain] = 0
@@ -759,9 +727,8 @@ class FinancialSecurityKnowledgeBase:
     
     def cleanup(self):
         """리소스 정리"""
-        # 통계 출력
-        if self.usage_stats["concept_queries"]:
-            print(f"\n=== 지식 베이스 통계 ===")
+        if self.debug_mode and self.usage_stats["concept_queries"]:
+            print(f"\n지식 베이스 통계")
             total_cache = self.usage_stats["cache_performance"]["hits"] + self.usage_stats["cache_performance"]["misses"]
             if total_cache > 0:
                 hit_rate = self.usage_stats["cache_performance"]["hits"] / total_cache
@@ -771,7 +738,6 @@ class FinancialSecurityKnowledgeBase:
                 most_used = max(self.usage_stats["concept_queries"].items(), key=lambda x: x[1])
                 print(f"주요 개념: {most_used[0]} ({most_used[1]}회)")
         
-        # 캐시 정리
         self.analysis_cache.clear()
         self.pattern_cache.clear()
         self.concept_cache.clear()

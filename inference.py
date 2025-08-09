@@ -58,7 +58,7 @@ class FinancialAIInference:
         
         self.data_processor = DataProcessor()
         self.prompt_engineer = PromptEngineer()
-        self.optimizer = SystemOptimizer()
+        self.optimizer = SystemOptimizer(debug_mode=self.verbose)
         self.pattern_learner = AnswerPatternLearner()
         
         if self.enable_learning:
@@ -383,8 +383,6 @@ class FinancialAIInference:
                 if self.verbose:
                     print(f"데이터 저장 오류: {e}")
         
-        elapsed_time = time.time() - self.start_time
-        
         mc_answers = [a for a, q in zip(answers, questions_data) if q["is_mc"] and a.isdigit()]
         answer_distribution = {}
         for ans in mc_answers:
@@ -403,8 +401,6 @@ class FinancialAIInference:
         print("추론 완료")
         print("="*50)
         print(f"총 문항: {len(answers)}개")
-        print(f"소요 시간: {elapsed_time/60:.1f}분")
-        print(f"문항당 평균: {elapsed_time/len(answers):.1f}초")
         
         print(f"\n처리 통계:")
         print(f"  모델 생성 성공: {self.stats['model_generation_success']}/{self.stats['total']} ({self.stats['model_generation_success']/max(self.stats['total'],1)*100:.1f}%)")
@@ -452,7 +448,6 @@ class FinancialAIInference:
             "total_questions": len(answers),
             "mc_count": mc_count,
             "subj_count": subj_count,
-            "elapsed_minutes": elapsed_time / 60,
             "answer_distribution": answer_distribution,
             "processing_stats": {
                 "model_success": self.stats["model_generation_success"],

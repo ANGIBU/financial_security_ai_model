@@ -23,7 +23,8 @@ class ProcessedAnswer:
 class DataProcessor:
     """데이터 처리 클래스"""
     
-    def __init__(self):
+    def __init__(self, debug_mode: bool = False):
+        self.debug_mode = debug_mode
         self.knowledge_base = FinancialSecurityKnowledgeBase()
         self.answer_extraction_patterns = self._build_extraction_patterns()
         self.validation_rules = self._build_validation_rules()
@@ -36,6 +37,11 @@ class DataProcessor:
         self.answer_statistics = self._initialize_statistics()
         self.korean_cleanup_patterns = self._build_comprehensive_korean_patterns()
         
+    def _debug_print(self, message: str):
+        """디버그 출력 (조건부)"""
+        if self.debug_mode:
+            print(f"[DEBUG] {message}")
+    
     def _build_comprehensive_korean_patterns(self) -> Dict[str, str]:
         """포괄적 한국어 정리 패턴"""
         return {
@@ -303,13 +309,13 @@ class DataProcessor:
     def extract_mc_answer_fast(self, response: str) -> str:
         """빠른 객관식 답변 추출 (강화)"""
         
-        print(f"[DEBUG] 답변 추출 시도: {response[:100]}")
+        self._debug_print(f"답변 추출 시도: {response[:100]}")
         
         cleaned_response = self._clean_korean_text(response)
-        print(f"[DEBUG] 정리된 응답: {cleaned_response[:100]}")
+        self._debug_print(f"정리된 응답: {cleaned_response[:100]}")
         
         if re.match(r'^[1-5]$', cleaned_response.strip()):
-            print(f"[DEBUG] 직접 매칭 성공: {cleaned_response.strip()}")
+            self._debug_print(f"직접 매칭 성공: {cleaned_response.strip()}")
             return cleaned_response.strip()
         
         for category in ["explicit_answer", "choice_reference", "reasoning_conclusion"]:
@@ -319,15 +325,15 @@ class DataProcessor:
                 if match:
                     answer = match.group(1)
                     if self.validation_rules["choice_range"](answer):
-                        print(f"[DEBUG] 패턴 매칭 성공 ({category}): {answer}")
+                        self._debug_print(f"패턴 매칭 성공 ({category}): {answer}")
                         return answer
         
         numbers = re.findall(r'[1-5]', cleaned_response)
         if numbers:
-            print(f"[DEBUG] 숫자 검색 성공: {numbers[0]}")
+            self._debug_print(f"숫자 검색 성공: {numbers[0]}")
             return numbers[0]
         
-        print(f"[DEBUG] 모든 추출 실패, 기본값 반환")
+        self._debug_print(f"모든 추출 실패, 기본값 반환")
         return ""
     
     def extract_answer_intelligently(self, response: str, question: str) -> ProcessedAnswer:
@@ -344,7 +350,7 @@ class DataProcessor:
     def _extract_mc_answer_optimized(self, response: str, question_structure: Dict) -> ProcessedAnswer:
         """최적화 객관식 답변 추출"""
         
-        print(f"[DEBUG] 객관식 답변 추출: {response[:100]}")
+        self._debug_print(f"객관식 답변 추출: {response[:100]}")
         
         if re.match(r'^[1-5]$', response.strip()):
             return ProcessedAnswer(
@@ -446,15 +452,15 @@ class DataProcessor:
                           question_type: str) -> str:
         """통합 후처리 함수"""
         
-        print(f"[DEBUG] 후처리 시작 - 질문 유형: {question_type}")
-        print(f"[DEBUG] 원본 응답: {raw_response[:100]}")
+        self._debug_print(f"후처리 시작 - 질문 유형: {question_type}")
+        self._debug_print(f"원본 응답: {raw_response[:100]}")
         
         cleaned_response = self._clean_korean_text(raw_response)
-        print(f"[DEBUG] 정리된 응답: {cleaned_response[:100]}")
+        self._debug_print(f"정리된 응답: {cleaned_response[:100]}")
         
         if question_type == "multiple_choice":
             extracted = self.extract_mc_answer_fast(cleaned_response)
-            print(f"[DEBUG] 추출된 답변: {extracted}")
+            self._debug_print(f"추출된 답변: {extracted}")
             return extracted if extracted else ""
         else:
             processed = self.extract_answer_intelligently(cleaned_response, question)
@@ -464,7 +470,7 @@ class DataProcessor:
             else:
                 structure = self.analyze_question_structure(question)
                 fallback = self._generate_domain_specific_fallback(structure)
-                print(f"[DEBUG] 폴백 사용: {fallback[:50]}")
+                self._debug_print(f"폴백 사용: {fallback[:50]}")
                 return fallback
     
     def validate_final_answer(self, processed_answer: ProcessedAnswer,
@@ -502,4 +508,5 @@ class DataProcessor:
         """리소스 정리"""
         self.structure_cache.clear()
         self.pattern_cache.clear()
-        print("데이터 처리기 정리 완료")
+        if self.debug_mode:
+            print("데이터 처리기 정리 완료")

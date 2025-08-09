@@ -29,7 +29,8 @@ def _default_counter():
 class AnswerPatternLearner:
     """답변 패턴 학습 클래스"""
     
-    def __init__(self):
+    def __init__(self, debug_mode: bool = False):
+        self.debug_mode = debug_mode
         self.patterns = {
             "keyword_answer_map": defaultdict(_default_counter),
             "domain_answer_distribution": defaultdict(_default_counter),
@@ -44,10 +45,14 @@ class AnswerPatternLearner:
             "prediction_accuracy": defaultdict(_default_float)
         }
         
-        # 간소화된 캐시 시스템
         self.prediction_cache = {}
         self.pattern_cache = {}
         self.max_cache_size = 200
+        
+    def _debug_print(self, message: str):
+        """디버그 출력 (조건부)"""
+        if self.debug_mode:
+            print(f"[DEBUG] {message}")
         
     def _initialize_rules(self) -> Dict:
         """핵심 규칙만 유지"""
@@ -87,21 +92,18 @@ class AnswerPatternLearner:
     def analyze_question_pattern(self, question: str) -> Optional[Dict]:
         """간소화된 패턴 분석"""
         
-        # 간단한 캐시 확인
         q_hash = hash(question[:100])
         if q_hash in self.pattern_cache:
             return self.pattern_cache[q_hash]
         
         question_lower = question.lower().replace(" ", "")
         
-        # 최고 매칭 규칙만 찾기
         best_rule = None
         best_score = 0
         
         for rule_name, rule_info in self.learned_rules.items():
             keywords = rule_info["keywords"]
             
-            # 간단한 키워드 매칭
             matches = sum(1 for kw in keywords if kw.replace(" ", "") in question_lower)
             
             if matches > 0:
@@ -116,7 +118,6 @@ class AnswerPatternLearner:
                         "answers": rule_info["preferred_answers"]
                     }
         
-        # 캐시 저장 (크기 제한)
         if len(self.pattern_cache) >= self.max_cache_size:
             oldest_key = next(iter(self.pattern_cache))
             del self.pattern_cache[oldest_key]
@@ -127,29 +128,23 @@ class AnswerPatternLearner:
     def predict_answer(self, question: str, structure: Dict) -> Tuple[str, float]:
         """간소화된 답변 예측"""
         
-        # 간단한 캐시 확인
         cache_key = hash(f"{question[:50]}{structure.get('question_type', '')}")
         if cache_key in self.prediction_cache:
             return self.prediction_cache[cache_key]
         
-        # 부정형 특별 처리
         if structure.get("has_negative", False):
             result = self._predict_negative_simple(question, structure)
         else:
-            # 패턴 매칭
             pattern_match = self.analyze_question_pattern(question)
             
             if pattern_match and pattern_match["base_confidence"] > 0.6:
-                # 패턴 기반 예측
                 answers = pattern_match["answers"]
                 best_answer = max(answers.items(), key=lambda x: x[1])
                 confidence = pattern_match["base_confidence"] * pattern_match["match_score"]
                 result = (best_answer[0], min(confidence, 0.9))
             else:
-                # 통계적 예측
                 result = self._statistical_prediction_simple(question, structure)
         
-        # 캐시 저장 (크기 제한)
         if len(self.prediction_cache) >= self.max_cache_size:
             oldest_key = next(iter(self.prediction_cache))
             del self.prediction_cache[oldest_key]
@@ -161,7 +156,6 @@ class AnswerPatternLearner:
         """간소화된 부정형 예측"""
         question_lower = question.lower()
         
-        # 빠른 패턴 매칭
         if "모든" in question_lower or "항상" in question_lower:
             return "1", 0.75
         elif "제외" in question_lower or "빼고" in question_lower:
@@ -169,7 +163,6 @@ class AnswerPatternLearner:
         elif "예외" in question_lower:
             return "4", 0.65
         else:
-            # 도메인별 기본값
             domains = structure.get("domain", [])
             if "개인정보보호" in domains:
                 return "1", 0.60
@@ -184,7 +177,6 @@ class AnswerPatternLearner:
         if structure["question_type"] != "multiple_choice":
             return "", 0.15
         
-        # 길이 기반 간단 예측
         length = len(question)
         
         if length < 200:
@@ -198,21 +190,17 @@ class AnswerPatternLearner:
                        prediction_result: Optional[Tuple[str, float]] = None):
         """간소화된 패턴 업데이트"""
         
-        # 기본 통계만 업데이트
         keywords = re.findall(r'[가-힣]{2,}', question.lower())
-        for keyword in keywords[:3]:  # 최대 3개만
+        for keyword in keywords[:3]:
             self.patterns["keyword_answer_map"][keyword][correct_answer] += 1
         
-        # 도메인별 분포
         domains = structure.get("domain", ["일반"])
         for domain in domains:
             self.patterns["domain_answer_distribution"][domain][correct_answer] += 1
         
-        # 부정형 패턴
         if structure.get("has_negative", False):
             self.patterns["negative_answer_patterns"][correct_answer] += 1
         
-        # 성능 추적
         if prediction_result:
             predicted_answer, confidence = prediction_result
             is_correct = (predicted_answer == correct_answer)
@@ -227,7 +215,6 @@ class AnswerPatternLearner:
         
         boost = 0.0
         
-        # 패턴 매칭 확인
         pattern_match = self.analyze_question_pattern(question)
         
         if pattern_match:
@@ -236,7 +223,6 @@ class AnswerPatternLearner:
                 preference_score = answers[predicted_answer]
                 boost += preference_score * 0.1
         
-        # 도메인 일치성
         domains = structure.get("domain", [])
         if domains and len(domains) <= 2:
             boost += 0.05
@@ -251,7 +237,6 @@ class AnswerPatternLearner:
             "negative_distribution": dict(self.patterns["negative_answer_patterns"])
         }
         
-        # 규칙별 성공률
         for rule_name, success_list in self.pattern_performance["rule_success_rate"].items():
             if len(success_list) >= 3:
                 success_rate = sum(success_list) / len(success_list)
@@ -260,7 +245,6 @@ class AnswerPatternLearner:
                     "sample_size": len(success_list)
                 }
         
-        # 도메인별 선호
         for domain, answer_dist in self.patterns["domain_answer_distribution"].items():
             if sum(answer_dist.values()) >= 3:
                 total = sum(answer_dist.values())
@@ -272,7 +256,6 @@ class AnswerPatternLearner:
     def optimize_rules(self):
         """간소화된 규칙 최적화"""
         
-        # 성능이 낮은 규칙만 조정
         for rule_name, success_list in self.pattern_performance["rule_success_rate"].items():
             if len(success_list) >= 5:
                 success_rate = sum(success_list) / len(success_list)
@@ -317,38 +300,40 @@ class AnswerPatternLearner:
     def cleanup(self):
         """리소스 정리"""
         cache_size = len(self.prediction_cache) + len(self.pattern_cache)
-        if cache_size > 0:
+        if cache_size > 0 and self.debug_mode:
             print(f"패턴 학습기 캐시: {cache_size}개")
         
-        # 캐시 정리
         self.prediction_cache.clear()
         self.pattern_cache.clear()
 
 class SmartAnswerSelector:
     """간소화된 답변 선택기"""
     
-    def __init__(self):
-        self.pattern_learner = AnswerPatternLearner()
+    def __init__(self, debug_mode: bool = False):
+        self.debug_mode = debug_mode
+        self.pattern_learner = AnswerPatternLearner(debug_mode=debug_mode)
         self.selection_stats = {
             "total_selections": 0,
             "pattern_based": 0,
             "model_based": 0
         }
         
+    def _debug_print(self, message: str):
+        """디버그 출력 (조건부)"""
+        if self.debug_mode:
+            print(f"[DEBUG] {message}")
+    
     def select_best_answer(self, question: str, model_response: str, 
                          structure: Dict, confidence: float) -> Tuple[str, float]:
         """간소화된 답변 선택"""
         
         self.selection_stats["total_selections"] += 1
         
-        # 모델 응답에서 답변 추출
         extracted_answers = self._extract_answers_fast(model_response)
         
         if extracted_answers:
-            # 첫 번째 추출된 답변 사용
             answer = extracted_answers[0]
             
-            # 신뢰도 부스트
             final_confidence = min(
                 confidence + self.pattern_learner.get_confidence_boost(question, answer, structure),
                 1.0
@@ -357,7 +342,6 @@ class SmartAnswerSelector:
             self.selection_stats["model_based"] += 1
             return answer, final_confidence
         
-        # 패턴 기반 예측
         pattern_answer, pattern_conf = self.pattern_learner.predict_answer(question, structure)
         self.selection_stats["pattern_based"] += 1
         return pattern_answer, pattern_conf
@@ -365,7 +349,6 @@ class SmartAnswerSelector:
     def _extract_answers_fast(self, response: str) -> List[str]:
         """빠른 답변 추출"""
         
-        # 우선순위 패턴만 사용
         priority_patterns = [
             r'정답[:\s]*([1-5])',
             r'최종\s*답[:\s]*([1-5])',
@@ -378,7 +361,6 @@ class SmartAnswerSelector:
             if matches:
                 return matches
         
-        # 일반 숫자 추출
         numbers = re.findall(r'[1-5]', response)
         return numbers[:3] if numbers else []
     
@@ -398,7 +380,7 @@ class SmartAnswerSelector:
     def cleanup(self):
         """정리"""
         total = self.selection_stats["total_selections"]
-        if total > 0:
+        if total > 0 and self.debug_mode:
             print(f"답변 선택기: {total}회 선택")
         
         self.pattern_learner.cleanup()

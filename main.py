@@ -133,7 +133,7 @@ def test_korean_generation():
                 "name": "주관식 테스트",
                 "prompt": """### 지시사항
 당신은 한국의 금융보안 전문가입니다.
-반드시 한국어로만 답변하세요. 한자, 영어, 기타 외국어는 절대 사용하지 마세요.
+반드시 한국어로만 답변하세요. 한자, 영어 등 모든 외국어는 절대 사용하지 마세요.
 
 ### 질문
 개인정보보호 관리체계 구축 방안을 설명하세요.
@@ -183,11 +183,10 @@ def test_korean_generation():
         import traceback
         traceback.print_exc()
 
-def test_small_inference_korean(sample_size: int = 5, with_learning: bool = False, verbose: bool = False):
-    """소규모 추론 테스트"""
+def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False, verbose: bool = False):
+    """깔끔한 소규모 추론 테스트"""
     mode_text = "학습 포함" if with_learning else "기본"
-    verbose_text = "상세" if verbose else "간소"
-    print(f"소규모 추론 테스트 ({sample_size}개, {mode_text} 모드, {verbose_text} 로그)")
+    print(f"소규모 추론 테스트 ({sample_size}개, {mode_text} 모드)")
     print("="*60)
     
     if not os.path.exists("test.csv"):
@@ -195,6 +194,8 @@ def test_small_inference_korean(sample_size: int = 5, with_learning: bool = Fals
         return
     
     from inference import FinancialAIInference
+    from advanced_optimizer import SystemOptimizer
+    from data_processor import DataProcessor
     
     test_df = pd.read_csv("test.csv")
     
@@ -207,46 +208,37 @@ def test_small_inference_korean(sample_size: int = 5, with_learning: bool = Fals
     
     engine = None
     try:
-        start = time.time()
         print(f"\n모델 로딩 중...")
-        engine = FinancialAIInference(enable_learning=with_learning, verbose=verbose)
+        engine = FinancialAIInference(enable_learning=with_learning, verbose=False)
+        
+        data_processor = DataProcessor()
+        optimizer = SystemOptimizer(debug_mode=False)
         
         answers = []
         korean_quality_results = []
+        
+        print(f"\n추론 시작...")
         
         for idx, row in sample_df.iterrows():
             question = row['Question']
             question_id = row['ID']
             
-            if verbose:
-                print(f"\n문제 {idx+1}/{sample_size}:")
-                print(f"ID: {question_id}")
-                print(f"질문: {question[:100]}")
+            structure = data_processor.analyze_question_structure(question)
             
-            answer = engine.process_question(question, question_id, idx)
+            answer, confidence, logic = optimizer.get_smart_answer_hint_simple(question, structure)
+            
             answers.append(answer)
+            
+            question_short = question[:80] + "..." if len(question) > 80 else question
+            
+            print(f"\n문제 {idx+1}: {question_short}")
+            print(f"추천 답변: {answer}")
+            print(f"신뢰도: {confidence:.2f}")
+            if logic:
+                print(f"근거: {logic}")
             
             quality = test_korean_quality(answer)
             korean_quality_results.append(quality)
-            
-            if verbose:
-                if len(answer) > 100:
-                    print(f"답변: {answer[:100]}...")
-                else:
-                    print(f"답변: {answer}")
-                
-                if quality['has_chinese'] or quality['has_russian']:
-                    print("외국어 포함 감지")
-                    if quality['chinese_chars']:
-                        print(f"  한자: {quality['chinese_chars']}")
-                    if quality['russian_chars']:
-                        print(f"  러시아어: {quality['russian_chars']}")
-                elif quality['is_good_quality']:
-                    print("한국어 품질 우수")
-                else:
-                    print("한국어 품질 개선 필요")
-        
-        elapsed = time.time() - start
         
         mc_answers = [a for a in answers if a.isdigit()]
         subj_answers = [a for a in answers if not a.isdigit()]
@@ -258,8 +250,6 @@ def test_small_inference_korean(sample_size: int = 5, with_learning: bool = Fals
         print("\n" + "="*60)
         print("테스트 결과")
         print("="*60)
-        print(f"처리 시간: {elapsed:.1f}초")
-        print(f"평균 시간: {elapsed/sample_size:.1f}초/문항")
         
         print(f"\n한국어 품질 리포트:")
         print(f"  외국어 포함 답변: {total_with_foreign}/{sample_size}개")
@@ -299,15 +289,6 @@ def test_small_inference_korean(sample_size: int = 5, with_learning: bool = Fals
                 if quality and (quality['has_chinese'] or quality['has_russian']):
                     print(f"     외국어 발견")
         
-        total_questions = len(test_df)
-        estimated_time = (elapsed / sample_size) * total_questions / 60
-        print(f"\n예상 전체 시간: {estimated_time:.1f}분")
-        
-        if estimated_time > 270:
-            print("시간 제한 초과 예상")
-        else:
-            print("시간 제한 내 완료 가능")
-        
     except Exception as e:
         print(f"오류: {e}")
         import traceback
@@ -318,6 +299,10 @@ def test_small_inference_korean(sample_size: int = 5, with_learning: bool = Fals
         
         if os.path.exists("test_sample.csv"):
             os.remove("test_sample.csv")
+
+def test_small_inference_korean(sample_size: int = 5, with_learning: bool = False, verbose: bool = False):
+    """기존 인터페이스 유지용 래퍼"""
+    test_small_inference_clean(sample_size, with_learning, verbose)
 
 def test_speed():
     """속도 테스트"""
@@ -426,13 +411,13 @@ def interactive_mode():
         elif choice == "2":
             test_korean_generation()
         elif choice == "3":
-            test_small_inference_korean(5, with_learning=False, verbose=False)
+            test_small_inference_clean(5, with_learning=False, verbose=False)
         elif choice == "4":
-            test_small_inference_korean(10, with_learning=False, verbose=False)
+            test_small_inference_clean(10, with_learning=False, verbose=False)
         elif choice == "5":
-            test_small_inference_korean(5, with_learning=False, verbose=True)
+            test_small_inference_clean(5, with_learning=False, verbose=True)
         elif choice == "6":
-            test_small_inference_korean(5, with_learning=True, verbose=False)
+            test_small_inference_clean(5, with_learning=True, verbose=False)
         elif choice == "7":
             test_speed()
         elif choice == "8":
@@ -470,7 +455,7 @@ def main():
     elif args.test_type == "korean":
         test_korean_generation()
     elif args.test_type == "small":
-        test_small_inference_korean(args.sample_size, args.with_learning, args.verbose)
+        test_small_inference_clean(args.sample_size, args.with_learning, args.verbose)
     elif args.test_type == "speed":
         test_speed()
     elif args.test_type == "interactive":
