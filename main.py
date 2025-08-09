@@ -227,7 +227,7 @@ def test_korean_generation():
         import traceback
         traceback.print_exc()
 
-def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False, verbose: bool = False):
+def test_small_inference_clean(sample_size: int = 5, with_learning: bool = True, verbose: bool = False):
     """실제 추론 엔진을 사용한 소규모 테스트"""
     mode_text = "학습 포함" if with_learning else "기본"
     print(f"소규모 추론 테스트 ({sample_size}개, {mode_text} 모드)")
@@ -395,7 +395,7 @@ def test_small_inference_clean(sample_size: int = 5, with_learning: bool = False
         if engine:
             engine.cleanup()
 
-def test_small_inference_korean(sample_size: int = 5, with_learning: bool = False, verbose: bool = False):
+def test_small_inference_korean(sample_size: int = 5, with_learning: bool = True, verbose: bool = False):
     """기존 인터페이스 유지용 래퍼"""
     test_small_inference_clean(sample_size, with_learning, verbose)
 
@@ -506,11 +506,11 @@ def interactive_mode():
         elif choice == "2":
             test_korean_generation()
         elif choice == "3":
-            test_small_inference_clean(5, with_learning=False, verbose=False)
+            test_small_inference_clean(5, with_learning=True, verbose=False)
         elif choice == "4":
-            test_small_inference_clean(10, with_learning=False, verbose=False)
+            test_small_inference_clean(10, with_learning=True, verbose=False)
         elif choice == "5":
-            test_small_inference_clean(5, with_learning=False, verbose=True)
+            test_small_inference_clean(5, with_learning=True, verbose=True)
         elif choice == "6":
             test_small_inference_clean(5, with_learning=True, verbose=False)
         elif choice == "7":
@@ -550,7 +550,7 @@ def main():
     elif args.test_type == "korean":
         test_korean_generation()
     elif args.test_type == "small":
-        test_small_inference_clean(args.sample_size, args.with_learning, args.verbose)
+        test_small_inference_clean(args.sample_size, True, args.verbose)
     elif args.test_type == "speed":
         test_speed()
     elif args.test_type == "interactive":

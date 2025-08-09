@@ -37,7 +37,7 @@ from auto_learner import AutoLearner
 class FinancialAIInference:
     """금융 AI 추론 엔진"""
     
-    def __init__(self, enable_learning: bool = False, verbose: bool = False):
+    def __init__(self, enable_learning: bool = True, verbose: bool = False):
         self.start_time = time.time()
         self.enable_learning = enable_learning
         self.verbose = verbose
@@ -103,7 +103,7 @@ class FinancialAIInference:
                 print(f"학습 데이터 로드 오류: {e}")
     
     def _validate_korean_quality(self, text: str, question_type: str) -> Tuple[bool, float]:
-        """한국어 품질 검증 개선"""
+        """한국어 품질 검증"""
         
         if question_type == "multiple_choice":
             if re.match(r'^[1-5]$', text.strip()):
@@ -156,7 +156,6 @@ class FinancialAIInference:
                 self.stats["smart_hints_used"] += 1
                 return hint
             else:
-                # 다양성을 위한 개선된 기본값
                 question_hash = hash(question) % 5 + 1
                 base_answers = ["1", "2", "3", "4", "5"]
                 return str(base_answers[question_hash % 5])
@@ -193,10 +192,9 @@ class FinancialAIInference:
         return "관련 법령과 규정에 따라 체계적인 보안 관리 방안을 수립하고, 지속적인 모니터링과 개선을 통해 안전성을 확보해야 합니다."
     
     def process_question(self, question: str, question_id: str, idx: int) -> str:
-        """문제 처리 강화"""
+        """문제 처리"""
         
         try:
-            # 문제별 독립적 분석
             structure = self.data_processor.analyze_question_structure(question)
             analysis = self.prompt_engineer.knowledge_base.analyze_question(question)
             
@@ -221,7 +219,6 @@ class FinancialAIInference:
                     if is_valid:
                         return corrected_answer
             
-            # 객관식 처리 로직
             if is_mc:
                 hint_answer, hint_confidence = self.optimizer.get_smart_answer_hint(question, structure)
                 
@@ -234,7 +231,6 @@ class FinancialAIInference:
                         self.stats["smart_hints_used"] += 1
                         return hint_answer
                 
-                # 모델 생성 시도
                 prompt = self.prompt_engineer.create_korean_reinforced_prompt(
                     question, structure["question_type"]
                 )
@@ -252,14 +248,12 @@ class FinancialAIInference:
                 if extracted and extracted.isdigit() and 1 <= int(extracted) <= 5:
                     self.stats["model_generation_success"] += 1
                     self.stats["pattern_extraction_success"] += 1
-                    return extracted
+                    answer = extracted
                 else:
                     self.stats["smart_hints_used"] += 1
-                    return hint_answer if hint_confidence > 0.3 else self._get_domain_specific_fallback(question, "multiple_choice")
+                    answer = hint_answer if hint_confidence > 0.3 else self._get_domain_specific_fallback(question, "multiple_choice")
             
-            # 주관식 처리 로직
             elif is_subjective:
-                # 주관식은 항상 모델 생성 시도
                 prompt = self.prompt_engineer.create_korean_reinforced_prompt(
                     question, structure["question_type"]
                 )
@@ -289,15 +283,12 @@ class FinancialAIInference:
                     self.stats["fallback_used"] += 1
                 elif len(answer) > 800:
                     answer = answer[:797] + "..."
-                
-                return answer
             
-            # 예외 처리
             else:
                 self.stats["fallback_used"] += 1
-                return self._get_domain_specific_fallback(question, "multiple_choice")
+                answer = self._get_domain_specific_fallback(question, "multiple_choice")
             
-            if self.enable_learning and result.confidence > 0.5:
+            if self.enable_learning and 'result' in locals() and result.confidence > 0.5:
                 self.auto_learner.learn_from_prediction(
                     question, answer, result.confidence,
                     structure["question_type"], analysis.get("domain", ["일반"])
@@ -413,7 +404,6 @@ class FinancialAIInference:
                 if self.verbose:
                     print(f"데이터 저장 오류: {e}")
         
-        # 답변 분석 개선
         mc_answers = []
         subj_answers = []
         
@@ -434,7 +424,6 @@ class FinancialAIInference:
             _, quality = self._validate_korean_quality(answer, "subjective")
             korean_quality_scores.append(quality)
         
-        # 객관식 답변 품질도 평가
         mc_quality_scores = []
         for answer in mc_answers:
             _, quality = self._validate_korean_quality(answer, "multiple_choice")
@@ -564,7 +553,7 @@ def main():
         print(f"오류: {submission_file} 파일 없음")
         sys.exit(1)
     
-    enable_learning = False
+    enable_learning = True
     verbose = False
     
     engine = None
