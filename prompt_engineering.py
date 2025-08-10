@@ -14,7 +14,7 @@ class PromptEngineer:
         
         self.prompt_cache = {}
         self.template_cache = {}
-        self.max_cache_size = 150
+        self.max_cache_size = 300
         
         self.stats = {
             "cache_hits": 0,
@@ -103,12 +103,42 @@ class PromptEngineer:
 
 정답:"""
 
+        templates["mc_cyber_security"] = """### 문제
+{question}
+
+### 사이버보안 힌트
+- 트로이 목마: 정상 프로그램으로 위장한 악성코드
+- RAT: 원격 접근 트로이 목마, 시스템 원격 제어
+- 주요 탐지 지표: 비정상적 네트워크 연결, 시스템 리소스 증가
+
+정답:"""
+
+        templates["mc_encryption"] = """### 문제
+{question}
+
+### 암호화 힌트
+- 대칭키 암호화: 빠른 처리, 같은 키 사용
+- 공개키 암호화: 안전한 키 교환, 디지털 서명
+- 해시 함수: 무결성 검증, 단방향 암호화
+
+정답:"""
+
+        templates["mc_access_control"] = """### 문제
+{question}
+
+### 접근제어 힌트
+- 접근매체: 안전하고 신뢰할 수 있어야 함
+- 다중인증: 2개 이상 인증요소 조합
+- 생체인증: 지문, 홍채, 얼굴 인식
+
+정답:"""
+
         templates["subj_enhanced"] = """당신은 한국의 금융보안 전문가입니다.
 
 ### 중요 규칙
 1. 반드시 순수 한국어로만 답변
 2. 한자, 영어 등 외국어 절대 금지
-3. 100-200자 내외로 답변
+3. 80-300자 내외로 답변
 4. 전문적이고 명확한 한국어 사용
 
 ### 질문
@@ -125,7 +155,7 @@ class PromptEngineer:
 ### 중요 규칙
 1. 반드시 순수 한국어로만 답변
 2. 한자, 영어 등 외국어 절대 금지
-3. 120-200자 내외로 답변
+3. 100-250자 내외로 답변
 
 ### 질문
 {question}
@@ -151,7 +181,7 @@ class PromptEngineer:
 
 ### 답변 지침
 개인정보보호법에 따른 구체적인 조치사항을 순수 한국어로 설명하세요.
-100-200자 내외, 외국어 사용 금지
+80-250자 내외, 외국어 사용 금지
 
 답변:"""
 
@@ -162,7 +192,67 @@ class PromptEngineer:
 
 ### 답변 지침
 전자금융거래법에 따른 안전성 확보 방안을 순수 한국어로 설명하세요.
-100-200자 내외, 외국어 사용 금지
+80-250자 내외, 외국어 사용 금지
+
+답변:"""
+
+        templates["subj_risk_management"] = """당신은 한국의 위험관리 전문가입니다.
+
+### 질문
+{question}
+
+### 답변 지침
+위험관리 체계와 대응전략을 순수 한국어로 설명하세요.
+위험 식별, 평가, 대응, 모니터링 과정을 포함하여 설명하세요.
+80-250자 내외, 외국어 사용 금지
+
+답변:"""
+
+        templates["subj_management_system"] = """당신은 한국의 관리체계 전문가입니다.
+
+### 질문
+{question}
+
+### 답변 지침
+관리체계 수립과 운영 방안을 순수 한국어로 설명하세요.
+정책 수립, 조직 구성, 역할 분담, 지속적 개선을 포함하여 설명하세요.
+80-250자 내외, 외국어 사용 금지
+
+답변:"""
+
+        templates["subj_incident_response"] = """당신은 한국의 사고대응 전문가입니다.
+
+### 질문
+{question}
+
+### 답변 지침
+침해사고 대응 절차와 복구 방안을 순수 한국어로 설명하세요.
+사고 탐지, 분석, 대응, 복구, 사후관리 단계를 포함하여 설명하세요.
+80-250자 내외, 외국어 사용 금지
+
+답변:"""
+
+        templates["subj_crypto"] = """당신은 한국의 암호화 전문가입니다.
+
+### 질문
+{question}
+
+### 답변 지침
+암호화 기술과 키 관리 방안을 순수 한국어로 설명하세요.
+대칭키, 공개키 암호화와 해시 함수 활용을 포함하여 설명하세요.
+80-250자 내외, 외국어 사용 금지
+
+답변:"""
+
+        templates["subj_law_compliance"] = """당신은 한국의 금융법규 준수 전문가입니다.
+
+### 질문
+{question}
+
+### 답변 지침
+관련 법령의 준수 사항과 의무 사항을 순수 한국어로 설명하세요.
+법적 근거와 구체적 조치 방안을 포함하여 설명하세요.
+80-250자 내외, 외국어 사용 금지
 
 답변:"""
         
@@ -230,7 +320,6 @@ class PromptEngineer:
         return prompt
     
     def _create_mc_prompt_enhanced(self, question: str, analysis: Dict, structure: Dict) -> str:
-        
         question_lower = question.lower()
         
         if "금융투자업" in question_lower:
@@ -257,6 +346,21 @@ class PromptEngineer:
                 self.stats["template_usage"]["mc_recovery"] = self.stats["template_usage"].get("mc_recovery", 0) + 1
                 return prompt
         
+        if "트로이" in question_lower or "악성코드" in question_lower or "원격" in question_lower:
+            prompt = self.templates["mc_cyber_security"].format(question=question)
+            self.stats["template_usage"]["mc_cyber_security"] = self.stats["template_usage"].get("mc_cyber_security", 0) + 1
+            return prompt
+        
+        if "암호화" in question_lower or "암호" in question_lower or "키관리" in question_lower:
+            prompt = self.templates["mc_encryption"].format(question=question)
+            self.stats["template_usage"]["mc_encryption"] = self.stats["template_usage"].get("mc_encryption", 0) + 1
+            return prompt
+        
+        if "접근매체" in question_lower or "접근제어" in question_lower or "다중인증" in question_lower:
+            prompt = self.templates["mc_access_control"].format(question=question)
+            self.stats["template_usage"]["mc_access_control"] = self.stats["template_usage"].get("mc_access_control", 0) + 1
+            return prompt
+        
         if structure.get("has_all_option", False):
             prompt = self.templates["mc_all_option"].format(question=question)
             self.stats["template_usage"]["mc_all_option"] = self.stats["template_usage"].get("mc_all_option", 0) + 1
@@ -278,11 +382,10 @@ class PromptEngineer:
         return prompt
     
     def _create_subj_prompt_enhanced(self, question: str, analysis: Dict, structure: Dict) -> str:
-        
         question_lower = question.lower()
         domains = analysis.get("domain", [])
         
-        if "트로이" in question_lower and ("악성코드" in question_lower or "원격" in question_lower):
+        if "트로이" in question_lower and ("악성코드" in question_lower or "원격" in question_lower or "탐지" in question_lower):
             prompt = self.templates["subj_trojan"].format(question=question)
             self.stats["template_usage"]["subj_trojan"] = self.stats["template_usage"].get("subj_trojan", 0) + 1
         elif "개인정보보호" in domains or "개인정보" in question_lower:
@@ -291,6 +394,21 @@ class PromptEngineer:
         elif "전자금융" in domains or "전자금융" in question_lower:
             prompt = self.templates["subj_electronic"].format(question=question)
             self.stats["template_usage"]["subj_electronic"] = self.stats["template_usage"].get("subj_electronic", 0) + 1
+        elif "위험관리" in domains or ("위험" in question_lower and "관리" in question_lower):
+            prompt = self.templates["subj_risk_management"].format(question=question)
+            self.stats["template_usage"]["subj_risk_management"] = self.stats["template_usage"].get("subj_risk_management", 0) + 1
+        elif "관리체계" in domains or ("관리체계" in question_lower and "정책" in question_lower):
+            prompt = self.templates["subj_management_system"].format(question=question)
+            self.stats["template_usage"]["subj_management_system"] = self.stats["template_usage"].get("subj_management_system", 0) + 1
+        elif "사고대응" in domains or ("사고" in question_lower and ("대응" in question_lower or "복구" in question_lower)):
+            prompt = self.templates["subj_incident_response"].format(question=question)
+            self.stats["template_usage"]["subj_incident_response"] = self.stats["template_usage"].get("subj_incident_response", 0) + 1
+        elif "암호화" in domains or ("암호" in question_lower and "키" in question_lower):
+            prompt = self.templates["subj_crypto"].format(question=question)
+            self.stats["template_usage"]["subj_crypto"] = self.stats["template_usage"].get("subj_crypto", 0) + 1
+        elif "법령" in question_lower or "규정" in question_lower or "의무" in question_lower:
+            prompt = self.templates["subj_law_compliance"].format(question=question)
+            self.stats["template_usage"]["subj_law_compliance"] = self.stats["template_usage"].get("subj_law_compliance", 0) + 1
         else:
             prompt = self.templates["subj_enhanced"].format(question=question)
             self.stats["template_usage"]["subj_enhanced"] = self.stats["template_usage"].get("subj_enhanced", 0) + 1
@@ -298,11 +416,9 @@ class PromptEngineer:
         return prompt
     
     def create_korean_reinforced_prompt(self, question: str, question_type: str) -> str:
-        
         question_lower = question.lower()
         
         if question_type == "multiple_choice":
-            
             if "금융투자업" in question_lower:
                 if "소비자금융업" in question_lower or "보험중개업" in question_lower:
                     return self.templates["mc_financial"].format(question=question)
@@ -319,6 +435,15 @@ class PromptEngineer:
                 if "개인정보" in question_lower and "파기" in question_lower:
                     return self.templates["mc_recovery"].format(question=question)
             
+            if "트로이" in question_lower or "악성코드" in question_lower:
+                return self.templates["mc_cyber_security"].format(question=question)
+            
+            if "암호화" in question_lower or "암호" in question_lower:
+                return self.templates["mc_encryption"].format(question=question)
+            
+            if "접근매체" in question_lower or "접근제어" in question_lower:
+                return self.templates["mc_access_control"].format(question=question)
+            
             for choice_line in question.split('\n'):
                 if re.match(r'^\s*[5]', choice_line):
                     if "모두" in choice_line or "전부" in choice_line:
@@ -332,12 +457,22 @@ class PromptEngineer:
             return self.templates["mc_direct"].format(question=question)
             
         else:
-            if "트로이" in question_lower and any(word in question_lower for word in ["악성코드", "원격", "rat"]):
+            if "트로이" in question_lower and any(word in question_lower for word in ["악성코드", "원격", "rat", "탐지"]):
                 return self.templates["subj_trojan"].format(question=question)
             elif "개인정보" in question_lower:
                 return self.templates["subj_personal_info"].format(question=question)
             elif "전자금융" in question_lower:
                 return self.templates["subj_electronic"].format(question=question)
+            elif "위험" in question_lower and "관리" in question_lower:
+                return self.templates["subj_risk_management"].format(question=question)
+            elif "관리체계" in question_lower:
+                return self.templates["subj_management_system"].format(question=question)
+            elif "사고" in question_lower and ("대응" in question_lower or "복구" in question_lower):
+                return self.templates["subj_incident_response"].format(question=question)
+            elif "암호" in question_lower:
+                return self.templates["subj_crypto"].format(question=question)
+            elif "법령" in question_lower or "규정" in question_lower:
+                return self.templates["subj_law_compliance"].format(question=question)
             else:
                 return self.templates["subj_enhanced"].format(question=question)
     
@@ -383,7 +518,6 @@ class PromptEngineer:
         return "\n".join(prompt_parts)
     
     def optimize_for_model(self, prompt: str, model_name: str) -> str:
-        
         korean_prefix = "### 중요: 반드시 한국어로만 답변하세요 ###\n\n"
         
         if "solar" in model_name.lower():

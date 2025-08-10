@@ -1,7 +1,4 @@
 # learning_system.py
-"""
-통합 학습
-"""
 
 import json
 import pickle
@@ -16,23 +13,18 @@ from collections import defaultdict
 import time
 
 def _default_list():
-    """기본 리스트 반환"""
     return []
 
 def _default_int():
-    """기본 정수값 반환"""
     return 0
 
 def _default_float():
-    """기본 실수값 반환"""
     return 0.0
 
 def _default_int_dict():
-    """기본 정수 딕셔너리 반환"""
     return defaultdict(_default_int)
 
 def atomic_save(obj, filepath: str) -> bool:
-    """원자적 파일 저장"""
     try:
         directory = os.path.dirname(filepath)
         if directory:
@@ -52,7 +44,6 @@ def atomic_save(obj, filepath: str) -> bool:
         return False
 
 def atomic_load(filepath: str):
-    """안전한 파일 로드"""
     if not os.path.exists(filepath):
         return None
     
@@ -64,7 +55,6 @@ def atomic_load(filepath: str):
 
 @dataclass
 class LearningData:
-    """학습 데이터"""
     question_id: str
     question: str
     correct_answer: str
@@ -77,7 +67,6 @@ class LearningData:
     korean_quality: float = 0.0
 
 class UnifiedLearningSystem:
-    """통합 학습 시스템"""
     
     def __init__(self):
         self.training_data = []
@@ -108,41 +97,69 @@ class UnifiedLearningSystem:
         }
         
         self.prediction_cache = {}
-        self.max_cache_size = 100
+        self.max_cache_size = 200
         
     def _initialize_korean_templates(self) -> Dict[str, List[str]]:
-        """한국어 템플릿 초기화"""
         return {
             "개인정보보호": [
                 "개인정보보호법에 따라 {action}를 수행해야 합니다.",
                 "정보주체의 권리 보호를 위해 {measure}가 필요합니다.",
-                "개인정보의 안전한 관리를 위해 {requirement}가 요구됩니다."
+                "개인정보의 안전한 관리를 위해 {requirement}가 요구됩니다.",
+                "개인정보 처리방침을 수립하고 {action}를 이행해야 합니다.",
+                "개인정보보호 관리체계를 구축하여 {measure}를 확보해야 합니다."
             ],
             "전자금융": [
                 "전자금융거래법에 따라 {action}를 수행해야 합니다.",
                 "전자적 장치를 통한 거래의 안전성 확보를 위해 {measure}가 필요합니다.",
-                "접근매체 관리와 관련하여 {requirement}를 준수해야 합니다."
+                "접근매체 관리와 관련하여 {requirement}를 준수해야 합니다.",
+                "전자금융거래의 신뢰성 향상을 위해 {action}가 요구됩니다.",
+                "전자금융 보안대책을 수립하고 {measure}를 구현해야 합니다."
             ],
             "정보보안": [
                 "정보보안 관리체계에 따라 {action}를 구현해야 합니다.",
                 "체계적인 보안 관리를 위해 {measure}가 요구됩니다.",
-                "위험평가를 통해 {requirement}를 수립해야 합니다."
+                "위험평가를 통해 {requirement}를 수립해야 합니다.",
+                "보안정책의 수립과 이행을 위해 {action}가 필요합니다.",
+                "지속적인 보안 모니터링을 통해 {measure}를 확보해야 합니다."
             ],
             "암호화": [
                 "중요 정보는 {action}를 통해 보호해야 합니다.",
                 "암호화 기술을 활용하여 {measure}를 확보해야 합니다.",
-                "안전한 키 관리를 위해 {requirement}가 필요합니다."
+                "안전한 키 관리를 위해 {requirement}가 필요합니다.",
+                "전송 구간 암호화를 통해 {action}를 수행해야 합니다.",
+                "저장 데이터 암호화를 위해 {measure}를 적용해야 합니다."
             ],
             "사고대응": [
                 "{event} 발생 시 {action}를 수행해야 합니다.",
                 "침해사고 대응은 {phase}별로 {measure}를 이행해야 합니다.",
-                "복구 계획은 {target}을 고려하여 {requirement}를 수립해야 합니다."
+                "복구 계획은 {target}을 고려하여 {requirement}를 수립해야 합니다.",
+                "사고 대응팀 구성을 통해 {action}가 요구됩니다.",
+                "신속한 복구를 위해 {measure}를 준비해야 합니다."
+            ],
+            "사이버보안": [
+                "악성코드 탐지를 위해 {method}를 활용해야 합니다.",
+                "트로이 목마는 {characteristic}를 가진 악성코드입니다.",
+                "원격 접근 공격에 대비하여 {measure}가 필요합니다.",
+                "시스템 감시를 통해 {indicator}를 확인해야 합니다.",
+                "보안 솔루션을 통해 {action}를 수행해야 합니다."
+            ],
+            "위험관리": [
+                "위험관리 체계를 수립하여 {action}를 수행해야 합니다.",
+                "위험 식별과 평가를 통해 {measure}가 필요합니다.",
+                "위험 대응 전략을 수립하고 {requirement}를 구현해야 합니다.",
+                "지속적인 위험 모니터링을 통해 {action}를 강화해야 합니다.",
+                "위험 관리 정책을 수립하여 {measure}를 확보해야 합니다."
+            ],
+            "관리체계": [
+                "관리체계 수립을 위해 {action}가 필요합니다.",
+                "정책 수립과 운영을 통해 {measure}를 확보해야 합니다.",
+                "조직 구성과 역할 분담을 통해 {requirement}를 구현해야 합니다.",
+                "정기적인 점검과 개선을 통해 {action}를 수행해야 합니다.",
+                "관리체계의 지속적 개선을 위해 {measure}가 요구됩니다."
             ]
         }
     
     def _evaluate_korean_quality(self, text: str, question_type: str) -> float:
-        """한국어 품질 평가"""
-        
         if question_type == "multiple_choice":
             if re.match(r'^[1-5]$', text.strip()):
                 return 1.0
@@ -168,12 +185,12 @@ class UnifiedLearningSystem:
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
-        professional_terms = ['법', '규정', '조치', '관리', '보안', '체계', '정책', '절차', '방안']
+        professional_terms = ['법', '규정', '조치', '관리', '보안', '체계', '정책', '절차', '방안', '시스템', '대책']
         prof_count = sum(1 for term in professional_terms if term in text)
-        prof_bonus = min(prof_count * 0.05, 0.2)
+        prof_bonus = min(prof_count * 0.06, 0.25)
         
         quality = korean_ratio * 0.9
-        quality -= english_ratio * 0.3
+        quality -= english_ratio * 0.2
         quality += prof_bonus
         quality = max(0, min(1, quality))
         
@@ -183,12 +200,11 @@ class UnifiedLearningSystem:
                           predicted_answer: str, confidence: float,
                           question_type: str, domain: List[str],
                           question_id: str = None) -> None:
-        """학습 샘플 추가"""
         
         is_correct = (correct_answer == predicted_answer)
         korean_quality = self._evaluate_korean_quality(predicted_answer, question_type)
         
-        if korean_quality < 0.3 and question_type != "multiple_choice":
+        if korean_quality < 0.2 and question_type != "multiple_choice":
             return
         
         sample = LearningData(
@@ -205,8 +221,8 @@ class UnifiedLearningSystem:
         )
         
         self.training_data.append(sample)
-        if len(self.training_data) > 1000:
-            self.training_data = self.training_data[-1000:]
+        if len(self.training_data) > 1500:
+            self.training_data = self.training_data[-1500:]
         
         self.learning_metrics["total_samples"] += 1
         
@@ -215,25 +231,24 @@ class UnifiedLearningSystem:
         
         self._update_korean_quality_stats(korean_quality)
         
-        if korean_quality > 0.7 and question_type != "multiple_choice" and confidence > 0.6:
+        if korean_quality > 0.5 and question_type != "multiple_choice" and confidence > 0.5:
             for d in domain:
                 self.successful_answers[d].append({
                     "answer": predicted_answer,
                     "confidence": confidence,
                     "structure": self._analyze_answer_structure(predicted_answer)
                 })
-                if len(self.successful_answers[d]) > 20:
-                    self.successful_answers[d] = self.successful_answers[d][-20:]
+                if len(self.successful_answers[d]) > 30:
+                    self.successful_answers[d] = self.successful_answers[d][-30:]
         
         self._extract_patterns(sample)
     
     def _update_korean_quality_stats(self, quality: float) -> None:
-        """한국어 품질 통계 업데이트"""
         self.korean_quality_stats["total_samples"] += 1
         
-        if quality > 0.8:
+        if quality > 0.7:
             self.korean_quality_stats["high_quality"] += 1
-        elif quality > 0.5:
+        elif quality > 0.4:
             self.korean_quality_stats["medium_quality"] += 1
         else:
             self.korean_quality_stats["low_quality"] += 1
@@ -245,7 +260,6 @@ class UnifiedLearningSystem:
             self.learning_metrics["korean_quality_avg"] = self.korean_quality_stats["avg_quality"]
     
     def _analyze_answer_structure(self, answer: str) -> Dict:
-        """답변 구조 분석"""
         return {
             "has_numbering": bool(re.search(r'첫째|둘째|1\)|2\)', answer)),
             "has_law_reference": bool(re.search(r'법|규정|조항', answer)),
@@ -256,25 +270,23 @@ class UnifiedLearningSystem:
         }
     
     def _extract_patterns(self, sample: LearningData) -> None:
-        """패턴 추출"""
-        
         question_lower = sample.question.lower()
         
-        keywords = self._extract_keywords(question_lower)[:5]
+        keywords = self._extract_keywords(question_lower)[:8]
         for keyword in keywords:
             self.pattern_bank[keyword].append({
                 "answer": sample.correct_answer,
-                "confidence": sample.confidence if sample.is_correct else sample.confidence * 0.5,
+                "confidence": sample.confidence if sample.is_correct else sample.confidence * 0.4,
                 "domain": sample.domain,
                 "korean_quality": sample.korean_quality
             })
             
-            if len(self.pattern_bank[keyword]) > 50:
+            if len(self.pattern_bank[keyword]) > 80:
                 self.pattern_bank[keyword] = sorted(
                     self.pattern_bank[keyword], 
                     key=lambda x: x["confidence"], 
                     reverse=True
-                )[:50]
+                )[:80]
         
         for domain in sample.domain:
             if domain not in self.answer_statistics:
@@ -287,11 +299,14 @@ class UnifiedLearningSystem:
             self._learn_subjective_pattern(sample)
     
     def _extract_keywords(self, text: str) -> List[str]:
-        """키워드 추출"""
-        
         keywords = []
         
-        key_terms = ["개인정보", "전자금융", "암호화", "보안", "관리체계", "위험관리", "재해복구"]
+        key_terms = [
+            "개인정보", "전자금융", "암호화", "보안", "관리체계", "위험관리", 
+            "재해복구", "정보보호", "ISMS", "ISO", "접근매체", "안전성확보조치",
+            "트로이", "악성코드", "피싱", "스미싱", "해킹", "방화벽", "백업",
+            "취약점", "침입탐지", "침입방지", "다중인증", "생체인증", "소셜엔지니어링"
+        ]
         for term in key_terms:
             if term in text:
                 keywords.append(term)
@@ -306,8 +321,6 @@ class UnifiedLearningSystem:
         return keywords
     
     def _learn_mc_pattern(self, sample: LearningData) -> None:
-        """객관식 패턴 학습"""
-        
         if "해당하지" in sample.question or "적절하지" in sample.question:
             pattern_key = "negative_mc"
             if pattern_key not in self.learned_rules:
@@ -330,9 +343,7 @@ class UnifiedLearningSystem:
             self.rule_performance[pattern_key].append(sample.is_correct)
     
     def _learn_subjective_pattern(self, sample: LearningData) -> None:
-        """주관식 패턴 학습"""
-        
-        if sample.korean_quality < 0.7:
+        if sample.korean_quality < 0.5:
             return
         
         for domain in sample.domain:
@@ -348,16 +359,16 @@ class UnifiedLearningSystem:
             
             rule = self.learned_rules[pattern_key]
             
-            if sample.is_correct and len(sample.correct_answer) > 50:
+            if sample.is_correct and len(sample.correct_answer) > 30:
                 rule["templates"].append({
-                    "text": sample.correct_answer[:200],
+                    "text": sample.correct_answer[:300],
                     "quality": sample.korean_quality,
                     "structure": self._analyze_answer_structure(sample.correct_answer)
                 })
                 
-                if len(rule["templates"]) > 10:
+                if len(rule["templates"]) > 15:
                     rule["templates"].sort(key=lambda x: x["quality"], reverse=True)
-                    rule["templates"] = rule["templates"][:10]
+                    rule["templates"] = rule["templates"][:15]
                 
                 rule["sample_count"] += 1
                 if sample.is_correct:
@@ -367,7 +378,6 @@ class UnifiedLearningSystem:
     
     def predict_with_learning(self, question: str, question_type: str,
                             domain: List[str]) -> Tuple[str, float]:
-        """학습 기반 예측"""
         
         cache_key = hashlib.md5(f"{question}{question_type}".encode()).hexdigest()[:12]
         if cache_key in self.prediction_cache:
@@ -387,16 +397,14 @@ class UnifiedLearningSystem:
         return prediction
     
     def _predict_mc(self, question: str, domain: List[str]) -> Tuple[str, float]:
-        """객관식 예측"""
-        
         if "해당하지" in question or "적절하지" in question:
             if "negative_mc" in self.learned_rules:
                 rule = self.learned_rules["negative_mc"]
-                if rule["sample_count"] >= 3 and rule["success_rate"] > 0.4:
+                if rule["sample_count"] >= 2 and rule["success_rate"] > 0.3:
                     answers = rule["answers"]
                     if answers:
                         best_answer = max(answers.items(), key=lambda x: x[1])
-                        confidence = min(best_answer[1] / sum(answers.values()) * rule["success_rate"], 0.8)
+                        confidence = min(best_answer[1] / sum(answers.values()) * rule["success_rate"], 0.85)
                         return best_answer[0], confidence
         
         for d in domain:
@@ -404,43 +412,39 @@ class UnifiedLearningSystem:
                 stats = self.answer_statistics[d]
                 if stats:
                     total = sum(stats.values())
-                    if total >= 3:
+                    if total >= 2:
                         best_answer = max(stats.items(), key=lambda x: x[1])
-                        confidence = best_answer[1] / total * 0.6
+                        confidence = best_answer[1] / total * 0.7
                         return best_answer[0], confidence
         
-        return "3", 0.2
+        return "3", 0.25
     
     def _predict_subjective_korean(self, question: str, domain: List[str]) -> Tuple[str, float]:
-        """주관식 예측"""
-        
         for d in domain:
             if d in self.successful_answers and self.successful_answers[d]:
                 candidates = sorted(
                     self.successful_answers[d],
                     key=lambda x: x["confidence"],
                     reverse=True
-                )[:2]
+                )[:3]
                 
                 if candidates:
                     selected = candidates[0]
-                    return selected["answer"], selected["confidence"] * 0.7
+                    return selected["answer"], selected["confidence"] * 0.8
         
         for d in domain:
             pattern_key = f"subj_{d}"
             if pattern_key in self.learned_rules:
                 rule = self.learned_rules[pattern_key]
-                if rule.get("sample_count", 0) >= 2 and rule.get("success_rate", 0) > 0.5:
+                if rule.get("sample_count", 0) >= 1 and rule.get("success_rate", 0) > 0.4:
                     templates = rule.get("templates", [])
                     if templates:
                         best_template = max(templates, key=lambda x: x["quality"])
-                        return best_template["text"], 0.5
+                        return best_template["text"], 0.6
         
-        return self._generate_korean_fallback(domain), 0.3
+        return self._generate_korean_fallback(domain), 0.4
     
     def _generate_korean_fallback(self, domains: List[str]) -> str:
-        """한국어 폴백 응답 생성"""
-        
         if "개인정보보호" in domains:
             return "개인정보보호법에 따라 개인정보의 수집과 이용 시 정보주체의 동의를 받아야 하며, 안전성 확보조치를 통해 개인정보를 보호해야 합니다."
         elif "전자금융" in domains:
@@ -449,25 +453,24 @@ class UnifiedLearningSystem:
             return "정보보안 관리체계를 구축하여 조직의 정보자산을 체계적으로 보호해야 합니다."
         elif "암호화" in domains:
             return "중요 정보는 안전한 암호 알고리즘을 사용하여 암호화해야 합니다."
+        elif "사이버보안" in domains:
+            return "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 원격 접근 트로이 목마는 공격자가 감염된 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결, 시스템 리소스 사용 증가, 알 수 없는 프로세스 실행 등이 있습니다."
         else:
             return "관련 법령과 규정에 따라 체계적인 보안 관리 방안을 수립하고 지속적인 개선을 수행해야 합니다."
     
     def get_current_accuracy(self) -> float:
-        """현재 정확도"""
         if self.learning_metrics["total_samples"] == 0:
             return 0.0
         
         return self.learning_metrics["correct_predictions"] / self.learning_metrics["total_samples"]
     
     def optimize_rules(self) -> None:
-        """규칙 최적화"""
-        
         rules_to_remove = []
         
         for rule_name, performance in self.rule_performance.items():
             if len(performance) >= 5:
                 accuracy = sum(performance) / len(performance)
-                if accuracy < 0.3:
+                if accuracy < 0.25:
                     rules_to_remove.append(rule_name)
         
         for rule in rules_to_remove:
@@ -479,24 +482,20 @@ class UnifiedLearningSystem:
         self.learning_metrics["rules_created"] = len(self.learned_rules)
     
     def save_learning_data(self, filepath: str = "./learning_data.pkl") -> bool:
-        """학습 데이터 저장"""
-        
         save_data = {
-            "training_data": [asdict(d) for d in self.training_data[-300:]],
-            "pattern_bank": {k: v[:20] for k, v in self.pattern_bank.items()},
+            "training_data": [asdict(d) for d in self.training_data[-500:]],
+            "pattern_bank": {k: v[:30] for k, v in self.pattern_bank.items()},
             "answer_statistics": {k: dict(v) for k, v in self.answer_statistics.items()},
             "learned_rules": self.learned_rules,
-            "rule_performance": {k: list(v)[-20:] for k, v in self.rule_performance.items()},
+            "rule_performance": {k: list(v)[-30:] for k, v in self.rule_performance.items()},
             "learning_metrics": self.learning_metrics,
             "korean_quality_stats": self.korean_quality_stats,
-            "successful_answers": {k: v[-10:] for k, v in self.successful_answers.items()}
+            "successful_answers": {k: v[-15:] for k, v in self.successful_answers.items()}
         }
         
         return atomic_save(save_data, filepath)
     
     def load_learning_data(self, filepath: str = "./learning_data.pkl") -> bool:
-        """학습 데이터 로드"""
-        
         data = atomic_load(filepath)
         if data is None:
             return False
@@ -530,8 +529,6 @@ class UnifiedLearningSystem:
             return False
     
     def get_learning_report(self) -> Dict:
-        """학습 보고서"""
-        
         return {
             "total_samples": self.learning_metrics["total_samples"],
             "accuracy": self.get_current_accuracy(),
@@ -551,7 +548,6 @@ class UnifiedLearningSystem:
         }
     
     def cleanup(self):
-        """리소스 정리"""
         self.prediction_cache.clear()
         total = self.learning_metrics['total_samples']
         quality = self.korean_quality_stats['avg_quality']

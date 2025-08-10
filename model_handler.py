@@ -1,7 +1,4 @@
 # model_handler.py
-"""
-모델 핸들러
-"""
 
 import torch
 import re
@@ -20,7 +17,6 @@ warnings.filterwarnings("ignore")
 
 @dataclass
 class InferenceResult:
-    """추론 결과"""
     response: str
     confidence: float
     reasoning_quality: float
@@ -29,7 +25,6 @@ class InferenceResult:
     korean_quality: float = 0.0
 
 class ModelHandler:
-    """모델 핸들러"""
     
     def __init__(self, model_name: str, device: str = "cuda", 
                  load_in_4bit: bool = True, max_memory_gb: int = 22, verbose: bool = False):
@@ -101,13 +96,12 @@ class ModelHandler:
         
         self.response_cache = {}
         self.cache_hits = 0
-        self.max_cache_size = 200
+        self.max_cache_size = 500
         
         if self.verbose:
             print("모델 로딩 완료")
     
     def _prepare_korean_optimization(self):
-        """한국어 최적화 준비"""
         self.korean_tokens = []
         korean_chars = "가나다라마바사아자차카타파하개내대래매배새애재채캐태패해는을의에서과도"
         
@@ -133,7 +127,6 @@ class ModelHandler:
                 continue
     
     def _create_korean_optimized_prompt(self, prompt: str, question_type: str) -> str:
-        """한국어 최적화 프롬프트 생성"""
         if question_type == "multiple_choice":
             korean_prefix = "### 지시사항: 반드시 1, 2, 3, 4, 5 중 하나의 숫자만 답하세요 ###\n\n"
             korean_suffix = "\n\n### 중요: 숫자만 답하세요 ###\n정답:"
@@ -144,8 +137,7 @@ class ModelHandler:
         return korean_prefix + prompt + korean_suffix
     
     def generate_response(self, prompt: str, question_type: str,
-                         max_attempts: int = 2) -> InferenceResult:
-        """응답 생성"""
+                         max_attempts: int = 3) -> InferenceResult:
         
         start_time = time.time()
         
@@ -166,10 +158,10 @@ class ModelHandler:
                 if question_type == "multiple_choice":
                     gen_config = GenerationConfig(
                         do_sample=True,
-                        temperature=0.2,
-                        top_p=0.8,
-                        top_k=20,
-                        max_new_tokens=30,
+                        temperature=0.3,
+                        top_p=0.85,
+                        top_k=25,
+                        max_new_tokens=50,
                         repetition_penalty=1.05,
                         pad_token_id=self.tokenizer.pad_token_id,
                         eos_token_id=self.tokenizer.eos_token_id,
@@ -180,11 +172,11 @@ class ModelHandler:
                 else:
                     gen_config = GenerationConfig(
                         do_sample=True,
-                        temperature=0.4,
-                        top_p=0.85,
-                        top_k=40,
-                        max_new_tokens=150,
-                        repetition_penalty=1.02,
+                        temperature=0.5,
+                        top_p=0.9,
+                        top_k=50,
+                        max_new_tokens=400,
+                        repetition_penalty=1.03,
                         no_repeat_ngram_size=3,
                         pad_token_id=self.tokenizer.pad_token_id,
                         eos_token_id=self.tokenizer.eos_token_id,
@@ -220,8 +212,8 @@ class ModelHandler:
                     if extracted_answer and extracted_answer.isdigit() and 1 <= int(extracted_answer) <= 5:
                         result = InferenceResult(
                             response=extracted_answer,
-                            confidence=0.85,
-                            reasoning_quality=0.75,
+                            confidence=0.9,
+                            reasoning_quality=0.8,
                             analysis_depth=2,
                             korean_quality=1.0,
                             inference_time=time.time() - start_time
@@ -239,7 +231,7 @@ class ModelHandler:
                 else:
                     korean_quality = self._evaluate_korean_quality_enhanced(cleaned_response)
                     
-                    if korean_quality > 0.5:
+                    if korean_quality > 0.3:
                         result = self._evaluate_response(cleaned_response, question_type)
                         result.korean_quality = korean_quality
                         result.inference_time = time.time() - start_time
@@ -249,7 +241,7 @@ class ModelHandler:
                             best_score = score
                             best_result = result
                     
-                    if korean_quality > 0.7:
+                    if korean_quality > 0.6:
                         break
                         
             except Exception as e:
@@ -264,8 +256,6 @@ class ModelHandler:
         return best_result
     
     def _extract_mc_answer_enhanced(self, text: str) -> str:
-        """강화된 객관식 답변 추출"""
-        
         patterns = [
             r'정답[:\s]*([1-5])',
             r'답[:\s]*([1-5])',
@@ -287,8 +277,6 @@ class ModelHandler:
         return ""
     
     def _clean_korean_text_enhanced(self, text: str) -> str:
-        """강화된 한국어 텍스트 정리"""
-        
         if not text:
             return ""
         
@@ -322,8 +310,6 @@ class ModelHandler:
         return text.strip()
     
     def _evaluate_korean_quality_enhanced(self, text: str) -> float:
-        """강화된 한국어 품질 평가"""
-        
         if not text:
             return 0.0
         
@@ -343,55 +329,51 @@ class ModelHandler:
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
-        quality = korean_ratio * 0.8
-        quality -= english_ratio * 0.3
+        quality = korean_ratio * 0.85
+        quality -= english_ratio * 0.15
         
-        professional_terms = ['법', '규정', '조치', '관리', '보안', '체계', '정책', '절차', '방안']
+        professional_terms = ['법', '규정', '조치', '관리', '보안', '체계', '정책', '절차', '방안', '시스템']
         prof_count = sum(1 for term in professional_terms if term in text)
-        quality += min(prof_count * 0.05, 0.2)
+        quality += min(prof_count * 0.08, 0.25)
         
-        if 50 <= len(text) <= 300:
-            quality += 0.1
+        if 30 <= len(text) <= 500:
+            quality += 0.12
         
         structure_markers = ['첫째', '둘째', '따라서', '그러므로']
         if any(marker in text for marker in structure_markers):
-            quality += 0.05
+            quality += 0.08
         
         return max(0, min(1, quality))
     
     def _create_fallback_result(self, question_type: str) -> InferenceResult:
-        """폴백 결과 생성"""
-        
         if question_type == "multiple_choice":
             return InferenceResult(
                 response="2",
-                confidence=0.4,
-                reasoning_quality=0.3,
+                confidence=0.5,
+                reasoning_quality=0.4,
                 analysis_depth=1,
                 korean_quality=1.0
             )
         else:
             return InferenceResult(
                 response="관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 개선을 수행해야 합니다.",
-                confidence=0.6,
-                reasoning_quality=0.5,
+                confidence=0.7,
+                reasoning_quality=0.6,
                 analysis_depth=1,
                 korean_quality=0.9
             )
     
     def _evaluate_response(self, response: str, question_type: str) -> InferenceResult:
-        """응답 평가"""
-        
         if question_type == "multiple_choice":
-            confidence = 0.5
-            reasoning = 0.5
+            confidence = 0.6
+            reasoning = 0.6
             
             if re.match(r'^[1-5]$', response.strip()):
-                confidence = 0.85
-                reasoning = 0.75
+                confidence = 0.9
+                reasoning = 0.8
             elif re.search(r'[1-5]', response):
-                confidence = 0.65
-                reasoning = 0.55
+                confidence = 0.75
+                reasoning = 0.65
             
             return InferenceResult(
                 response=response,
@@ -401,26 +383,26 @@ class ModelHandler:
             )
         
         else:
-            confidence = 0.6
-            reasoning = 0.6
+            confidence = 0.7
+            reasoning = 0.7
             
             length = len(response)
-            if 50 <= length <= 400:
-                confidence += 0.2
+            if 50 <= length <= 600:
+                confidence += 0.15
             elif 30 <= length < 50:
-                confidence += 0.1
+                confidence += 0.08
             
             keywords = ['법', '규정', '보안', '관리', '조치', '정책', '체계', '방안']
             keyword_count = sum(1 for k in keywords if k in response)
             if keyword_count >= 3:
-                confidence += 0.2
-                reasoning += 0.2
-            elif keyword_count >= 2:
                 confidence += 0.15
                 reasoning += 0.15
-            elif keyword_count >= 1:
+            elif keyword_count >= 2:
                 confidence += 0.1
                 reasoning += 0.1
+            elif keyword_count >= 1:
+                confidence += 0.05
+                reasoning += 0.05
             
             return InferenceResult(
                 response=response,
@@ -430,7 +412,6 @@ class ModelHandler:
             )
     
     def cleanup(self):
-        """메모리 정리"""
         if self.verbose:
             print(f"캐시 히트: {self.cache_hits}회")
         
@@ -445,7 +426,6 @@ class ModelHandler:
         torch.cuda.empty_cache()
     
     def get_model_info(self) -> Dict:
-        """모델 정보"""
         return {
             "model_name": self.model_name,
             "device": self.device,

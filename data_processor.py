@@ -26,7 +26,7 @@ class DataProcessor:
         
         self.structure_cache = {}
         self.pattern_cache = {}
-        self.max_cache_size = 300
+        self.max_cache_size = 500
         
         self.compiled_patterns = self._compile_all_patterns()
         self.answer_statistics = self._initialize_statistics()
@@ -56,6 +56,17 @@ class DataProcessor:
             r'[電电]子': '전자',
             r'[認认][證证]': '인증',
             r'加密': '암호화',
+            r'密[码碼]': '암호',
+            r'[网網]络': '네트워크',
+            r'[计計]算机': '컴퓨터',
+            r'数据[库庫]': '데이터베이스',
+            r'[访訪]问': '접근',
+            r'[权權]限': '권한',
+            r'[监監]控': '모니터링',
+            r'[检檢]测': '탐지',
+            r'[维維]护': '유지보수',
+            r'[备備]份': '백업',
+            r'恢复': '복구',
             
             r'\bsoftware\b': '소프트웨어',
             r'\bhardware\b': '하드웨어',
@@ -68,11 +79,23 @@ class DataProcessor:
             r'\bauthentication\b': '인증',
             r'\bfinancial\b': '금융',
             r'\btransaction\b': '거래',
-            r'\brisk\b': '위험'
+            r'\brisk\b': '위험',
+            r'\baccess\b': '접근',
+            r'\bcontrol\b': '제어',
+            r'\bnetwork\b': '네트워크',
+            r'\bdatabase\b': '데이터베이스',
+            r'\bmonitor\b': '모니터링',
+            r'\bdetection\b': '탐지',
+            r'\bbackup\b': '백업',
+            r'\brecovery\b': '복구',
+            r'\bmalware\b': '악성코드',
+            r'\bvirus\b': '바이러스',
+            r'\btrojan\b': '트로이',
+            r'\bphishing\b': '피싱',
+            r'\bfirewall\b': '방화벽'
         }
     
     def _clean_korean_text(self, text: str) -> str:
-        
         if not text:
             return ""
         
@@ -94,7 +117,6 @@ class DataProcessor:
         return text
     
     def _validate_korean_text(self, text: str, question_type: str) -> Tuple[bool, float]:
-        
         if question_type == "multiple_choice":
             if re.match(r'^[1-5]$', text.strip()):
                 return True, 1.0
@@ -102,7 +124,7 @@ class DataProcessor:
                 return True, 0.8
             return False, 0.0
         
-        if not text or len(text.strip()) < 15:
+        if not text or len(text.strip()) < 10:
             return False, 0.0
         
         if re.search(r'[\u4e00-\u9fff]', text):
@@ -115,14 +137,14 @@ class DataProcessor:
         korean_chars = len(re.findall(r'[가-힣]', text))
         korean_ratio = korean_chars / total_chars
         
-        if korean_ratio < 0.3:
+        if korean_ratio < 0.2:
             return False, korean_ratio
         
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
-        if english_ratio > 0.3:
-            return False, korean_ratio * (1 - english_ratio * 0.5)
+        if english_ratio > 0.5:
+            return False, korean_ratio * (1 - english_ratio * 0.3)
         
         return True, korean_ratio
     
@@ -137,7 +159,10 @@ class DataProcessor:
                 r'^([1-5])$',
                 r'^([1-5])\s*$',
                 r'정답은\s*([1-5])',
-                r'답은\s*([1-5])'
+                r'답은\s*([1-5])',
+                r'결론적으로\s*([1-5])',
+                r'따라서\s*([1-5])',
+                r'분석결과\s*([1-5])'
             ],
             "choice_reference": [
                 r'([1-5])번',
@@ -149,7 +174,9 @@ class DataProcessor:
                 r'([1-5])\s*가\s*적절',
                 r'([1-5])\s*이\s*적절',
                 r'([1-5])번이\s*맞',
-                r'([1-5])번이\s*답'
+                r'([1-5])번이\s*답',
+                r'([1-5])번을\s*선택',
+                r'([1-5])번에\s*해당'
             ],
             "reasoning_conclusion": [
                 r'따라서\s*([1-5])',
@@ -159,7 +186,9 @@ class DataProcessor:
                 r'종합하면\s*([1-5])',
                 r'결론은\s*([1-5])',
                 r'최종적으로\s*([1-5])',
-                r'정리하면\s*([1-5])'
+                r'정리하면\s*([1-5])',
+                r'요약하면\s*([1-5])',
+                r'결과적으로\s*([1-5])'
             ],
             "last_number": [
                 r'.*([1-5])[^\d]*$',
@@ -185,18 +214,17 @@ class DataProcessor:
     def _build_validation_rules(self) -> Dict[str, callable]:
         rules = {
             "choice_range": lambda x: x.isdigit() and 1 <= int(x) <= 5,
-            "length_appropriate": lambda x: 15 <= len(x) <= 1500,
+            "length_appropriate": lambda x: 10 <= len(x) <= 2000,
             "not_empty": lambda x: x.strip() != "",
-            "meaningful_content": lambda x: len(x.split()) >= 3 if not x.isdigit() else True,
+            "meaningful_content": lambda x: len(x.split()) >= 2 if not x.isdigit() else True,
             "korean_content": lambda x: bool(re.search(r'[가-힣]', x)),
             "no_chinese_chars": lambda x: not bool(re.search(r'[\u4e00-\u9fff]', x)),
-            "minimal_english": lambda x: len(re.findall(r'[A-Za-z]', x)) < len(x) * 0.3,
-            "professional_content": lambda x: any(term in x for term in ['법', '규정', '보안', '관리', '정책']) if len(x) > 30 else True
+            "minimal_english": lambda x: len(re.findall(r'[A-Za-z]', x)) < len(x) * 0.4,
+            "professional_content": lambda x: any(term in x for term in ['법', '규정', '보안', '관리', '정책', '체계', '조치', '방안']) if len(x) > 25 else True
         }
         return rules
     
     def analyze_question_structure(self, question: str) -> Dict:
-        
         q_hash = hash(question[:200] + str(id(question)))
         if q_hash in self.structure_cache:
             return self.structure_cache[q_hash]
@@ -257,16 +285,18 @@ class DataProcessor:
         
         subjective_indicators = [
             "설명하세요", "기술하세요", "서술하세요", "논하세요", "작성하세요",
-            "특징을", "방법을", "과정을", "절차를", "방안을",
+            "특징을", "방법을", "과정을", "절차를", "방안을", "대책을",
             "어떻게", "무엇인지", "왜", "어떤",
-            "트로이", "악성코드", "탐지지표", "원격제어"
+            "트로이", "악성코드", "탐지지표", "원격제어",
+            "분석하세요", "평가하세요", "제시하세요", "도출하세요"
         ]
         
         has_subjective_indicators = any(indicator in full_text for indicator in subjective_indicators)
         
         has_multiple_choices = len(choices) >= 3
         has_choice_question = any(phrase in full_text for phrase in [
-            "다음 중", "가장 적절한", "옳은 것", "해당하는 것", "틀린 것"
+            "다음 중", "가장 적절한", "옳은 것", "해당하는 것", "틀린 것",
+            "적절하지 않은", "올바른 것", "잘못된 것"
         ])
         
         if has_subjective_indicators and not (has_multiple_choices and has_choice_question):
@@ -307,7 +337,8 @@ class DataProcessor:
             r"부적절한",
             r"제외한\s*것",
             r"아닌\s*것",
-            r"관계없는\s*것"
+            r"관계없는\s*것",
+            r"무관한\s*것"
         ]
         
         compiled_negative = re.compile("|".join(negative_patterns), re.IGNORECASE)
@@ -315,15 +346,23 @@ class DataProcessor:
     
     def _extract_domain_hints(self, question: str) -> List[str]:
         domain_keywords = {
-            "개인정보보호": ["개인정보", "정보주체", "개인정보처리", "동의", "수집", "이용"],
-            "전자금융": ["전자금융", "전자적장치", "전자거래", "접근매체", "전자서명"],
-            "정보보안": ["정보보안", "보안관리", "접근통제", "보안정책", "취약점"],
-            "암호화": ["암호화", "복호화", "해시", "전자서명", "인증서", "키"],
-            "사이버보안": ["해킹", "악성코드", "피싱", "스미싱", "파밍", "트로이", "trojan", "rat", "원격제어", "원격접근", "탐지지표", "시스템감염"],
+            "개인정보보호": ["개인정보", "정보주체", "개인정보처리", "동의", "수집", "이용", "개인정보보호법"],
+            "전자금융": ["전자금융", "전자적장치", "전자거래", "접근매체", "전자서명", "전자금융거래법"],
+            "정보보안": ["정보보안", "보안관리", "접근통제", "보안정책", "취약점", "ISMS"],
+            "암호화": ["암호화", "복호화", "해시", "전자서명", "인증서", "키", "대칭키", "공개키"],
+            "사이버보안": ["해킹", "악성코드", "피싱", "스미싱", "파밍", "트로이", "trojan", "rat", "원격제어", "원격접근", "탐지지표", "시스템감염", "DDoS", "APT", "랜섬웨어"],
             "법령": ["법", "규정", "조항", "시행령", "시행규칙"],
-            "재해복구": ["재해", "복구", "비상계획", "백업"],
-            "위험관리": ["위험", "관리", "계획", "수립"],
-            "관리체계": ["관리체계", "정책", "수립", "운영"]
+            "재해복구": ["재해", "복구", "비상계획", "백업", "BCP", "업무연속성"],
+            "위험관리": ["위험", "관리", "계획", "수립", "위험평가", "위험분석"],
+            "관리체계": ["관리체계", "정책", "수립", "운영", "경영진", "최고책임자"],
+            "금융투자업": ["금융투자업", "투자매매업", "투자중개업", "투자자문업", "소비자금융업", "보험중개업"],
+            "접근제어": ["접근제어", "권한", "인증", "다중인증", "생체인증", "패스워드"],
+            "네트워크보안": ["방화벽", "IDS", "IPS", "침입탐지", "침입방지", "네트워크"],
+            "취약점관리": ["취약점", "모의해킹", "침투테스트", "보안점검"],
+            "보안교육": ["보안교육", "보안인식", "사용자교육", "소셜엔지니어링"],
+            "클라우드보안": ["클라우드", "가상화", "SaaS", "PaaS", "IaaS"],
+            "모바일보안": ["모바일", "스마트폰", "앱보안", "모바일기기"],
+            "IoT보안": ["IoT", "사물인터넷", "스마트기기", "연결기기"]
         }
         
         detected_domains = []
@@ -335,10 +374,9 @@ class DataProcessor:
                 detected_domains.append((domain, match_count / len(keywords)))
         
         detected_domains.sort(key=lambda x: x[1], reverse=True)
-        return [domain for domain, confidence in detected_domains if confidence > 0.1]
+        return [domain for domain, confidence in detected_domains if confidence > 0.05]
     
     def extract_mc_answer_fast(self, response: str) -> str:
-        
         self._debug_print(f"답변 추출 시도: {response[:100]}")
         
         cleaned_response = self._clean_korean_text(response)
@@ -379,7 +417,6 @@ class DataProcessor:
         return ""
     
     def extract_answer_intelligently(self, response: str, question: str) -> ProcessedAnswer:
-        
         cleaned_response = self._clean_korean_text(response)
         question_structure = self.analyze_question_structure(question)
         
@@ -389,13 +426,12 @@ class DataProcessor:
             return self._extract_subjective_answer_optimized(cleaned_response, question_structure)
     
     def _extract_mc_answer_optimized(self, response: str, question_structure: Dict) -> ProcessedAnswer:
-        
         self._debug_print(f"객관식 답변 추출: {response[:100]}")
         
         if re.match(r'^[1-5]$', response.strip()):
             return ProcessedAnswer(
                 final_answer=response.strip(),
-                confidence=0.92,
+                confidence=0.95,
                 extraction_method="direct",
                 validation_passed=True,
                 korean_quality=1.0
@@ -411,7 +447,7 @@ class DataProcessor:
                     for match in matches:
                         answer = match if isinstance(match, str) else match[0]
                         if self.validation_rules["choice_range"](answer):
-                            confidence = 0.85 if category == "explicit_answer" else 0.75
+                            confidence = 0.90 if category == "explicit_answer" else 0.80
                             return ProcessedAnswer(
                                 final_answer=answer,
                                 confidence=confidence,
@@ -431,7 +467,7 @@ class DataProcessor:
                 if most_common[1] > 1:
                     return ProcessedAnswer(
                         final_answer=most_common[0],
-                        confidence=0.65,
+                        confidence=0.70,
                         extraction_method="frequency_based",
                         validation_passed=True,
                         korean_quality=1.0
@@ -439,7 +475,7 @@ class DataProcessor:
                 else:
                     return ProcessedAnswer(
                         final_answer=numbers[-1],
-                        confidence=0.55,
+                        confidence=0.60,
                         extraction_method="last_number",
                         validation_passed=True,
                         korean_quality=1.0
@@ -462,27 +498,27 @@ class DataProcessor:
             fallback = self._generate_domain_specific_fallback(question_structure)
             return ProcessedAnswer(
                 final_answer=fallback,
-                confidence=0.65,
+                confidence=0.70,
                 extraction_method="fallback",
                 validation_passed=True,
                 korean_quality=0.85
             )
         
-        if len(response) < 30:
+        if len(response) < 20:
             fallback = self._generate_domain_specific_fallback(question_structure)
             return ProcessedAnswer(
                 final_answer=fallback,
-                confidence=0.65,
+                confidence=0.70,
                 extraction_method="length_fallback",
                 validation_passed=True,
                 korean_quality=0.85
             )
-        elif len(response) > 800:
-            response = response[:797] + "..."
+        elif len(response) > 1200:
+            response = response[:1197] + "..."
         
         return ProcessedAnswer(
             final_answer=response.strip(),
-            confidence=0.82,
+            confidence=0.85,
             extraction_method="subjective_processing",
             validation_passed=True,
             korean_quality=korean_quality
@@ -492,7 +528,7 @@ class DataProcessor:
         domain_hints = structure.get("domain_hints", [])
         
         if "사이버보안" in domain_hints or "트로이" in str(structure.get("question_text", "")).lower():
-            return "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 원격 접근 트로이 목마는 공격자가 감염된 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결, 시스템 리소스 사용 증가, 알 수 없는 프로세스 실행, 방화벽 규칙 변경 등이 있습니다."
+            return "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 원격 접근 트로이 목마는 공격자가 감염된 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결, 시스템 리소스 사용 증가, 알 수 없는 프로세스 실행, 방화벽 규칙 변경, 레지스트리 변경 등이 있습니다."
         elif "개인정보보호" in domain_hints:
             return "개인정보보호법에 따라 개인정보의 안전한 관리와 정보주체의 권리 보호를 위한 체계적인 조치가 필요합니다. 개인정보 처리방침을 수립하고, 안전성 확보조치를 구현하며, 정기적인 점검과 개선을 수행해야 합니다."
         elif "전자금융" in domain_hints:
@@ -505,6 +541,8 @@ class DataProcessor:
             return "위험관리는 조직의 목표 달성에 영향을 미칠 수 있는 위험을 체계적으로 식별, 분석, 평가하고 적절한 대응방안을 수립하여 관리하는 과정입니다. 위험 수용 능력을 고려하여 위험 대응 전략을 선정하고 지속적으로 모니터링해야 합니다."
         elif "관리체계" in domain_hints:
             return "관리체계 수립 시 최고경영진의 참여와 지원이 가장 중요하며, 명확한 정책 수립과 책임자 지정, 적절한 자원 할당이 필요합니다. 정보보호 및 개인정보보호 정책의 제정과 개정을 통해 체계적인 관리 기반을 마련해야 합니다."
+        elif "암호화" in domain_hints:
+            return "암호화는 정보의 기밀성과 무결성을 보장하기 위한 핵심 보안 기술입니다. 대칭키 암호화와 공개키 암호화를 적절히 활용하고, 안전한 키 관리 체계를 구축해야 합니다. 중요 정보는 전송 구간과 저장 시 모두 암호화해야 합니다."
         else:
             return "관련 법령과 규정에 따라 적절한 보안 조치를 수립하고 지속적인 관리와 개선을 수행해야 합니다. 위험평가를 통해 취약점을 식별하고, 적절한 보호대책을 구현하며, 정기적인 점검을 통해 안전성을 확보해야 합니다."
     
@@ -549,10 +587,10 @@ class DataProcessor:
                 self.validation_rules["korean_content"](answer),
                 self.validation_rules["no_chinese_chars"](answer),
                 self.validation_rules["minimal_english"](answer),
-                processed_answer.korean_quality > 0.3
+                processed_answer.korean_quality > 0.2
             ]
             
-            return sum(validations) / len(validations) >= 0.6
+            return sum(validations) / len(validations) >= 0.5
     
     def get_processing_statistics(self) -> Dict:
         return {

@@ -40,7 +40,7 @@ class FinancialAIInference:
         
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-            torch.cuda.set_per_process_memory_fraction(0.90)
+            torch.cuda.set_per_process_memory_fraction(0.95)
         
         print("시스템 초기화 중...")
         
@@ -103,7 +103,6 @@ class FinancialAIInference:
                 print(f"학습 데이터 로드 오류: {e}")
     
     def _validate_korean_quality(self, text: str, question_type: str) -> Tuple[bool, float]:
-        
         if question_type == "multiple_choice":
             if re.match(r'^[1-5]$', text.strip()):
                 return True, 1.0
@@ -111,7 +110,7 @@ class FinancialAIInference:
                 return True, 0.8
             return False, 0.0
         
-        if not text or len(text.strip()) < 20:
+        if not text or len(text.strip()) < 15:
             return False, 0.0
         
         if re.search(r'[\u4e00-\u9fff]', text):
@@ -127,13 +126,13 @@ class FinancialAIInference:
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
-        if korean_ratio < 0.5:
+        if korean_ratio < 0.3:
             return False, korean_ratio
         
-        if english_ratio > 0.3:
+        if english_ratio > 0.4:
             return False, 1 - english_ratio
         
-        quality_score = korean_ratio * 0.8 - english_ratio * 0.2
+        quality_score = korean_ratio * 0.85 - english_ratio * 0.1
         
         professional_terms = ['법', '규정', '조치', '관리', '보안', '체계', '정책']
         prof_count = sum(1 for term in professional_terms if term in text)
@@ -141,16 +140,15 @@ class FinancialAIInference:
         
         final_quality = max(0, min(1, quality_score))
         
-        return final_quality > 0.6, final_quality
+        return final_quality > 0.4, final_quality
     
     def _get_domain_specific_fallback(self, question: str, question_type: str) -> str:
-        
         if question_type == "multiple_choice":
             structure = self.data_processor.analyze_question_structure(question)
             
             hint, conf = self.optimizer.get_smart_answer_hint(question, structure)
             
-            if conf > 0.5:
+            if conf > 0.4:
                 self.stats["smart_hints_used"] += 1
                 return hint
             else:
@@ -190,14 +188,13 @@ class FinancialAIInference:
         return "관련 법령과 규정에 따라 체계적인 보안 관리 방안을 수립하고, 지속적인 모니터링과 개선을 통해 안전성을 확보해야 합니다."
     
     def _apply_pattern_based_answer(self, question: str, structure: Dict) -> Tuple[Optional[str], float]:
-        
         cache_key = hash(question[:100])
         if cache_key in self.pattern_analysis_cache:
             return self.pattern_analysis_cache[cache_key]
         
         hint_answer, hint_confidence = self.optimizer.get_smart_answer_hint(question, structure)
         
-        if hint_confidence > 0.75:
+        if hint_confidence > 0.65:
             self.stats["pattern_based_answers"] += 1
             result = (hint_answer, hint_confidence)
         else:
@@ -207,7 +204,6 @@ class FinancialAIInference:
         return result
     
     def process_question(self, question: str, question_id: str, idx: int) -> str:
-        
         try:
             cache_key = hash(question[:200])
             if cache_key in self.answer_cache:
@@ -232,7 +228,7 @@ class FinancialAIInference:
                     question, learned_answer
                 )
                 
-                if correction_conf > 0.85:
+                if correction_conf > 0.80:
                     is_valid, quality = self._validate_korean_quality(corrected_answer, structure["question_type"])
                     if is_valid:
                         self.answer_cache[cache_key] = corrected_answer
@@ -241,14 +237,14 @@ class FinancialAIInference:
             if is_mc:
                 pattern_answer, pattern_conf = self._apply_pattern_based_answer(question, structure)
                 
-                if pattern_answer and pattern_conf > 0.75:
+                if pattern_answer and pattern_conf > 0.65:
                     self.stats["smart_hints_used"] += 1
                     self.stats["high_confidence_answers"] += 1
                     self.answer_cache[cache_key] = pattern_answer
                     return pattern_answer
                 
-                if difficulty.score > 0.8 or self.stats["total"] > 300:
-                    if pattern_answer and pattern_conf > 0.55:
+                if difficulty.score > 0.7 or self.stats["total"] > 200:
+                    if pattern_answer and pattern_conf > 0.45:
                         self.stats["smart_hints_used"] += 1
                         self.answer_cache[cache_key] = pattern_answer
                         return pattern_answer
@@ -257,7 +253,7 @@ class FinancialAIInference:
                     question, structure["question_type"]
                 )
                 
-                max_attempts = 1 if self.stats["total"] > 200 else 2
+                max_attempts = 2 if self.stats["total"] < 100 else 3
                 
                 result = self.model_handler.generate_response(
                     prompt=prompt,
@@ -272,10 +268,10 @@ class FinancialAIInference:
                     self.stats["pattern_extraction_success"] += 1
                     answer = extracted
                     
-                    if result.confidence > 0.7:
+                    if result.confidence > 0.6:
                         self.stats["high_confidence_answers"] += 1
                 else:
-                    if pattern_answer and pattern_conf > 0.4:
+                    if pattern_answer and pattern_conf > 0.3:
                         self.stats["smart_hints_used"] += 1
                         answer = pattern_answer
                     else:
@@ -287,7 +283,7 @@ class FinancialAIInference:
                     question, structure["question_type"]
                 )
                 
-                max_attempts = 1 if self.stats["total"] > 200 else 2
+                max_attempts = 2 if self.stats["total"] < 100 else 3
                 
                 result = self.model_handler.generate_response(
                     prompt=prompt,
@@ -299,33 +295,33 @@ class FinancialAIInference:
                 
                 is_valid, quality = self._validate_korean_quality(answer, structure["question_type"])
                 
-                if not is_valid or quality < 0.6:
+                if not is_valid or quality < 0.4:
                     self.stats["korean_failures"] += 1
                     answer = self._get_domain_specific_fallback(question, structure["question_type"])
                     self.stats["korean_fixes"] += 1
                     self.stats["fallback_used"] += 1
                 else:
                     self.stats["model_generation_success"] += 1
-                    if quality > 0.8:
+                    if quality > 0.7:
                         self.stats["high_confidence_answers"] += 1
                 
-                if len(answer) < 30:
+                if len(answer) < 25:
                     answer = self._get_domain_specific_fallback(question, structure["question_type"])
                     self.stats["fallback_used"] += 1
-                elif len(answer) > 800:
-                    answer = answer[:797] + "..."
+                elif len(answer) > 1000:
+                    answer = answer[:997] + "..."
             
             else:
                 self.stats["fallback_used"] += 1
                 answer = self._get_domain_specific_fallback(question, "multiple_choice")
             
-            if self.enable_learning and 'result' in locals() and result.confidence > 0.55:
+            if self.enable_learning and 'result' in locals() and result.confidence > 0.45:
                 self.auto_learner.learn_from_prediction(
                     question, answer, result.confidence,
                     structure["question_type"], analysis.get("domain", ["일반"])
                 )
                 
-                if result.confidence > 0.65:
+                if result.confidence > 0.55:
                     self.learning_system.add_training_sample(
                         question=question,
                         correct_answer=answer,
@@ -401,11 +397,11 @@ class FinancialAIInference:
             if not self.verbose and self.stats["total"] % 100 == 0:
                 print(f"진행률: {self.stats['total']}/{len(test_df)}")
             
-            if self.stats["total"] % 50 == 0:
+            if self.stats["total"] % 30 == 0:
                 torch.cuda.empty_cache()
                 gc.collect()
             
-            if self.enable_learning and self.stats["total"] % 100 == 0:
+            if self.enable_learning and self.stats["total"] % 50 == 0:
                 self.auto_learner.optimize_patterns()
         
         if enable_manual_correction and self.enable_learning:
@@ -480,16 +476,16 @@ class FinancialAIInference:
         print(f"  한국어 수정: {self.stats['korean_fixes']}회")
         print(f"  평균 품질 점수: {avg_korean_quality:.2f}")
         
-        high_quality_count = sum(1 for q in all_quality_scores if q > 0.8)
+        high_quality_count = sum(1 for q in all_quality_scores if q > 0.7)
         print(f"  품질 우수 답변: {high_quality_count}/{len(all_quality_scores)}개")
         
         if len(all_quality_scores) > 0:
             avg_korean_ratio = avg_korean_quality
             print(f"  평균 한국어 비율: {avg_korean_ratio:.2%}")
         
-        if avg_korean_quality > 0.8:
+        if avg_korean_quality > 0.7:
             print("  한국어 품질 우수")
-        elif avg_korean_quality > 0.6:
+        elif avg_korean_quality > 0.5:
             print("  한국어 품질 보통")
         else:
             print("  한국어 품질 개선 필요")
@@ -566,7 +562,6 @@ class FinancialAIInference:
                 print(f"정리 중 오류: {e}")
 
 def main():
-    
     if torch.cuda.is_available():
         gpu_info = torch.cuda.get_device_properties(0)
         print(f"GPU: {gpu_info.name}")
@@ -614,9 +609,9 @@ def main():
                 print(f"스마트 힌트 활용: {processing_stats['smart_hints']}회")
             
             quality = results["korean_quality"]["avg_score"]
-            if quality > 0.8:
+            if quality > 0.7:
                 print("한국어 품질 우수")
-            elif quality > 0.6:
+            elif quality > 0.5:
                 print("한국어 품질 보통")
             else:
                 print("한국어 품질 개선 필요")
