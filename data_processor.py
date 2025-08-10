@@ -1,7 +1,4 @@
 # data_processor.py
-"""
-데이터 처리 시스템
-"""
 
 import re
 import pandas as pd
@@ -13,7 +10,6 @@ from knowledge_base import FinancialSecurityKnowledgeBase
 
 @dataclass
 class ProcessedAnswer:
-    """처리된 답변 결과"""
     final_answer: str
     confidence: float
     extraction_method: str
@@ -21,7 +17,6 @@ class ProcessedAnswer:
     korean_quality: float
 
 class DataProcessor:
-    """데이터 처리 클래스"""
     
     def __init__(self, debug_mode: bool = False):
         self.debug_mode = debug_mode
@@ -38,12 +33,10 @@ class DataProcessor:
         self.korean_cleanup_patterns = self._build_comprehensive_korean_patterns()
         
     def _debug_print(self, message: str):
-        """디버그 출력 (조건부)"""
         if self.debug_mode:
             print(f"[DEBUG] {message}")
     
     def _build_comprehensive_korean_patterns(self) -> Dict[str, str]:
-        """포괄적 한국어 정리 패턴"""
         return {
             r'[軟软][件体體]': '소프트웨어',
             r'[硬硬][件体體]': '하드웨어',
@@ -79,7 +72,6 @@ class DataProcessor:
         }
     
     def _clean_korean_text(self, text: str) -> str:
-        """한국어 텍스트 정리"""
         
         if not text:
             return ""
@@ -102,7 +94,6 @@ class DataProcessor:
         return text
     
     def _validate_korean_text(self, text: str, question_type: str) -> Tuple[bool, float]:
-        """한국어 텍스트 검증"""
         
         if question_type == "multiple_choice":
             if re.match(r'^[1-5]$', text.strip()):
@@ -136,7 +127,6 @@ class DataProcessor:
         return True, korean_ratio
     
     def _build_extraction_patterns(self) -> Dict[str, List[str]]:
-        """답변 추출 패턴"""
         patterns = {
             "explicit_answer": [
                 r'정답[:\s]*([1-5])',
@@ -145,7 +135,9 @@ class DataProcessor:
                 r'선택[:\s]*([1-5])',
                 r'번호[:\s]*([1-5])',
                 r'^([1-5])$',
-                r'^([1-5])\s*$'
+                r'^([1-5])\s*$',
+                r'정답은\s*([1-5])',
+                r'답은\s*([1-5])'
             ],
             "choice_reference": [
                 r'([1-5])번',
@@ -155,7 +147,9 @@ class DataProcessor:
                 r'([1-5])\s*가\s*옳',
                 r'([1-5])\s*이\s*옳',
                 r'([1-5])\s*가\s*적절',
-                r'([1-5])\s*이\s*적절'
+                r'([1-5])\s*이\s*적절',
+                r'([1-5])번이\s*맞',
+                r'([1-5])번이\s*답'
             ],
             "reasoning_conclusion": [
                 r'따라서\s*([1-5])',
@@ -163,20 +157,24 @@ class DataProcessor:
                 r'결론적으로\s*([1-5])',
                 r'분석\s*결과\s*([1-5])',
                 r'종합하면\s*([1-5])',
-                r'결론은\s*([1-5])'
+                r'결론은\s*([1-5])',
+                r'최종적으로\s*([1-5])',
+                r'정리하면\s*([1-5])'
+            ],
+            "last_number": [
+                r'.*([1-5])[^\d]*$',
+                r'.*\s([1-5])\s*$'
             ]
         }
         return patterns
     
     def _compile_all_patterns(self) -> Dict[str, List[re.Pattern]]:
-        """모든 패턴 컴파일"""
         compiled = {}
         for category, patterns in self.answer_extraction_patterns.items():
             compiled[category] = [re.compile(pattern, re.IGNORECASE | re.MULTILINE) for pattern in patterns]
         return compiled
     
     def _initialize_statistics(self) -> Dict:
-        """통계적 학습 데이터 초기화"""
         return {
             "answer_frequency": {str(i): 0 for i in range(1, 6)},
             "domain_answer_correlation": {},
@@ -185,7 +183,6 @@ class DataProcessor:
         }
     
     def _build_validation_rules(self) -> Dict[str, callable]:
-        """검증 규칙"""
         rules = {
             "choice_range": lambda x: x.isdigit() and 1 <= int(x) <= 5,
             "length_appropriate": lambda x: 15 <= len(x) <= 1500,
@@ -199,7 +196,6 @@ class DataProcessor:
         return rules
     
     def analyze_question_structure(self, question: str) -> Dict:
-        """질문 구조 분석 강화"""
         
         q_hash = hash(question[:200] + str(id(question)))
         if q_hash in self.structure_cache:
@@ -218,7 +214,8 @@ class DataProcessor:
             "domain_hints": [],
             "structural_features": {},
             "is_definitional": False,
-            "is_procedural": False
+            "is_procedural": False,
+            "has_all_option": False
         }
         
         question_parts = []
@@ -256,10 +253,8 @@ class DataProcessor:
         structure["choices"] = choices
         structure["choice_count"] = len(choices)
         
-        # 강화된 질문 유형 분류
         full_text = structure["question_text"].lower()
         
-        # 명확한 주관식 지표 확인
         subjective_indicators = [
             "설명하세요", "기술하세요", "서술하세요", "논하세요", "작성하세요",
             "특징을", "방법을", "과정을", "절차를", "방안을",
@@ -269,13 +264,11 @@ class DataProcessor:
         
         has_subjective_indicators = any(indicator in full_text for indicator in subjective_indicators)
         
-        # 객관식 확실 지표
         has_multiple_choices = len(choices) >= 3
         has_choice_question = any(phrase in full_text for phrase in [
             "다음 중", "가장 적절한", "옳은 것", "해당하는 것", "틀린 것"
         ])
         
-        # 질문 유형 결정 로직 강화
         if has_subjective_indicators and not (has_multiple_choices and has_choice_question):
             structure["question_type"] = "subjective"
         elif has_multiple_choices and has_choice_question:
@@ -285,13 +278,17 @@ class DataProcessor:
         elif has_subjective_indicators:
             structure["question_type"] = "subjective"
         else:
-            # 기본적으로 선택지가 있으면 객관식, 없으면 주관식
             structure["question_type"] = "multiple_choice" if len(choices) >= 2 else "subjective"
         
         structure["has_negative"] = self._detect_negative_question(structure["question_text"])
         structure["domain_hints"] = self._extract_domain_hints(cleaned_question)
         structure["is_definitional"] = "정의" in full_text or "의미" in full_text
         structure["is_procedural"] = any(word in full_text for word in ["절차", "순서", "단계", "과정"])
+        
+        if len(choices) > 0:
+            last_choice = choices[-1]
+            if "모두" in last_choice["text"] or "전부" in last_choice["text"] or "모든" in last_choice["text"]:
+                structure["has_all_option"] = True
         
         if len(self.structure_cache) >= self.max_cache_size:
             oldest_key = next(iter(self.structure_cache))
@@ -301,7 +298,6 @@ class DataProcessor:
         return structure
     
     def _detect_negative_question(self, question_text: str) -> bool:
-        """부정형 질문 감지"""
         negative_patterns = [
             r"해당하지\s*않는",
             r"적절하지\s*않은",
@@ -318,7 +314,6 @@ class DataProcessor:
         return bool(compiled_negative.search(question_text))
     
     def _extract_domain_hints(self, question: str) -> List[str]:
-        """도메인 힌트 추출"""
         domain_keywords = {
             "개인정보보호": ["개인정보", "정보주체", "개인정보처리", "동의", "수집", "이용"],
             "전자금융": ["전자금융", "전자적장치", "전자거래", "접근매체", "전자서명"],
@@ -343,7 +338,6 @@ class DataProcessor:
         return [domain for domain, confidence in detected_domains if confidence > 0.1]
     
     def extract_mc_answer_fast(self, response: str) -> str:
-        """빠른 객관식 답변 추출"""
         
         self._debug_print(f"답변 추출 시도: {response[:100]}")
         
@@ -354,26 +348,37 @@ class DataProcessor:
             self._debug_print(f"직접 매칭 성공: {cleaned_response.strip()}")
             return cleaned_response.strip()
         
-        for category in ["explicit_answer", "choice_reference", "reasoning_conclusion"]:
+        priority_order = ["explicit_answer", "reasoning_conclusion", "choice_reference", "last_number"]
+        
+        for category in priority_order:
             patterns = self.compiled_patterns.get(category, [])
             for pattern in patterns:
-                match = pattern.search(cleaned_response)
-                if match:
-                    answer = match.group(1)
-                    if self.validation_rules["choice_range"](answer):
-                        self._debug_print(f"패턴 매칭 성공 ({category}): {answer}")
-                        return answer
+                matches = pattern.findall(cleaned_response)
+                if matches:
+                    for match in matches:
+                        answer = match if isinstance(match, str) else match[0]
+                        if self.validation_rules["choice_range"](answer):
+                            self._debug_print(f"패턴 매칭 성공 ({category}): {answer}")
+                            return answer
         
         numbers = re.findall(r'[1-5]', cleaned_response)
         if numbers:
-            self._debug_print(f"숫자 검색 성공: {numbers[0]}")
-            return numbers[0]
+            number_counts = {}
+            for num in numbers:
+                number_counts[num] = number_counts.get(num, 0) + 1
+            
+            most_common = max(number_counts.items(), key=lambda x: x[1])
+            if most_common[1] > 1:
+                self._debug_print(f"빈도 기반 선택: {most_common[0]}")
+                return most_common[0]
+            else:
+                self._debug_print(f"마지막 숫자 선택: {numbers[-1]}")
+                return numbers[-1]
         
         self._debug_print(f"모든 추출 실패, 기본값 반환")
         return ""
     
     def extract_answer_intelligently(self, response: str, question: str) -> ProcessedAnswer:
-        """지능형 답변 추출"""
         
         cleaned_response = self._clean_korean_text(response)
         question_structure = self.analyze_question_structure(question)
@@ -384,42 +389,61 @@ class DataProcessor:
             return self._extract_subjective_answer_optimized(cleaned_response, question_structure)
     
     def _extract_mc_answer_optimized(self, response: str, question_structure: Dict) -> ProcessedAnswer:
-        """최적화 객관식 답변 추출"""
         
         self._debug_print(f"객관식 답변 추출: {response[:100]}")
         
         if re.match(r'^[1-5]$', response.strip()):
             return ProcessedAnswer(
                 final_answer=response.strip(),
-                confidence=0.9,
+                confidence=0.92,
                 extraction_method="direct",
                 validation_passed=True,
                 korean_quality=1.0
             )
         
-        for category, patterns in self.compiled_patterns.items():
+        priority_categories = ["explicit_answer", "reasoning_conclusion", "choice_reference"]
+        
+        for category in priority_categories:
+            patterns = self.compiled_patterns.get(category, [])
             for pattern in patterns:
-                match = pattern.search(response)
-                if match:
-                    answer = match.group(1)
-                    if self.validation_rules["choice_range"](answer):
-                        return ProcessedAnswer(
-                            final_answer=answer,
-                            confidence=0.8,
-                            extraction_method=category,
-                            validation_passed=True,
-                            korean_quality=1.0
-                        )
+                matches = pattern.findall(response)
+                if matches:
+                    for match in matches:
+                        answer = match if isinstance(match, str) else match[0]
+                        if self.validation_rules["choice_range"](answer):
+                            confidence = 0.85 if category == "explicit_answer" else 0.75
+                            return ProcessedAnswer(
+                                final_answer=answer,
+                                confidence=confidence,
+                                extraction_method=category,
+                                validation_passed=True,
+                                korean_quality=1.0
+                            )
         
         numbers = re.findall(r'[1-5]', response)
         if numbers:
-            return ProcessedAnswer(
-                final_answer=numbers[0],
-                confidence=0.6,
-                extraction_method="number_search",
-                validation_passed=True,
-                korean_quality=1.0
-            )
+            number_counts = {}
+            for num in numbers:
+                number_counts[num] = number_counts.get(num, 0) + 1
+            
+            if len(number_counts) > 0:
+                most_common = max(number_counts.items(), key=lambda x: x[1])
+                if most_common[1] > 1:
+                    return ProcessedAnswer(
+                        final_answer=most_common[0],
+                        confidence=0.65,
+                        extraction_method="frequency_based",
+                        validation_passed=True,
+                        korean_quality=1.0
+                    )
+                else:
+                    return ProcessedAnswer(
+                        final_answer=numbers[-1],
+                        confidence=0.55,
+                        extraction_method="last_number",
+                        validation_passed=True,
+                        korean_quality=1.0
+                    )
         
         return ProcessedAnswer(
             final_answer="",
@@ -431,7 +455,6 @@ class DataProcessor:
     
     def _extract_subjective_answer_optimized(self, response: str, 
                                           question_structure: Dict) -> ProcessedAnswer:
-        """최적화 주관식 답변 추출"""
         
         is_valid, korean_quality = self._validate_korean_text(response, "subjective")
         
@@ -439,34 +462,33 @@ class DataProcessor:
             fallback = self._generate_domain_specific_fallback(question_structure)
             return ProcessedAnswer(
                 final_answer=fallback,
-                confidence=0.6,
+                confidence=0.65,
                 extraction_method="fallback",
                 validation_passed=True,
-                korean_quality=0.8
+                korean_quality=0.85
             )
         
         if len(response) < 30:
             fallback = self._generate_domain_specific_fallback(question_structure)
             return ProcessedAnswer(
                 final_answer=fallback,
-                confidence=0.6,
+                confidence=0.65,
                 extraction_method="length_fallback",
                 validation_passed=True,
-                korean_quality=0.8
+                korean_quality=0.85
             )
         elif len(response) > 800:
             response = response[:797] + "..."
         
         return ProcessedAnswer(
             final_answer=response.strip(),
-            confidence=0.8,
+            confidence=0.82,
             extraction_method="subjective_processing",
             validation_passed=True,
             korean_quality=korean_quality
         )
     
     def _generate_domain_specific_fallback(self, structure: Dict) -> str:
-        """도메인별 맞춤 폴백 생성"""
         domain_hints = structure.get("domain_hints", [])
         
         if "사이버보안" in domain_hints or "트로이" in str(structure.get("question_text", "")).lower():
@@ -488,7 +510,6 @@ class DataProcessor:
     
     def post_process_answer(self, raw_response: str, question: str,
                           question_type: str) -> str:
-        """통합 후처리 함수"""
         
         self._debug_print(f"후처리 시작 - 질문 유형: {question_type}")
         self._debug_print(f"원본 응답: {raw_response[:100]}")
@@ -513,7 +534,6 @@ class DataProcessor:
     
     def validate_final_answer(self, processed_answer: ProcessedAnswer,
                             question: str, question_type: str) -> bool:
-        """최종 답변 검증"""
         
         answer = processed_answer.final_answer
         
@@ -535,7 +555,6 @@ class DataProcessor:
             return sum(validations) / len(validations) >= 0.6
     
     def get_processing_statistics(self) -> Dict:
-        """처리 통계 반환"""
         return {
             "structure_cache_size": len(self.structure_cache),
             "pattern_cache_size": len(self.pattern_cache),
@@ -543,7 +562,6 @@ class DataProcessor:
         }
     
     def cleanup(self):
-        """리소스 정리"""
         self.structure_cache.clear()
         self.pattern_cache.clear()
         if self.debug_mode:
