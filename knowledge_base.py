@@ -9,8 +9,30 @@
 """
 
 import re
+import hashlib
+import time
 from typing import Dict, List, Tuple, Optional
-from collections import defaultdict
+from collections import defaultdict, Counter
+from dataclasses import dataclass
+
+@dataclass
+class TextPattern:
+    pattern_id: str
+    keywords: List[str]
+    co_occurrence_score: float
+    frequency: int
+    context_type: str
+    confidence: float
+    discovered_time: float
+
+@dataclass
+class DomainAnalysis:
+    primary_domain: str
+    secondary_domains: List[str]
+    confidence_scores: Dict[str, float]
+    technical_complexity: float
+    legal_complexity: float
+    pattern_matches: List[str]
 
 class FinancialSecurityKnowledgeBase:
     
@@ -20,52 +42,80 @@ class FinancialSecurityKnowledgeBase:
         self.security_concepts = self._initialize_security_concepts()
         self.technical_concepts = self._initialize_technical_concepts()
         
+        self.discovered_patterns = {}
+        self.keyword_cooccurrence = defaultdict(lambda: defaultdict(int))
+        self.domain_evolution_tracking = defaultdict(list)
+        self.analysis_cache = {}
+        self.max_cache_size = 1000
+        
+        self.pattern_discovery_threshold = 3
+        self.confidence_decay_factor = 0.95
+        
+        self.advanced_indicators = self._build_advanced_indicators()
+        self.contextual_modifiers = self._build_contextual_modifiers()
+        
     def _initialize_domain_keywords(self) -> Dict[str, List[str]]:
         return {
             "개인정보보호": [
                 "개인정보", "정보주체", "개인정보처리자", "개인정보보호법", "개인정보처리",
                 "수집", "이용", "제공", "파기", "동의", "열람", "정정", "삭제",
-                "민감정보", "고유식별정보", "안전성확보조치", "영향평가"
+                "민감정보", "고유식별정보", "안전성확보조치", "영향평가", "유출신고",
+                "정보주체권리", "처리방침", "개인정보위원회", "과징금", "손해배상"
             ],
             "전자금융": [
                 "전자금융거래", "전자금융거래법", "전자적장치", "접근매체", "전자서명",
                 "전자인증", "금융기관", "전자금융업", "전자지급수단", "전자화폐",
-                "오류정정", "손해배상", "약관", "이용자"
+                "오류정정", "손해배상", "약관", "이용자", "거래내역통지", "안전성확보",
+                "전자금융감독", "전자금융분쟁", "전자금융범죄", "디지털금융"
             ],
             "정보보안": [
                 "정보보안", "정보보호", "정보보안관리체계", "ISMS", "ISMS-P",
                 "보안정책", "보안통제", "위험관리", "취약점", "보안사고",
-                "접근통제", "암호화", "네트워크보안", "시스템보안", "데이터보안"
+                "접근통제", "암호화", "네트워크보안", "시스템보안", "데이터보안",
+                "보안감사", "침입탐지", "방화벽", "백신", "보안관제"
             ],
             "사이버보안": [
                 "사이버보안", "사이버공격", "해킹", "악성코드", "멀웨어", "바이러스",
                 "웜", "트로이목마", "랜섬웨어", "스파이웨어", "애드웨어", "루트킷",
                 "피싱", "스미싱", "파밍", "스피어피싱", "사회공학", "제로데이",
-                "APT", "DDoS", "봇넷", "C&C", "백도어", "키로거"
+                "APT", "DDoS", "봇넷", "C&C", "백도어", "키로거", "SQL인젝션",
+                "크로스사이트스크립팅", "버퍼오버플로우", "취약점분석", "침투테스트"
             ],
             "위험관리": [
                 "위험관리", "위험평가", "위험분석", "위험식별", "위험측정", "위험통제",
                 "위험모니터링", "위험보고", "위험수용", "위험회피", "위험전가", "위험완화",
-                "위험관리체계", "위험관리정책", "위험관리조직", "위험관리절차"
+                "위험관리체계", "위험관리정책", "위험관리조직", "위험관리절차",
+                "리스크어세스먼트", "리스크매트릭스", "리스크모니터링", "비즈니스연속성"
             ],
             "관리체계": [
                 "관리체계", "정보보호관리체계", "정보보안관리체계", "PDCA",
                 "정책", "조직", "자산관리", "인적보안", "물리보안", "시스템보안",
-                "네트워크보안", "접근통제", "시스템개발", "공급업체관리", "사고관리"
+                "네트워크보안", "접근통제", "시스템개발", "공급업체관리", "사고관리",
+                "경영진책임", "최고정보보호책임자", "정보보호담당자", "보안교육"
             ],
             "재해복구": [
                 "재해복구", "재해복구계획", "BCP", "업무연속성", "재해복구센터", "DRP",
                 "백업", "복구", "RTO", "RPO", "복구목표시간", "복구목표시점",
-                "핫사이트", "콜드사이트", "웜사이트"
+                "핫사이트", "콜드사이트", "웜사이트", "재해복구훈련", "비상연락체계",
+                "복구우선순위", "재해복구전략", "데이터복구"
             ],
             "금융투자업": [
                 "금융투자업", "투자매매업", "투자중개업", "투자자문업", "투자일임업",
-                "집합투자업", "신탁업", "소비자금융업", "보험중개업", "자본시장법"
+                "집합투자업", "신탁업", "소비자금융업", "보험중개업", "자본시장법",
+                "금융투자상품", "투자자보호", "불공정거래", "내부통제", "리스크관리",
+                "투자권유", "적합성원칙", "설명의무", "투자자문계약"
             ],
             "암호화": [
                 "암호화", "복호화", "암호", "암호키", "대칭키", "공개키", "개인키",
                 "해시함수", "전자서명", "인증서", "PKI", "암호알고리즘",
-                "AES", "RSA", "SHA", "MD5", "키관리", "키분배"
+                "AES", "RSA", "SHA", "MD5", "키관리", "키분배", "키교환",
+                "디지털인증서", "암호화프로토콜", "SSL", "TLS", "IPSec"
+            ],
+            "법령준수": [
+                "컴플라이언스", "법령준수", "규정준수", "내부통제", "준법감시",
+                "준법점검", "법규위반", "제재조치", "과징금", "과태료",
+                "행정처분", "형사처벌", "민사책임", "법적의무", "신고의무",
+                "검사", "감독", "감사", "조사", "점검"
             ]
         }
     
@@ -79,21 +129,35 @@ class FinancialSecurityKnowledgeBase:
                 "제공제한": "개인정보보호법 제17조",
                 "파기": "개인정보보호법 제21조",
                 "안전성확보조치": "개인정보보호법 제29조",
-                "유출신고": "개인정보보호법 제34조"
+                "유출신고": "개인정보보호법 제34조",
+                "손해배상": "개인정보보호법 제39조",
+                "과징금": "개인정보보호법 제34조의2"
             },
             "전자금융거래법": {
                 "정의": "전자금융거래법 제2조",
                 "접근매체": "전자금융거래법 제2조 제10호",
                 "이용자보호": "전자금융거래법 제9조",
+                "안전성확보의무": "전자금융거래법 제21조",
                 "거래내역통지": "전자금융거래법 제18조",
                 "오류정정": "전자금융거래법 제19조",
-                "손해배상": "전자금융거래법 제20조"
+                "손해배상": "전자금융거래법 제20조",
+                "약관규제": "전자금융거래법 제16조"
             },
             "정보통신망법": {
                 "개인정보보호": "정보통신망 이용촉진 및 정보보호 등에 관한 법률",
                 "개인정보수집": "정보통신망법 제22조",
                 "개인정보이용제공": "정보통신망법 제24조",
-                "개인정보보호조치": "정보통신망법 제28조"
+                "개인정보보호조치": "정보통신망법 제28조",
+                "침해신고센터": "정보통신망법 제54조"
+            },
+            "자본시장법": {
+                "금융투자업": "자본시장과 금융투자업에 관한 법률",
+                "투자매매업": "자본시장법 제8조",
+                "투자중개업": "자본시장법 제9조",
+                "투자자문업": "자본시장법 제6조",
+                "투자일임업": "자본시장법 제7조",
+                "적합성원칙": "자본시장법 제46조",
+                "설명의무": "자본시장법 제47조"
             }
         }
     
@@ -105,7 +169,9 @@ class FinancialSecurityKnowledgeBase:
             "부인방지": "어떤 행위나 사건의 발생에 대해 나중에 부인할 수 없도록 하는 특성",
             "인증": "어떤 개체의 신원이 주장된 신원과 같음을 확실히 하는 과정",
             "인가": "특정 자원에 대한 접근 권한을 부여하는 과정",
-            "식별": "사용자나 프로세스가 자신을 시스템에 알리는 과정"
+            "식별": "사용자나 프로세스가 자신을 시스템에 알리는 과정",
+            "추적성": "시스템에서 발생하는 모든 활동을 기록하고 추적할 수 있는 특성",
+            "책임추적성": "시스템 사용자의 모든 행위에 대해 책임을 추적할 수 있는 특성"
         }
     
     def _initialize_technical_concepts(self) -> Dict[str, str]:
@@ -119,99 +185,350 @@ class FinancialSecurityKnowledgeBase:
             "DDoS": "분산 서비스 거부 공격으로, 다수의 시스템을 이용해 대상 시스템에 과부하를 일으키는 공격",
             "APT": "지능형 지속 위협으로, 특정 조직을 대상으로 장기간에 걸쳐 지속적이고 은밀하게 수행되는 공격",
             "제로데이": "보안 취약점이 발견되었지만 아직 패치가 제공되지 않은 상태에서 발생하는 공격",
-            "소셜엔지니어링": "기술적 수단보다는 인간의 심리적 약점을 이용하여 정보를 획득하는 공격 기법"
+            "소셜엔지니어링": "기술적 수단보다는 인간의 심리적 약점을 이용하여 정보를 획득하는 공격 기법",
+            "SQL인젝션": "데이터베이스에 악의적인 SQL 쿼리를 삽입하여 데이터를 탈취하거나 조작하는 공격",
+            "XSS": "크로스사이트스크립팅으로, 웹사이트에 악성 스크립트를 삽입하여 사용자 정보를 탈취하는 공격"
         }
     
-    def analyze_question(self, question: str) -> Dict:
-        question_lower = question.lower()
+    def _build_advanced_indicators(self) -> Dict[str, Dict]:
+        return {
+            "complexity_indicators": {
+                "high": ["심화", "고급", "전문", "상세", "복합", "통합", "종합"],
+                "medium": ["일반", "기본", "표준", "보통", "평가", "분석"],
+                "low": ["단순", "초급", "기초", "개요", "요약", "개념"]
+            },
+            "question_types": {
+                "definitional": ["정의", "의미", "개념", "이란", "무엇"],
+                "procedural": ["절차", "과정", "단계", "방법", "순서"],
+                "analytical": ["분석", "평가", "비교", "검토", "판단"],
+                "applied": ["적용", "구현", "설계", "개발", "운영"]
+            },
+            "temporal_indicators": {
+                "current": ["현재", "최근", "신규", "새로운", "최신"],
+                "historical": ["기존", "과거", "전통적", "구래의"],
+                "future": ["향후", "미래", "예정", "계획", "전망"]
+            }
+        }
+    
+    def _build_contextual_modifiers(self) -> Dict[str, float]:
+        return {
+            "긍정강화": 1.3,
+            "부정강화": 1.2,
+            "예외사항": 1.4,
+            "필수조건": 1.5,
+            "권장사항": 0.9,
+            "선택사항": 0.8,
+            "금지사항": 1.6,
+            "의무사항": 1.4,
+            "주의사항": 1.1,
+            "중요사항": 1.3
+        }
+    
+    def discover_text_patterns(self, text: str, existing_patterns: Dict = None) -> List[TextPattern]:
+        discovered = []
+        text_lower = text.lower()
         
-        analysis = {
-            "domain": [],
-            "complexity": self._analyze_complexity(question),
-            "question_type": self._determine_question_type(question),
-            "key_concepts": [],
-            "law_references": [],
-            "difficulty_level": self._assess_difficulty(question)
+        words = re.findall(r'[가-힣]{2,}', text_lower)
+        
+        for i, word in enumerate(words):
+            context_words = words[max(0, i-2):i] + words[i+1:min(len(words), i+3)]
+            
+            if len(context_words) >= 2:
+                for context_word in context_words:
+                    self.keyword_cooccurrence[word][context_word] += 1
+        
+        bigrams = [(words[i], words[i+1]) for i in range(len(words)-1)]
+        trigrams = [(words[i], words[i+1], words[i+2]) for i in range(len(words)-2)]
+        
+        for pattern_words in [bigrams, trigrams]:
+            for pattern in pattern_words:
+                pattern_str = "_".join(pattern)
+                pattern_id = hashlib.md5(pattern_str.encode()).hexdigest()[:8]
+                
+                if pattern_id not in self.discovered_patterns:
+                    co_occurrence_score = self._calculate_cooccurrence_score(pattern)
+                    
+                    if co_occurrence_score > 0.3:
+                        context_type = self._determine_context_type(text, pattern)
+                        confidence = min(co_occurrence_score * 1.2, 0.95)
+                        
+                        discovered_pattern = TextPattern(
+                            pattern_id=pattern_id,
+                            keywords=list(pattern),
+                            co_occurrence_score=co_occurrence_score,
+                            frequency=1,
+                            context_type=context_type,
+                            confidence=confidence,
+                            discovered_time=time.time()
+                        )
+                        
+                        self.discovered_patterns[pattern_id] = discovered_pattern
+                        discovered.append(discovered_pattern)
+                else:
+                    existing_pattern = self.discovered_patterns[pattern_id]
+                    existing_pattern.frequency += 1
+                    existing_pattern.confidence = min(existing_pattern.confidence * 1.05, 0.95)
+        
+        technical_patterns = self._discover_technical_patterns(text)
+        discovered.extend(technical_patterns)
+        
+        return discovered
+    
+    def _calculate_cooccurrence_score(self, pattern: Tuple[str, ...]) -> float:
+        if len(pattern) < 2:
+            return 0.0
+        
+        scores = []
+        for i, word1 in enumerate(pattern):
+            for j, word2 in enumerate(pattern):
+                if i != j:
+                    cooccurrence_count = self.keyword_cooccurrence[word1][word2]
+                    total_word1 = sum(self.keyword_cooccurrence[word1].values())
+                    if total_word1 > 0:
+                        scores.append(cooccurrence_count / total_word1)
+        
+        return sum(scores) / len(scores) if scores else 0.0
+    
+    def _determine_context_type(self, text: str, pattern: Tuple[str, ...]) -> str:
+        text_lower = text.lower()
+        
+        context_indicators = {
+            "legal": ["법", "규정", "조항", "시행령", "고시", "규칙"],
+            "technical": ["시스템", "기술", "프로그램", "소프트웨어", "하드웨어"],
+            "procedural": ["절차", "과정", "단계", "방법", "수행"],
+            "managerial": ["관리", "운영", "정책", "체계", "조직"]
         }
         
+        for context_type, indicators in context_indicators.items():
+            if any(indicator in text_lower for indicator in indicators):
+                return context_type
+        
+        return "general"
+    
+    def _discover_technical_patterns(self, text: str) -> List[TextPattern]:
+        patterns = []
+        
+        technical_indicators = [
+            (r'([A-Z]{2,})\s+([가-힣]+)', "acronym_definition"),
+            (r'([가-힣]+)\s+프로토콜', "protocol_reference"),
+            (r'([가-힣]+)\s+알고리즘', "algorithm_reference"),
+            (r'(\d+)\s*비트\s+([가-힣]+)', "bit_specification"),
+            (r'([가-힣]+)\s+인증서', "certificate_type")
+        ]
+        
+        for pattern_regex, pattern_type in technical_indicators:
+            matches = re.findall(pattern_regex, text)
+            for match in matches:
+                if isinstance(match, tuple) and len(match) >= 2:
+                    pattern_id = hashlib.md5(f"{pattern_type}_{match[0]}_{match[1]}".encode()).hexdigest()[:8]
+                    
+                    if pattern_id not in self.discovered_patterns:
+                        technical_pattern = TextPattern(
+                            pattern_id=pattern_id,
+                            keywords=[match[0], match[1]],
+                            co_occurrence_score=0.8,
+                            frequency=1,
+                            context_type="technical",
+                            confidence=0.85,
+                            discovered_time=time.time()
+                        )
+                        
+                        patterns.append(technical_pattern)
+                        self.discovered_patterns[pattern_id] = technical_pattern
+        
+        return patterns
+    
+    def analyze_question_enhanced(self, question: str) -> DomainAnalysis:
+        cache_key = hashlib.md5(question.encode()).hexdigest()[:16]
+        
+        if cache_key in self.analysis_cache:
+            return self.analysis_cache[cache_key]
+        
+        question_lower = question.lower()
+        
+        domain_scores = {}
+        pattern_matches = []
+        
         for domain, keywords in self.domain_keywords.items():
-            matches = sum(1 for keyword in keywords if keyword in question_lower)
-            if matches > 0:
-                analysis["domain"].append(domain)
+            base_matches = sum(1 for keyword in keywords if keyword in question_lower)
+            base_score = base_matches / len(keywords)
+            
+            contextual_boost = 0
+            for modifier, boost in self.contextual_modifiers.items():
+                if modifier in question_lower:
+                    contextual_boost += (boost - 1) * 0.1
+            
+            technical_complexity_boost = 0
+            if domain in ["사이버보안", "암호화", "정보보안"]:
+                tech_terms = sum(1 for term in self.technical_concepts.keys() if term in question_lower)
+                technical_complexity_boost = min(tech_terms * 0.1, 0.3)
+            
+            legal_complexity_boost = 0
+            if domain in ["개인정보보호", "전자금융", "금융투자업"]:
+                legal_refs = sum(1 for law in self.law_references.keys() if any(ref in question_lower for ref in self.law_references[law].values()))
+                legal_complexity_boost = min(legal_refs * 0.15, 0.25)
+            
+            final_score = base_score + contextual_boost + technical_complexity_boost + legal_complexity_boost
+            
+            if final_score > 0.05:
+                domain_scores[domain] = min(final_score, 1.0)
+                if final_score > 0.3:
+                    pattern_matches.append(f"strong_{domain}")
+                elif final_score > 0.1:
+                    pattern_matches.append(f"weak_{domain}")
         
-        for concept, definition in self.security_concepts.items():
-            if concept in question_lower:
-                analysis["key_concepts"].append(concept)
+        discovered_patterns = self.discover_text_patterns(question, self.discovered_patterns)
+        for pattern in discovered_patterns:
+            pattern_matches.append(f"discovered_{pattern.pattern_id}")
         
-        for law, sections in self.law_references.items():
-            if any(section_key in question_lower for section_key in sections.keys()):
-                analysis["law_references"].append(law)
+        primary_domain = max(domain_scores.items(), key=lambda x: x[1])[0] if domain_scores else "일반"
+        secondary_domains = [domain for domain, score in sorted(domain_scores.items(), key=lambda x: x[1], reverse=True)[1:4]]
+        
+        technical_complexity = self._calculate_technical_complexity(question)
+        legal_complexity = self._calculate_legal_complexity(question)
+        
+        analysis = DomainAnalysis(
+            primary_domain=primary_domain,
+            secondary_domains=secondary_domains,
+            confidence_scores=domain_scores,
+            technical_complexity=technical_complexity,
+            legal_complexity=legal_complexity,
+            pattern_matches=pattern_matches
+        )
+        
+        self._manage_cache()
+        self.analysis_cache[cache_key] = analysis
+        
+        self._track_domain_evolution(primary_domain, domain_scores.get(primary_domain, 0))
         
         return analysis
     
-    def _analyze_complexity(self, question: str) -> float:
+    def _calculate_technical_complexity(self, text: str) -> float:
+        text_lower = text.lower()
+        
         complexity_factors = {
-            "length": min(len(question) / 1000, 0.3),
-            "technical_terms": 0,
-            "legal_terms": 0,
-            "multiple_concepts": 0
+            "technical_terms": min(sum(1 for term in self.technical_concepts.keys() if term in text_lower) * 0.1, 0.3),
+            "acronyms": min(len(re.findall(r'\b[A-Z]{2,}\b', text)) * 0.05, 0.2),
+            "numbers": min(len(re.findall(r'\d+', text)) * 0.02, 0.1),
+            "complexity_indicators": 0
         }
         
-        question_lower = question.lower()
-        
-        technical_terms = ["암호화", "해시", "PKI", "SSL", "TLS", "VPN", "IDS", "IPS"]
-        complexity_factors["technical_terms"] = min(
-            sum(1 for term in technical_terms if term in question_lower) * 0.1, 0.2
-        )
-        
-        legal_terms = ["법", "규정", "조항", "시행령", "고시"]
-        complexity_factors["legal_terms"] = min(
-            sum(1 for term in legal_terms if term in question_lower) * 0.05, 0.15
-        )
-        
-        concept_count = sum(1 for domain_keywords in self.domain_keywords.values() 
-                           for keyword in domain_keywords if keyword in question_lower)
-        complexity_factors["multiple_concepts"] = min(concept_count * 0.03, 0.2)
+        high_complexity_terms = self.advanced_indicators["complexity_indicators"]["high"]
+        if any(term in text_lower for term in high_complexity_terms):
+            complexity_factors["complexity_indicators"] = 0.2
         
         return sum(complexity_factors.values())
+    
+    def _calculate_legal_complexity(self, text: str) -> float:
+        text_lower = text.lower()
+        
+        legal_factors = {
+            "law_references": 0,
+            "article_references": min(len(re.findall(r'제\d+조', text)) * 0.1, 0.3),
+            "legal_terms": 0
+        }
+        
+        for law_name in self.law_references.keys():
+            if any(keyword in text_lower for keyword in law_name.split()):
+                legal_factors["law_references"] += 0.15
+        
+        legal_terms = ["의무", "권리", "책임", "처벌", "제재", "과징금", "손해배상"]
+        legal_factors["legal_terms"] = min(sum(1 for term in legal_terms if term in text_lower) * 0.05, 0.2)
+        
+        return min(sum(legal_factors.values()), 1.0)
+    
+    def _track_domain_evolution(self, domain: str, score: float):
+        current_time = time.time()
+        
+        self.domain_evolution_tracking[domain].append({
+            "timestamp": current_time,
+            "score": score
+        })
+        
+        if len(self.domain_evolution_tracking[domain]) > 100:
+            self.domain_evolution_tracking[domain] = self.domain_evolution_tracking[domain][-100:]
+    
+    def _manage_cache(self):
+        if len(self.analysis_cache) >= self.max_cache_size:
+            oldest_keys = list(self.analysis_cache.keys())[:self.max_cache_size // 4]
+            for key in oldest_keys:
+                del self.analysis_cache[key]
+    
+    def analyze_question(self, question: str) -> Dict:
+        enhanced_analysis = self.analyze_question_enhanced(question)
+        
+        return {
+            "domain": [enhanced_analysis.primary_domain] + enhanced_analysis.secondary_domains[:2],
+            "complexity": (enhanced_analysis.technical_complexity + enhanced_analysis.legal_complexity) / 2,
+            "question_type": self._determine_question_type(question),
+            "key_concepts": self._extract_key_concepts(question),
+            "law_references": self._extract_law_references(question),
+            "difficulty_level": self._assess_difficulty(question),
+            "pattern_matches": enhanced_analysis.pattern_matches,
+            "confidence_scores": enhanced_analysis.confidence_scores
+        }
+    
+    def _analyze_complexity(self, question: str) -> float:
+        enhanced_analysis = self.analyze_question_enhanced(question)
+        return (enhanced_analysis.technical_complexity + enhanced_analysis.legal_complexity) / 2
     
     def _determine_question_type(self, question: str) -> str:
         question_lower = question.lower()
         
+        type_indicators = self.advanced_indicators["question_types"]
+        
+        for q_type, indicators in type_indicators.items():
+            if any(indicator in question_lower for indicator in indicators):
+                return q_type
+        
         if any(indicator in question_lower for indicator in 
                ["설명하세요", "기술하세요", "서술하세요", "작성하세요"]):
             return "descriptive"
-        elif any(indicator in question_lower for indicator in 
-                 ["정의", "의미", "개념"]):
-            return "definitional"
-        elif any(indicator in question_lower for indicator in 
-                 ["방안", "대책", "조치"]):
-            return "solution_oriented"
         elif any(indicator in question_lower for indicator in 
                  ["다음 중", "가장 적절한", "옳은 것"]):
             return "multiple_choice"
         else:
             return "general"
     
-    def _assess_difficulty(self, question: str) -> str:
-        complexity = self._analyze_complexity(question)
+    def _extract_key_concepts(self, question: str) -> List[str]:
+        question_lower = question.lower()
+        concepts = []
+        
+        for concept in self.security_concepts.keys():
+            if concept in question_lower:
+                concepts.append(concept)
+        
+        for concept in self.technical_concepts.keys():
+            if concept in question_lower:
+                concepts.append(concept)
+        
+        return concepts[:5]
+    
+    def _extract_law_references(self, question: str) -> List[str]:
+        references = []
         question_lower = question.lower()
         
-        advanced_indicators = [
-            "고급", "심화", "전문", "세부", "상세",
-            "분석", "평가", "설계", "구현"
-        ]
+        for law, sections in self.law_references.items():
+            law_keywords = law.replace("법", "").split()
+            if any(keyword in question_lower for keyword in law_keywords):
+                references.append(law)
         
-        basic_indicators = [
-            "기본", "초급", "개념", "정의", "의미"
-        ]
+        article_refs = re.findall(r'제\d+조(?:의\d+)?', question)
+        references.extend(article_refs)
         
-        if any(indicator in question_lower for indicator in advanced_indicators) or complexity > 0.6:
+        return references
+    
+    def _assess_difficulty(self, question: str) -> str:
+        enhanced_analysis = self.analyze_question_enhanced(question)
+        
+        total_complexity = enhanced_analysis.technical_complexity + enhanced_analysis.legal_complexity
+        
+        if total_complexity > 0.7:
             return "advanced"
-        elif any(indicator in question_lower for indicator in basic_indicators) or complexity < 0.3:
-            return "basic"
-        else:
+        elif total_complexity > 0.4:
             return "intermediate"
+        else:
+            return "basic"
     
     def get_domain_context(self, domain: str) -> Dict:
         if domain not in self.domain_keywords:
@@ -220,20 +537,72 @@ class FinancialSecurityKnowledgeBase:
         context = {
             "keywords": self.domain_keywords[domain],
             "related_laws": [],
-            "key_concepts": []
+            "key_concepts": [],
+            "evolution_trend": self._get_domain_evolution_trend(domain),
+            "discovered_patterns": self._get_domain_patterns(domain)
         }
         
-        if domain == "개인정보보호":
-            context["related_laws"] = ["개인정보보호법", "정보통신망법"]
-            context["key_concepts"] = ["수집", "이용", "제공", "파기", "동의"]
-        elif domain == "전자금융":
-            context["related_laws"] = ["전자금융거래법"]
-            context["key_concepts"] = ["접근매체", "전자서명", "이용자보호"]
-        elif domain == "정보보안":
-            context["related_laws"] = ["정보통신망법"]
-            context["key_concepts"] = ["기밀성", "무결성", "가용성"]
+        law_mapping = {
+            "개인정보보호": ["개인정보보호법", "정보통신망법"],
+            "전자금융": ["전자금융거래법"],
+            "금융투자업": ["자본시장법"],
+            "정보보안": ["정보통신망법"],
+            "사이버보안": ["정보통신망법"]
+        }
+        
+        context["related_laws"] = law_mapping.get(domain, [])
+        
+        concept_mapping = {
+            "정보보안": ["기밀성", "무결성", "가용성"],
+            "사이버보안": ["트로이목마", "피싱", "DDoS"],
+            "암호화": ["대칭키", "공개키", "해시함수"],
+            "개인정보보호": ["정보주체", "개인정보처리자", "동의"],
+            "전자금융": ["접근매체", "전자서명", "오류정정"]
+        }
+        
+        context["key_concepts"] = concept_mapping.get(domain, [])
         
         return context
+    
+    def _get_domain_evolution_trend(self, domain: str) -> Dict:
+        if domain not in self.domain_evolution_tracking:
+            return {"trend": "stable", "confidence": 0.5}
+        
+        recent_scores = [entry["score"] for entry in self.domain_evolution_tracking[domain][-10:]]
+        
+        if len(recent_scores) < 3:
+            return {"trend": "stable", "confidence": 0.5}
+        
+        trend_slope = (recent_scores[-1] - recent_scores[0]) / len(recent_scores)
+        
+        if trend_slope > 0.1:
+            return {"trend": "increasing", "confidence": min(trend_slope * 5, 1.0)}
+        elif trend_slope < -0.1:
+            return {"trend": "decreasing", "confidence": min(abs(trend_slope) * 5, 1.0)}
+        else:
+            return {"trend": "stable", "confidence": 0.8}
+    
+    def _get_domain_patterns(self, domain: str) -> List[Dict]:
+        patterns = []
+        
+        for pattern_id, pattern in self.discovered_patterns.items():
+            if pattern.context_type in ["legal", "technical", "managerial"]:
+                domain_relevance = 0
+                
+                for keyword in pattern.keywords:
+                    if keyword in self.domain_keywords.get(domain, []):
+                        domain_relevance += 1
+                
+                if domain_relevance > 0:
+                    patterns.append({
+                        "pattern_id": pattern_id,
+                        "keywords": pattern.keywords,
+                        "relevance": domain_relevance / len(pattern.keywords),
+                        "confidence": pattern.confidence,
+                        "frequency": pattern.frequency
+                    })
+        
+        return sorted(patterns, key=lambda x: x["confidence"], reverse=True)[:5]
     
     def suggest_answer_structure(self, question_type: str, domain: List[str]) -> List[str]:
         if question_type == "descriptive":
@@ -250,6 +619,20 @@ class FinancialSecurityKnowledgeBase:
                 "핵심 요소",
                 "적용 범위",
                 "관련 개념과의 차이점"
+            ]
+        elif question_type == "procedural":
+            return [
+                "준비 단계",
+                "실행 절차",
+                "검증 방법",
+                "사후 관리"
+            ]
+        elif question_type == "analytical":
+            return [
+                "현황 분석",
+                "문제점 도출",
+                "해결방안 제시",
+                "기대 효과"
             ]
         elif question_type == "solution_oriented":
             return [
@@ -297,6 +680,7 @@ class FinancialSecurityKnowledgeBase:
     def validate_answer_quality(self, answer: str, domain: List[str]) -> Dict:
         quality_score = 0.0
         issues = []
+        enhancements = []
         
         if len(answer) < 20:
             issues.append("답변이 너무 짧습니다")
@@ -317,11 +701,36 @@ class FinancialSecurityKnowledgeBase:
             quality_score += 0.2
         
         professional_terms = ['법', '규정', '조치', '관리', '보안', '정책']
-        if any(term in answer for term in professional_terms):
+        prof_count = sum(1 for term in professional_terms if term in answer)
+        if prof_count >= 3:
             quality_score += 0.2
+            enhancements.append("전문 용어 사용 우수")
+        elif prof_count >= 1:
+            quality_score += 0.1
+        
+        structure_markers = ['첫째', '둘째', '따라서', '그러므로']
+        if any(marker in answer for marker in structure_markers):
+            quality_score += 0.1
+            enhancements.append("구조적 답변 작성")
         
         return {
-            "quality_score": quality_score,
+            "quality_score": min(quality_score, 1.0),
             "issues": issues,
-            "is_acceptable": quality_score >= 0.6 and len(issues) == 0
+            "enhancements": enhancements,
+            "is_acceptable": quality_score >= 0.6 and len(issues) <= 1,
+            "korean_ratio": korean_ratio,
+            "professional_terms_count": prof_count
+        }
+    
+    def get_performance_metrics(self) -> Dict:
+        return {
+            "total_patterns_discovered": len(self.discovered_patterns),
+            "cache_size": len(self.analysis_cache),
+            "domain_tracking_active": len(self.domain_evolution_tracking),
+            "avg_cooccurrence_score": np.mean([p.co_occurrence_score for p in self.discovered_patterns.values()]) if self.discovered_patterns else 0,
+            "pattern_confidence_distribution": {
+                "high": len([p for p in self.discovered_patterns.values() if p.confidence > 0.8]),
+                "medium": len([p for p in self.discovered_patterns.values() if 0.5 < p.confidence <= 0.8]),
+                "low": len([p for p in self.discovered_patterns.values() if p.confidence <= 0.5])
+            }
         }
