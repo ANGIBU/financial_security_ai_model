@@ -1,5 +1,13 @@
 # model_handler.py
 
+"""
+모델 핸들러
+- LLM 모델 로딩 및 관리
+- 텍스트 생성 및 추론
+- 한국어 최적화 설정
+- 메모리 관리
+"""
+
 import torch
 import re
 import time
@@ -36,6 +44,7 @@ class ModelHandler:
         if self.verbose:
             print(f"모델 로딩: {model_name}")
         
+        # 토크나이저 초기화
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_name,
             trust_remote_code=True,
@@ -46,6 +55,7 @@ class ModelHandler:
             self.tokenizer.pad_token = self.tokenizer.eos_token
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         
+        # 모델 로딩 설정
         model_kwargs = {
             "trust_remote_code": True,
             "torch_dtype": torch.bfloat16,
@@ -53,6 +63,7 @@ class ModelHandler:
             "low_cpu_mem_usage": True,
         }
         
+        # 4bit 양자화 설정
         if load_in_4bit and torch.cuda.is_available():
             quantization_config = BitsAndBytesConfig(
                 load_in_4bit=True,
@@ -62,6 +73,7 @@ class ModelHandler:
             )
             model_kwargs["quantization_config"] = quantization_config
             
+        # Flash Attention 설정
         try:
             import flash_attn
             model_kwargs["attn_implementation"] = "flash_attention_2"
@@ -72,10 +84,8 @@ class ModelHandler:
                 model_kwargs["attn_implementation"] = "sdpa"
                 if self.verbose:
                     print("SDPA Attention 활성화")
-            else:
-                if self.verbose:
-                    print("Standard Attention 사용")
         
+        # 모델 로딩
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
             **model_kwargs
@@ -83,6 +93,7 @@ class ModelHandler:
         
         self.model.eval()
         
+        # 모델 컴파일 (PyTorch 2.0+)
         if hasattr(torch, 'compile') and torch.__version__ >= "2.0.0":
             try:
                 self.model = torch.compile(self.model, mode="reduce-overhead")
@@ -92,8 +103,10 @@ class ModelHandler:
                 if self.verbose:
                     print("Torch Compile 실패, 기본 모델 사용")
         
+        # 한국어 최적화 준비
         self._prepare_korean_optimization()
         
+        # 응답 캐시
         self.response_cache = {}
         self.cache_hits = 0
         self.max_cache_size = 500
@@ -102,6 +115,7 @@ class ModelHandler:
             print("모델 로딩 완료")
     
     def _prepare_korean_optimization(self):
+        # 한국어 토큰 수집
         self.korean_tokens = []
         korean_chars = "가나다라마바사아자차카타파하개내대래매배새애재채캐태패해는을의에서과도"
         
@@ -112,6 +126,7 @@ class ModelHandler:
         
         self.korean_tokens = list(set(self.korean_tokens))
         
+        # 차단할 토큰 설정
         self.bad_words_ids = []
         bad_patterns = [
             ["软", "件"], ["軟", "件"], ["金", "融"], ["電", "子"], ["個", "人"],
@@ -141,6 +156,7 @@ class ModelHandler:
         
         start_time = time.time()
         
+        # 캐시 확인
         cache_key = hash(prompt[:100])
         if cache_key in self.response_cache:
             self.cache_hits += 1
@@ -148,6 +164,7 @@ class ModelHandler:
             cached.inference_time = 0.01
             return cached
         
+        # 프롬프트 최적화
         optimized_prompt = self._create_korean_optimized_prompt(prompt, question_type)
         
         best_result = None
@@ -155,6 +172,7 @@ class ModelHandler:
         
         for attempt in range(max_attempts):
             try:
+                # 생성 설정
                 if question_type == "multiple_choice":
                     gen_config = GenerationConfig(
                         do_sample=True,
@@ -185,6 +203,7 @@ class ModelHandler:
                         bad_words_ids=self.bad_words_ids
                     )
                 
+                # 입력 토큰화
                 inputs = self.tokenizer(
                     optimized_prompt,
                     return_tensors="pt",
@@ -192,6 +211,7 @@ class ModelHandler:
                     max_length=1024
                 ).to(self.model.device)
                 
+                # 텍스트 생성
                 with torch.no_grad():
                     with torch.cuda.amp.autocast(enabled=True, dtype=torch.bfloat16):
                         outputs = self.model.generate(
@@ -199,13 +219,16 @@ class ModelHandler:
                             generation_config=gen_config
                         )
                 
+                # 응답 디코딩
                 raw_response = self.tokenizer.decode(
                     outputs[0][inputs['input_ids'].shape[1]:],
                     skip_special_tokens=True
                 ).strip()
                 
+                # 한국어 정리
                 cleaned_response = self._clean_korean_text_enhanced(raw_response)
                 
+                # 객관식 처리
                 if question_type == "multiple_choice":
                     extracted_answer = self._extract_mc_answer_enhanced(cleaned_response)
                     
@@ -219,6 +242,7 @@ class ModelHandler:
                             inference_time=time.time() - start_time
                         )
                         
+                        # 캐시 저장
                         if len(self.response_cache) >= self.max_cache_size:
                             oldest_key = next(iter(self.response_cache))
                             del self.response_cache[oldest_key]
@@ -228,6 +252,7 @@ class ModelHandler:
                     else:
                         continue
                 
+                # 주관식 처리
                 else:
                     korean_quality = self._evaluate_korean_quality_enhanced(cleaned_response)
                     
@@ -249,6 +274,7 @@ class ModelHandler:
                     print(f"생성 오류 (시도 {attempt+1}): {e}")
                 continue
         
+        # 결과 반환
         if best_result is None:
             best_result = self._create_fallback_result(question_type)
             best_result.inference_time = time.time() - start_time
@@ -280,6 +306,7 @@ class ModelHandler:
         if not text:
             return ""
         
+        # 중국어를 한국어로 변환
         chinese_to_korean = {
             r'軟[体體]件|软件': '소프트웨어',
             r'金融': '금융',
@@ -298,13 +325,16 @@ class ModelHandler:
         for pattern, replacement in chinese_to_korean.items():
             text = re.sub(pattern, replacement, text)
         
-        text = re.sub(r'[\u4e00-\u9fff]+', '', text)
-        text = re.sub(r'[\u3040-\u309f]+', '', text)
-        text = re.sub(r'[\u30a0-\u30ff]+', '', text)
+        # 외국어 제거
+        text = re.sub(r'[\u4e00-\u9fff]+', '', text)  # 중국어
+        text = re.sub(r'[\u3040-\u309f]+', '', text)  # 히라가나
+        text = re.sub(r'[\u30a0-\u30ff]+', '', text)  # 가타카나
         
+        # 특수문자 정리
         text = re.sub(r'[^\w\s가-힣0-9.,!?()·\-\n]', ' ', text)
         text = re.sub(r'\s+', ' ', text)
         
+        # 영어 단어 연결
         text = re.sub(r'([a-zA-Z])\s+([a-zA-Z])', r'\1\2', text)
         
         return text.strip()
@@ -313,12 +343,14 @@ class ModelHandler:
         if not text:
             return 0.0
         
+        # 외국어 패널티
         if re.search(r'[\u4e00-\u9fff]', text):
             return 0.1
         
         if re.search(r'[а-яё]', text.lower()):
             return 0.1
         
+        # 한국어 비율 계산
         total_chars = len(re.sub(r'[^\w]', '', text))
         if total_chars == 0:
             return 0.0
@@ -329,16 +361,20 @@ class ModelHandler:
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
+        # 품질 점수 계산
         quality = korean_ratio * 0.85
         quality -= english_ratio * 0.15
         
+        # 전문 용어 보너스
         professional_terms = ['법', '규정', '조치', '관리', '보안', '체계', '정책', '절차', '방안', '시스템']
         prof_count = sum(1 for term in professional_terms if term in text)
         quality += min(prof_count * 0.08, 0.25)
         
+        # 길이 보너스
         if 30 <= len(text) <= 500:
             quality += 0.12
         
+        # 구조 보너스
         structure_markers = ['첫째', '둘째', '따라서', '그러므로']
         if any(marker in text for marker in structure_markers):
             quality += 0.08
@@ -386,12 +422,14 @@ class ModelHandler:
             confidence = 0.7
             reasoning = 0.7
             
+            # 길이 평가
             length = len(response)
             if 50 <= length <= 600:
                 confidence += 0.15
             elif 30 <= length < 50:
                 confidence += 0.08
             
+            # 키워드 평가
             keywords = ['법', '규정', '보안', '관리', '조치', '정책', '체계', '방안']
             keyword_count = sum(1 for k in keywords if k in response)
             if keyword_count >= 3:
@@ -415,13 +453,16 @@ class ModelHandler:
         if self.verbose:
             print(f"캐시 히트: {self.cache_hits}회")
         
+        # 모델 정리
         if hasattr(self, 'model'):
             del self.model
         if hasattr(self, 'tokenizer'):
             del self.tokenizer
         
+        # 캐시 정리
         self.response_cache.clear()
         
+        # 메모리 정리
         gc.collect()
         torch.cuda.empty_cache()
     

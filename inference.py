@@ -1,5 +1,13 @@
 # inference.py
 
+"""
+메인 추론 시스템
+- 금융보안 객관식/주관식 문제 추론
+- 학습 시스템 통합 관리
+- 한국어 답변 생성 및 검증
+- 오프라인 환경 대응
+"""
+
 import os
 import sys
 import time
@@ -24,12 +32,7 @@ logging.set_verbosity_error()
 from model_handler import ModelHandler
 from data_processor import DataProcessor
 from prompt_engineering import PromptEngineer
-from advanced_optimizer import SystemOptimizer
-from pattern_learner import AnswerPatternLearner
-
-from learning_system import UnifiedLearningSystem
-from manual_correction import ManualCorrectionSystem
-from auto_learner import AutoLearner
+from learning_system import LearningSystem
 
 class FinancialAIInference:
     
@@ -54,13 +57,9 @@ class FinancialAIInference:
         
         self.data_processor = DataProcessor()
         self.prompt_engineer = PromptEngineer()
-        self.optimizer = SystemOptimizer(debug_mode=self.verbose)
-        self.pattern_learner = AnswerPatternLearner()
         
         if self.enable_learning:
-            self.learning_system = UnifiedLearningSystem()
-            self.correction_system = ManualCorrectionSystem()
-            self.auto_learner = AutoLearner()
+            self.learning_system = LearningSystem(debug_mode=self.verbose)
             self._load_existing_learning_data()
         
         self.stats = {
@@ -87,17 +86,9 @@ class FinancialAIInference:
     
     def _load_existing_learning_data(self) -> None:
         try:
-            if self.learning_system.load_learning_data():
+            if self.learning_system.load_model():
                 if self.verbose:
-                    print(f"학습 데이터 로드: {self.learning_system.learning_metrics['total_samples']}개")
-            
-            if self.auto_learner.load_model():
-                if self.verbose:
-                    print(f"자동 학습 모델 로드: {len(self.auto_learner.pattern_weights)}개 패턴")
-            
-            corrections = self.correction_system.load_corrections_from_csv("./corrections.csv")
-            if corrections > 0 and self.verbose:
-                print(f"교정 데이터 로드: {corrections}개")
+                    print(f"학습 데이터 로드: {len(self.learning_system.learning_history)}개")
         except Exception as e:
             if self.verbose:
                 print(f"학습 데이터 로드 오류: {e}")
@@ -146,7 +137,7 @@ class FinancialAIInference:
         if question_type == "multiple_choice":
             structure = self.data_processor.analyze_question_structure(question)
             
-            hint, conf = self.optimizer.get_smart_answer_hint(question, structure)
+            hint, conf = self.learning_system.get_smart_answer_hint(question, structure)
             
             if conf > 0.4:
                 self.stats["smart_hints_used"] += 1
@@ -192,7 +183,7 @@ class FinancialAIInference:
         if cache_key in self.pattern_analysis_cache:
             return self.pattern_analysis_cache[cache_key]
         
-        hint_answer, hint_confidence = self.optimizer.get_smart_answer_hint(question, structure)
+        hint_answer, hint_confidence = self.learning_system.get_smart_answer_hint(question, structure)
         
         if hint_confidence > 0.65:
             self.stats["pattern_based_answers"] += 1
@@ -217,22 +208,18 @@ class FinancialAIInference:
             
             self._debug_log(f"문제 {idx}: 유형={structure['question_type']}, 객관식={is_mc}, 주관식={is_subjective}")
             
-            difficulty = self.optimizer.evaluate_question_difficulty(question, structure)
+            difficulty = self.learning_system.evaluate_question_difficulty(question, structure)
             
             if self.enable_learning:
-                learned_answer, learned_confidence = self.auto_learner.predict_with_patterns(
+                learned_answer, learned_confidence = self.learning_system.predict_with_patterns(
                     question, structure["question_type"]
                 )
                 
-                corrected_answer, correction_conf = self.correction_system.apply_corrections(
-                    question, learned_answer
-                )
-                
-                if correction_conf > 0.80:
-                    is_valid, quality = self._validate_korean_quality(corrected_answer, structure["question_type"])
+                if learned_confidence > 0.80:
+                    is_valid, quality = self._validate_korean_quality(learned_answer, structure["question_type"])
                     if is_valid:
-                        self.answer_cache[cache_key] = corrected_answer
-                        return corrected_answer
+                        self.answer_cache[cache_key] = learned_answer
+                        return learned_answer
             
             if is_mc:
                 pattern_answer, pattern_conf = self._apply_pattern_based_answer(question, structure)
@@ -316,22 +303,11 @@ class FinancialAIInference:
                 answer = self._get_domain_specific_fallback(question, "multiple_choice")
             
             if self.enable_learning and 'result' in locals() and result.confidence > 0.45:
-                self.auto_learner.learn_from_prediction(
+                self.learning_system.learn_from_prediction(
                     question, answer, result.confidence,
                     structure["question_type"], analysis.get("domain", ["일반"])
                 )
-                
-                if result.confidence > 0.55:
-                    self.learning_system.add_training_sample(
-                        question=question,
-                        correct_answer=answer,
-                        predicted_answer=answer,
-                        confidence=result.confidence,
-                        question_type=structure["question_type"],
-                        domain=analysis.get("domain", ["일반"]),
-                        question_id=question_id
-                    )
-                    self.stats["learned"] += 1
+                self.stats["learned"] += 1
             
             self.answer_cache[cache_key] = answer
             return answer
@@ -350,8 +326,7 @@ class FinancialAIInference:
             print(f"[DEBUG] {message}")
     
     def execute_inference(self, test_file: str, submission_file: str,
-                         output_file: str = "./final_submission.csv",
-                         enable_manual_correction: bool = False) -> Dict:
+                         output_file: str = "./final_submission.csv") -> Dict:
         test_df = pd.read_csv(test_file)
         submission_df = pd.read_csv(submission_file)
         
@@ -402,30 +377,16 @@ class FinancialAIInference:
                 gc.collect()
             
             if self.enable_learning and self.stats["total"] % 50 == 0:
-                self.auto_learner.optimize_patterns()
-        
-        if enable_manual_correction and self.enable_learning:
-            print("\n수동 교정 모드 시작...")
-            corrections = self.correction_system.interactive_correction(
-                questions_data[:5],
-                answers[:5]
-            )
-            print(f"교정 완료: {corrections}개")
+                self.learning_system.optimize_patterns()
         
         submission_df['Answer'] = answers
         submission_df.to_csv(output_file, index=False, encoding='utf-8-sig')
         
         if self.enable_learning:
             try:
-                if self.learning_system.save_learning_data():
+                if self.learning_system.save_model():
                     if self.verbose:
                         print("학습 데이터 저장 완료")
-                if self.auto_learner.save_model():
-                    if self.verbose:
-                        print("자동 학습 모델 저장 완료")
-                if self.correction_system.save_corrections_to_csv():
-                    if self.verbose:
-                        print("교정 데이터 저장 완료")
             except Exception as e:
                 if self.verbose:
                     print(f"데이터 저장 오류: {e}")
@@ -493,7 +454,7 @@ class FinancialAIInference:
         if self.enable_learning:
             print(f"\n학습 통계:")
             print(f"  학습된 샘플: {self.stats['learned']}개")
-            print(f"  패턴 수: {len(self.auto_learner.pattern_weights)}개")
+            print(f"  패턴 수: {len(self.learning_system.pattern_weights)}개")
             print(f"  정확도: {self.learning_system.get_current_accuracy():.2%}")
         
         if mc_answers:
@@ -537,7 +498,7 @@ class FinancialAIInference:
             },
             "learning_stats": {
                 "learned_samples": self.stats["learned"],
-                "patterns": len(self.auto_learner.pattern_weights) if self.enable_learning else 0,
+                "patterns": len(self.learning_system.pattern_weights) if self.enable_learning else 0,
                 "accuracy": self.learning_system.get_current_accuracy() if self.enable_learning else 0
             }
         }
@@ -547,12 +508,9 @@ class FinancialAIInference:
             self.model_handler.cleanup()
             self.data_processor.cleanup()
             self.prompt_engineer.cleanup()
-            self.pattern_learner.cleanup()
             
             if self.enable_learning:
                 self.learning_system.cleanup()
-                self.correction_system.cleanup()
-                self.auto_learner.cleanup()
             
             torch.cuda.empty_cache()
             gc.collect()
@@ -586,11 +544,7 @@ def main():
     engine = None
     try:
         engine = FinancialAIInference(enable_learning=enable_learning, verbose=verbose)
-        results = engine.execute_inference(
-            test_file, 
-            submission_file,
-            enable_manual_correction=False
-        )
+        results = engine.execute_inference(test_file, submission_file)
         
         if results["success"]:
             print("\n추론 완료")
