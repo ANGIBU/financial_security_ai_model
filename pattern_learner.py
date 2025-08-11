@@ -44,11 +44,6 @@ class AnswerPatternLearner:
         self.pattern_cache = {}
         self.max_cache_size = 500
         
-        self.word_combinations = defaultdict(_default_counter)
-        self.phrase_patterns = defaultdict(_default_counter)
-        self.sequence_patterns = defaultdict(_default_counter)
-        self.semantic_clusters = defaultdict(list)
-        
     def _debug_print(self, message: str):
         if self.debug_mode:
             print(f"[DEBUG] {message}")
@@ -150,6 +145,258 @@ class AnswerPatternLearner:
                 "preferred_answers": {"2": 0.65, "3": 0.20, "1": 0.10, "4": 0.03, "5": 0.02},
                 "confidence": 0.78,
                 "boost_keywords": ["금융실명법", "비실명거래"]
+            },
+            "보험업법_관련": {
+                "keywords": ["보험업법", "보험", "모집", "설계사"],
+                "preferred_answers": {"3": 0.60, "2": 0.25, "1": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.75,
+                "boost_keywords": ["보험설계사", "모집행위"]
+            },
+            "자본시장법_관련": {
+                "keywords": ["자본시장법", "자본시장", "금융투자", "투자자"],
+                "preferred_answers": {"2": 0.58, "1": 0.25, "3": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.75,
+                "boost_keywords": ["투자자보호", "자본시장"]
+            },
+            "은행법_관련": {
+                "keywords": ["은행법", "은행", "예금", "대출"],
+                "preferred_answers": {"1": 0.62, "2": 0.23, "3": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.76,
+                "boost_keywords": ["은행업무", "예금보험"]
+            },
+            "IT_거버넌스": {
+                "keywords": ["IT거버넌스", "IT", "거버넌스", "정보기술"],
+                "preferred_answers": {"3": 0.55, "2": 0.28, "1": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.72,
+                "boost_keywords": ["IT전략", "정보기술"]
+            },
+            "COBIT_관련": {
+                "keywords": ["COBIT", "IT관리", "프레임워크"],
+                "preferred_answers": {"2": 0.60, "3": 0.25, "1": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.75,
+                "boost_keywords": ["IT거버넌스", "관리"]
+            },
+            "ITIL_관련": {
+                "keywords": ["ITIL", "서비스", "IT서비스"],
+                "preferred_answers": {"3": 0.58, "2": 0.25, "1": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.74,
+                "boost_keywords": ["서비스관리", "IT서비스"]
+            },
+            "ISO27001_관련": {
+                "keywords": ["ISO27001", "ISO", "27001", "정보보호"],
+                "preferred_answers": {"3": 0.62, "2": 0.23, "1": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.78,
+                "boost_keywords": ["정보보호관리", "인증"]
+            },
+            "PCI_DSS": {
+                "keywords": ["PCI", "DSS", "카드", "결제"],
+                "preferred_answers": {"2": 0.58, "1": 0.25, "3": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.72,
+                "boost_keywords": ["결제카드", "보안표준"]
+            },
+            "SOX_법령": {
+                "keywords": ["SOX", "사베인스", "내부통제"],
+                "preferred_answers": {"2": 0.55, "3": 0.25, "1": 0.15, "4": 0.03, "5": 0.02},
+                "confidence": 0.70,
+                "boost_keywords": ["내부통제", "재무보고"]
+            },
+            "바젤_협약": {
+                "keywords": ["바젤", "basel", "자본", "적정성"],
+                "preferred_answers": {"1": 0.60, "2": 0.25, "3": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.75,
+                "boost_keywords": ["자본적정성", "Basel"]
+            },
+            "GDPR_관련": {
+                "keywords": ["GDPR", "개인정보", "유럽", "EU"],
+                "preferred_answers": {"2": 0.62, "1": 0.23, "3": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.78,
+                "boost_keywords": ["개인정보보호", "유럽연합"]
+            },
+            "CCPA_관련": {
+                "keywords": ["CCPA", "캘리포니아", "소비자", "개인정보"],
+                "preferred_answers": {"2": 0.58, "1": 0.25, "3": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.72,
+                "boost_keywords": ["소비자개인정보", "캘리포니아"]
+            },
+            "해킹_공격": {
+                "keywords": ["해킹", "공격", "침입", "사이버"],
+                "preferred_answers": {"3": 0.55, "1": 0.25, "2": 0.15, "4": 0.03, "5": 0.02},
+                "confidence": 0.70,
+                "boost_keywords": ["사이버공격", "침해"]
+            },
+            "악성코드_분류": {
+                "keywords": ["악성코드", "malware", "바이러스", "웜"],
+                "preferred_answers": {"2": 0.58, "3": 0.25, "1": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.75,
+                "boost_keywords": ["트로이", "랜섬웨어"]
+            },
+            "트로이목마_특징": {
+                "keywords": ["트로이", "trojan", "원격", "제어"],
+                "preferred_answers": {"2": 0.62, "1": 0.23, "3": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.80,
+                "boost_keywords": ["원격제어", "원격접근"]
+            },
+            "랜섬웨어_대응": {
+                "keywords": ["랜섬웨어", "ransomware", "암호화", "복구"],
+                "preferred_answers": {"1": 0.65, "2": 0.20, "3": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.78,
+                "boost_keywords": ["백업", "복구"]
+            },
+            "피싱_공격": {
+                "keywords": ["피싱", "phishing", "사기", "이메일"],
+                "preferred_answers": {"3": 0.60, "2": 0.23, "1": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.75,
+                "boost_keywords": ["스피어피싱", "사회공학"]
+            },
+            "스미싱_공격": {
+                "keywords": ["스미싱", "smishing", "SMS", "문자"],
+                "preferred_answers": {"3": 0.58, "2": 0.25, "1": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.72,
+                "boost_keywords": ["문자메시지", "SMS"]
+            },
+            "파밍_공격": {
+                "keywords": ["파밍", "pharming", "DNS", "도메인"],
+                "preferred_answers": {"2": 0.62, "3": 0.23, "1": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.75,
+                "boost_keywords": ["DNS변조", "도메인"]
+            },
+            "DDoS_공격": {
+                "keywords": ["DDoS", "분산", "서비스", "거부"],
+                "preferred_answers": {"1": 0.58, "2": 0.25, "3": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.73,
+                "boost_keywords": ["분산서비스거부", "트래픽"]
+            },
+            "APT_공격": {
+                "keywords": ["APT", "지능형", "지속적", "위협"],
+                "preferred_answers": {"2": 0.60, "3": 0.23, "1": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.76,
+                "boost_keywords": ["지능형지속위협", "표적"]
+            },
+            "제로데이_공격": {
+                "keywords": ["제로데이", "zero-day", "취약점"],
+                "preferred_answers": {"3": 0.62, "2": 0.23, "1": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.78,
+                "boost_keywords": ["미패치", "취약점"]
+            },
+            "백도어_설치": {
+                "keywords": ["백도어", "backdoor", "은밀", "접근"],
+                "preferred_answers": {"2": 0.58, "1": 0.25, "3": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.72,
+                "boost_keywords": ["은밀한", "우회"]
+            },
+            "루트킷_은닉": {
+                "keywords": ["루트킷", "rootkit", "은닉", "탐지"],
+                "preferred_answers": {"3": 0.60, "2": 0.23, "1": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.75,
+                "boost_keywords": ["시스템은닉", "탐지회피"]
+            },
+            "키로거_정보수집": {
+                "keywords": ["키로거", "keylogger", "키보드", "입력"],
+                "preferred_answers": {"2": 0.62, "1": 0.23, "3": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.78,
+                "boost_keywords": ["키보드입력", "정보수집"]
+            },
+            "스파이웨어_감시": {
+                "keywords": ["스파이웨어", "spyware", "감시", "정보"],
+                "preferred_answers": {"2": 0.58, "3": 0.25, "1": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.72,
+                "boost_keywords": ["정보수집", "사용자감시"]
+            },
+            "애드웨어_광고": {
+                "keywords": ["애드웨어", "adware", "광고", "팝업"],
+                "preferred_answers": {"3": 0.55, "2": 0.28, "1": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.68,
+                "boost_keywords": ["광고표시", "팝업"]
+            },
+            "방화벽_정책": {
+                "keywords": ["방화벽", "firewall", "정책", "규칙"],
+                "preferred_answers": {"1": 0.62, "2": 0.23, "3": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.78,
+                "boost_keywords": ["접근제어", "네트워크"]
+            },
+            "IDS_IPS": {
+                "keywords": ["IDS", "IPS", "침입", "탐지"],
+                "preferred_answers": {"2": 0.60, "3": 0.23, "1": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.76,
+                "boost_keywords": ["침입탐지", "침입방지"]
+            },
+            "백업_복구": {
+                "keywords": ["백업", "backup", "복구", "recovery"],
+                "preferred_answers": {"1": 0.65, "2": 0.20, "3": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.80,
+                "boost_keywords": ["데이터복구", "백업전략"]
+            },
+            "비즈니스연속성": {
+                "keywords": ["비즈니스", "연속성", "BCP", "업무"],
+                "preferred_answers": {"2": 0.58, "1": 0.25, "3": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.75,
+                "boost_keywords": ["업무연속성", "BCP"]
+            },
+            "접근제어_모델": {
+                "keywords": ["접근제어", "access", "control", "권한"],
+                "preferred_answers": {"2": 0.62, "3": 0.23, "1": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.78,
+                "boost_keywords": ["권한관리", "인증"]
+            },
+            "다중인증_요소": {
+                "keywords": ["다중인증", "MFA", "2FA", "이중"],
+                "preferred_answers": {"1": 0.60, "2": 0.25, "3": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.77,
+                "boost_keywords": ["이중인증", "다요소"]
+            },
+            "생체인증_방식": {
+                "keywords": ["생체인증", "지문", "홍채", "얼굴"],
+                "preferred_answers": {"3": 0.58, "2": 0.25, "1": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.74,
+                "boost_keywords": ["바이오메트릭", "생체정보"]
+            },
+            "취약점_평가": {
+                "keywords": ["취약점", "vulnerability", "평가", "점검"],
+                "preferred_answers": {"2": 0.60, "1": 0.23, "3": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.76,
+                "boost_keywords": ["보안점검", "취약성"]
+            },
+            "모의해킹_테스트": {
+                "keywords": ["모의해킹", "penetration", "testing", "침투"],
+                "preferred_answers": {"3": 0.62, "2": 0.23, "1": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.78,
+                "boost_keywords": ["침투테스트", "모의침투"]
+            },
+            "보안교육_훈련": {
+                "keywords": ["보안교육", "훈련", "인식", "교육"],
+                "preferred_answers": {"2": 0.58, "1": 0.25, "3": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.72,
+                "boost_keywords": ["보안인식", "사용자교육"]
+            },
+            "암호정책_관리": {
+                "keywords": ["암호정책", "password", "policy", "복잡성"],
+                "preferred_answers": {"1": 0.62, "2": 0.23, "3": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.78,
+                "boost_keywords": ["패스워드정책", "복잡성"]
+            },
+            "소셜엔지니어링": {
+                "keywords": ["소셜", "엔지니어링", "사회공학", "심리"],
+                "preferred_answers": {"3": 0.60, "2": 0.23, "1": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.75,
+                "boost_keywords": ["사회공학", "인간심리"]
+            },
+            "클라우드_보안": {
+                "keywords": ["클라우드", "cloud", "보안", "SaaS"],
+                "preferred_answers": {"2": 0.58, "3": 0.25, "1": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.72,
+                "boost_keywords": ["클라우드보안", "가상화"]
+            },
+            "IoT_보안": {
+                "keywords": ["IoT", "사물인터넷", "디바이스", "연결"],
+                "preferred_answers": {"3": 0.58, "2": 0.25, "1": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.70,
+                "boost_keywords": ["사물인터넷", "스마트디바이스"]
+            },
+            "모바일_보안": {
+                "keywords": ["모바일", "mobile", "스마트폰", "앱"],
+                "preferred_answers": {"2": 0.60, "3": 0.23, "1": 0.12, "4": 0.03, "5": 0.02},
+                "confidence": 0.73,
+                "boost_keywords": ["모바일보안", "앱보안"]
             }
         }
     
@@ -162,7 +409,6 @@ class AnswerPatternLearner:
         
         best_rule = None
         best_score = 0
-        matched_rule_name = None
         
         for rule_name, rule_info in self.learned_rules.items():
             keywords = rule_info["keywords"]
@@ -178,10 +424,7 @@ class AnswerPatternLearner:
                     if boost_kw.replace(" ", "") in question_lower:
                         boost_score += 0.18
                 
-                word_combination_score = self._analyze_word_combinations(question_lower, rule_name)
-                phrase_score = self._analyze_phrase_patterns(question_lower, rule_name)
-                
-                final_score = base_score * (1 + boost_score + word_combination_score + phrase_score)
+                final_score = base_score * (1 + boost_score)
                 
                 if final_score > best_score:
                     best_score = final_score
@@ -191,11 +434,6 @@ class AnswerPatternLearner:
                         "base_confidence": rule_info["confidence"],
                         "answers": rule_info["preferred_answers"]
                     }
-                    matched_rule_name = rule_name
-        
-        learned_pattern_result = self._check_learned_patterns(question_lower)
-        if learned_pattern_result and learned_pattern_result["confidence"] > (best_rule["base_confidence"] if best_rule else 0):
-            best_rule = learned_pattern_result
         
         if len(self.pattern_cache) >= self.max_cache_size:
             oldest_key = next(iter(self.pattern_cache))
@@ -203,111 +441,6 @@ class AnswerPatternLearner:
         
         self.pattern_cache[q_hash] = best_rule
         return best_rule
-    
-    def _analyze_word_combinations(self, question: str, rule_name: str) -> float:
-        words = re.findall(r'[가-힣]{2,}', question)
-        if len(words) < 2:
-            return 0
-        
-        combination_score = 0
-        for i in range(len(words)-1):
-            combo = f"{words[i]}_{words[i+1]}"
-            if combo in self.word_combinations:
-                total_occurrences = sum(self.word_combinations[combo].values())
-                if total_occurrences >= 2:
-                    combination_score += 0.1
-        
-        return min(combination_score, 0.3)
-    
-    def _analyze_phrase_patterns(self, question: str, rule_name: str) -> float:
-        phrases = [
-            "해당하지 않는", "적절하지 않은", "가장 적절한", "가장 중요한",
-            "정의로 적절한", "의미로 올바른", "특징을 설명", "방법을 기술"
-        ]
-        
-        phrase_score = 0
-        for phrase in phrases:
-            if phrase.replace(" ", "") in question:
-                if phrase in self.phrase_patterns:
-                    phrase_score += 0.15
-                    break
-        
-        return min(phrase_score, 0.2)
-    
-    def _check_learned_patterns(self, question: str) -> Optional[Dict]:
-        words = re.findall(r'[가-힣]{2,}', question)
-        
-        for i in range(len(words)-2):
-            trigram = f"{words[i]}_{words[i+1]}_{words[i+2]}"
-            if trigram in self.sequence_patterns:
-                answers = self.sequence_patterns[trigram]
-                if sum(answers.values()) >= 3:
-                    best_answer = max(answers.items(), key=lambda x: x[1])
-                    confidence = best_answer[1] / sum(answers.values())
-                    
-                    if confidence > 0.6:
-                        return {
-                            "rule": f"learned_{trigram}",
-                            "match_score": confidence,
-                            "base_confidence": confidence * 0.8,
-                            "answers": {best_answer[0]: confidence}
-                        }
-        
-        return None
-    
-    def learn_word_patterns(self, question: str, answer: str, confidence: float):
-        if confidence < 0.4:
-            return
-        
-        words = re.findall(r'[가-힣]{2,}', question.lower())
-        
-        for i in range(len(words)-1):
-            combo = f"{words[i]}_{words[i+1]}"
-            self.word_combinations[combo][answer] += confidence
-        
-        for i in range(len(words)-2):
-            trigram = f"{words[i]}_{words[i+1]}_{words[i+2]}"
-            self.sequence_patterns[trigram][answer] += confidence * 1.2
-        
-        phrases_to_check = [
-            "해당하지 않는", "적절하지 않은", "가장 적절한", "가장 중요한",
-            "정의로 적절한", "의미로 올바른", "특징을 설명", "방법을 기술",
-            "절차를 서술", "과정을 논술", "원인을 분석", "결과를 예측"
-        ]
-        
-        for phrase in phrases_to_check:
-            if phrase in question.lower():
-                self.phrase_patterns[phrase][answer] += confidence
-        
-        self._update_semantic_clusters(words, answer, confidence)
-    
-    def _update_semantic_clusters(self, words: List[str], answer: str, confidence: float):
-        if confidence < 0.5:
-            return
-        
-        domain_clusters = {
-            "개인정보": ["개인정보", "정보주체", "동의", "수집", "이용", "제공"],
-            "전자금융": ["전자금융", "전자적", "접근매체", "전자서명", "거래"],
-            "보안": ["보안", "관리체계", "위험", "취약점", "암호화", "인증"],
-            "법령": ["법", "규정", "조항", "시행령", "의무", "준수"]
-        }
-        
-        for cluster_name, cluster_words in domain_clusters.items():
-            cluster_matches = sum(1 for word in words if word in cluster_words)
-            if cluster_matches >= 2:
-                self.semantic_clusters[cluster_name].append({
-                    "words": words[:5],
-                    "answer": answer,
-                    "confidence": confidence,
-                    "matches": cluster_matches
-                })
-                
-                if len(self.semantic_clusters[cluster_name]) > 50:
-                    self.semantic_clusters[cluster_name] = sorted(
-                        self.semantic_clusters[cluster_name],
-                        key=lambda x: x["confidence"],
-                        reverse=True
-                    )[:50]
     
     def predict_answer(self, question: str, structure: Dict) -> Tuple[str, float]:
         cache_key = hash(f"{question[:50]}{structure.get('question_type', '')}")
@@ -327,11 +460,7 @@ class AnswerPatternLearner:
                 confidence = pattern_match["base_confidence"] * pattern_match["match_score"]
                 result = (best_answer[0], min(confidence, 0.95))
             else:
-                learned_result = self._predict_from_learned_patterns(question)
-                if learned_result[1] > 0.5:
-                    result = learned_result
-                else:
-                    result = self._statistical_prediction_enhanced(question, structure)
+                result = self._statistical_prediction_enhanced(question, structure)
         
         if len(self.prediction_cache) >= self.max_cache_size:
             oldest_key = next(iter(self.prediction_cache))
@@ -339,45 +468,6 @@ class AnswerPatternLearner:
         
         self.prediction_cache[cache_key] = result
         return result
-    
-    def _predict_from_learned_patterns(self, question: str) -> Tuple[str, float]:
-        words = re.findall(r'[가-힣]{2,}', question.lower())
-        answer_scores = defaultdict(float)
-        
-        for i in range(len(words)-1):
-            combo = f"{words[i]}_{words[i+1]}"
-            if combo in self.word_combinations:
-                total_count = sum(self.word_combinations[combo].values())
-                if total_count >= 2:
-                    for answer, count in self.word_combinations[combo].items():
-                        weight = (count / total_count) * 0.3
-                        answer_scores[answer] += weight
-        
-        for i in range(len(words)-2):
-            trigram = f"{words[i]}_{words[i+1]}_{words[i+2]}"
-            if trigram in self.sequence_patterns:
-                total_count = sum(self.sequence_patterns[trigram].values())
-                if total_count >= 2:
-                    for answer, count in self.sequence_patterns[trigram].items():
-                        weight = (count / total_count) * 0.5
-                        answer_scores[answer] += weight
-        
-        for cluster_name, cluster_data in self.semantic_clusters.items():
-            cluster_words = [item["words"] for item in cluster_data]
-            question_words_set = set(words[:5])
-            
-            for item in cluster_data:
-                item_words_set = set(item["words"])
-                overlap = len(question_words_set & item_words_set)
-                if overlap >= 2:
-                    weight = (overlap / len(item_words_set)) * item["confidence"] * 0.4
-                    answer_scores[item["answer"]] += weight
-        
-        if answer_scores:
-            best_answer = max(answer_scores.items(), key=lambda x: x[1])
-            return best_answer[0], min(best_answer[1], 0.9)
-        
-        return "", 0.0
     
     def _predict_negative_enhanced(self, question: str, structure: Dict) -> Tuple[str, float]:
         question_lower = question.lower()
@@ -483,8 +573,6 @@ class AnswerPatternLearner:
                 rule_name = pattern_match["rule"]
                 self.pattern_performance["rule_success_rate"][rule_name].append(is_correct)
                 self.pattern_performance["confidence_tracking"][rule_name].append(confidence)
-        
-        self.learn_word_patterns(question, correct_answer, 1.0)
     
     def get_confidence_boost(self, question: str, predicted_answer: str, structure: Dict) -> float:
         boost = 0.0
@@ -496,9 +584,6 @@ class AnswerPatternLearner:
             if predicted_answer in answers:
                 preference_score = answers[predicted_answer]
                 boost += preference_score * 0.15
-        
-        learned_boost = self._get_learned_pattern_boost(question, predicted_answer)
-        boost += learned_boost
         
         domains = structure.get("domain_hints", [])
         if domains and len(domains) == 1:
@@ -514,30 +599,12 @@ class AnswerPatternLearner:
         
         return min(boost, 0.30)
     
-    def _get_learned_pattern_boost(self, question: str, predicted_answer: str) -> float:
-        words = re.findall(r'[가-힣]{2,}', question.lower())
-        boost = 0.0
-        
-        for i in range(len(words)-1):
-            combo = f"{words[i]}_{words[i+1]}"
-            if combo in self.word_combinations:
-                total_count = sum(self.word_combinations[combo].values())
-                if predicted_answer in self.word_combinations[combo]:
-                    answer_count = self.word_combinations[combo][predicted_answer]
-                    if total_count >= 3 and answer_count / total_count > 0.6:
-                        boost += 0.08
-        
-        return min(boost, 0.15)
-    
     def get_pattern_insights(self) -> Dict:
         insights = {
             "rule_performance": {},
             "domain_preferences": {},
             "negative_distribution": dict(self.patterns["negative_answer_patterns"]),
-            "structure_patterns": {},
-            "learned_combinations": len(self.word_combinations),
-            "phrase_patterns": len(self.phrase_patterns),
-            "semantic_clusters": {k: len(v) for k, v in self.semantic_clusters.items()}
+            "structure_patterns": {}
         }
         
         for rule_name, success_list in self.pattern_performance["rule_success_rate"].items():
@@ -582,46 +649,19 @@ class AnswerPatternLearner:
                 success_list = self.pattern_performance["rule_success_rate"][rule_name]
                 if len(success_list) > 30:
                     self.pattern_performance["rule_success_rate"][rule_name] = success_list[-30:]
-        
-        self._optimize_learned_patterns()
-    
-    def _optimize_learned_patterns(self):
-        for combo in list(self.word_combinations.keys()):
-            total_count = sum(self.word_combinations[combo].values())
-            if total_count < 2:
-                del self.word_combinations[combo]
-            elif total_count > 20:
-                answers = self.word_combinations[combo]
-                top_answers = dict(Counter(answers).most_common(3))
-                self.word_combinations[combo] = Counter(top_answers)
-        
-        for phrase in list(self.phrase_patterns.keys()):
-            total_count = sum(self.phrase_patterns[phrase].values())
-            if total_count < 2:
-                del self.phrase_patterns[phrase]
-        
-        for trigram in list(self.sequence_patterns.keys()):
-            total_count = sum(self.sequence_patterns[trigram].values())
-            if total_count < 2:
-                del self.sequence_patterns[trigram]
     
     def save_patterns(self, filepath: str = "./learned_patterns.pkl"):
         save_data = {
             "patterns": {k: dict(v) if hasattr(v, 'items') else v for k, v in self.patterns.items()},
             "rules": self.learned_rules,
-            "performance": {k: dict(v) if hasattr(v, 'items') else v for k, v in self.pattern_performance.items()},
-            "word_combinations": {k: dict(v) for k, v in self.word_combinations.items()},
-            "phrase_patterns": {k: dict(v) for k, v in self.phrase_patterns.items()},
-            "sequence_patterns": {k: dict(v) for k, v in self.sequence_patterns.items()},
-            "semantic_clusters": dict(self.semantic_clusters)
+            "performance": {k: dict(v) if hasattr(v, 'items') else v for k, v in self.pattern_performance.items()}
         }
         
         try:
             with open(filepath, 'wb') as f:
                 pickle.dump(save_data, f)
-            return True
         except Exception:
-            return False
+            pass
     
     def load_patterns(self, filepath: str = "./learned_patterns.pkl"):
         try:
@@ -635,37 +675,14 @@ class AnswerPatternLearner:
                     perf_data = data["performance"]
                     self.pattern_performance = defaultdict(_default_list, perf_data)
                 
-                if "word_combinations" in data:
-                    word_data = data["word_combinations"]
-                    self.word_combinations = defaultdict(_default_counter)
-                    for k, v in word_data.items():
-                        self.word_combinations[k] = Counter(v)
-                
-                if "phrase_patterns" in data:
-                    phrase_data = data["phrase_patterns"]
-                    self.phrase_patterns = defaultdict(_default_counter)
-                    for k, v in phrase_data.items():
-                        self.phrase_patterns[k] = Counter(v)
-                
-                if "sequence_patterns" in data:
-                    seq_data = data["sequence_patterns"]
-                    self.sequence_patterns = defaultdict(_default_counter)
-                    for k, v in seq_data.items():
-                        self.sequence_patterns[k] = Counter(v)
-                
-                if "semantic_clusters" in data:
-                    self.semantic_clusters = defaultdict(list, data["semantic_clusters"])
-                
                 return True
         except Exception:
             return False
     
     def cleanup(self):
         cache_size = len(self.prediction_cache) + len(self.pattern_cache)
-        learned_size = len(self.word_combinations) + len(self.phrase_patterns) + len(self.sequence_patterns)
-        
         if cache_size > 0 and self.debug_mode:
-            print(f"패턴 학습기 캐시: {cache_size}개, 학습 패턴: {learned_size}개")
+            print(f"패턴 학습기 캐시: {cache_size}개")
         
         self.prediction_cache.clear()
         self.pattern_cache.clear()

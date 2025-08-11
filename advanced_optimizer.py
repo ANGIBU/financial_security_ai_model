@@ -70,483 +70,107 @@ class SystemOptimizer:
         return {
             "금융투자업_분류": {
                 "patterns": ["금융투자업", "구분", "해당하지", "소비자금융업", "투자매매업", "투자중개업", "보험중개업", "투자자문업", "투자일임업"],
-                "preferred_answers": {"1": 0.88, "5": 0.07, "2": 0.03, "3": 0.01, "4": 0.01},
-                "confidence": 0.95,
-                "context_multipliers": {"소비자금융업": 1.5, "해당하지": 1.4, "금융투자업": 1.25, "보험중개업": 1.3},
-                "domain_boost": 0.3,
+                "preferred_answers": {"1": 0.85, "5": 0.08, "2": 0.04, "3": 0.02, "4": 0.01},
+                "confidence": 0.92,
+                "context_multipliers": {"소비자금융업": 1.4, "해당하지": 1.3, "금융투자업": 1.2, "보험중개업": 1.25},
+                "domain_boost": 0.25,
                 "answer_logic": "소비자금융업과 보험중개업은 금융투자업이 아님"
             },
             "위험관리_계획": {
                 "patterns": ["위험", "관리", "계획", "수립", "고려", "요소", "적절하지", "위험수용", "대응전략"],
-                "preferred_answers": {"2": 0.85, "1": 0.08, "3": 0.04, "4": 0.02, "5": 0.01},
-                "confidence": 0.92,
-                "context_multipliers": {"위험수용": 1.6, "적절하지": 1.4, "위험관리": 1.2},
-                "domain_boost": 0.25,
+                "preferred_answers": {"2": 0.80, "1": 0.10, "3": 0.06, "4": 0.02, "5": 0.02},
+                "confidence": 0.88,
+                "context_multipliers": {"위험수용": 1.5, "적절하지": 1.3, "위험관리": 1.15},
+                "domain_boost": 0.22,
                 "answer_logic": "위험수용은 위험대응전략의 하나이지 별도 고려요소가 아님"
             },
             "관리체계_정책수립": {
                 "patterns": ["관리체계", "수립", "운영", "정책수립", "단계", "중요한", "경영진", "참여", "최고책임자"],
-                "preferred_answers": {"2": 0.82, "1": 0.10, "3": 0.05, "4": 0.02, "5": 0.01},
-                "confidence": 0.90,
-                "context_multipliers": {"경영진": 1.5, "참여": 1.4, "가장중요": 1.3},
-                "domain_boost": 0.22,
+                "preferred_answers": {"2": 0.75, "1": 0.12, "3": 0.08, "4": 0.03, "5": 0.02},
+                "confidence": 0.83,
+                "context_multipliers": {"경영진": 1.4, "참여": 1.3, "가장중요": 1.2},
+                "domain_boost": 0.18,
                 "answer_logic": "정책수립 단계에서 경영진의 참여가 가장 중요함"
             },
             "재해복구_계획": {
                 "patterns": ["재해", "복구", "계획", "수립", "고려", "요소", "옳지", "복구절차", "비상연락", "개인정보파기"],
-                "preferred_answers": {"3": 0.85, "1": 0.06, "2": 0.05, "4": 0.02, "5": 0.02},
-                "confidence": 0.93,
-                "context_multipliers": {"개인정보파기": 1.6, "옳지않": 1.4, "재해복구": 1.25},
-                "domain_boost": 0.25,
+                "preferred_answers": {"3": 0.78, "1": 0.08, "2": 0.07, "4": 0.04, "5": 0.03},
+                "confidence": 0.87,
+                "context_multipliers": {"개인정보파기": 1.5, "옳지않": 1.3, "재해복구": 1.2},
+                "domain_boost": 0.20,
                 "answer_logic": "개인정보파기절차는 재해복구와 직접 관련 없음"
             },
             "개인정보_정의": {
                 "patterns": ["개인정보", "정의", "의미", "개념", "식별", "살아있는"],
-                "preferred_answers": {"2": 0.78, "1": 0.12, "3": 0.06, "4": 0.02, "5": 0.02},
-                "confidence": 0.88,
-                "context_multipliers": {"법령": 1.3, "제2조": 1.35, "개인정보보호법": 1.2},
-                "domain_boost": 0.2,
+                "preferred_answers": {"2": 0.73, "1": 0.15, "3": 0.07, "4": 0.03, "5": 0.02},
+                "confidence": 0.85,
+                "context_multipliers": {"법령": 1.2, "제2조": 1.25, "개인정보보호법": 1.15},
+                "domain_boost": 0.17,
                 "answer_logic": "살아있는 개인에 관한 정보로서 개인을 알아볼 수 있는 정보"
             },
             "전자금융_정의": {
                 "patterns": ["전자금융거래", "전자적장치", "금융상품", "서비스", "제공"],
-                "preferred_answers": {"2": 0.75, "1": 0.15, "3": 0.06, "4": 0.02, "5": 0.02},
-                "confidence": 0.85,
-                "context_multipliers": {"전자금융거래법": 1.3, "제2조": 1.25, "전자적": 1.2},
-                "domain_boost": 0.18,
+                "preferred_answers": {"2": 0.70, "1": 0.18, "3": 0.07, "4": 0.03, "5": 0.02},
+                "confidence": 0.80,
+                "context_multipliers": {"전자금융거래법": 1.25, "제2조": 1.2, "전자적": 1.15},
+                "domain_boost": 0.15,
                 "answer_logic": "전자적 장치를 통한 금융상품 및 서비스 거래"
             },
             "접근매체_관리": {
                 "patterns": ["접근매체", "선정", "사용", "관리", "안전", "신뢰"],
-                "preferred_answers": {"1": 0.77, "2": 0.13, "3": 0.06, "4": 0.02, "5": 0.02},
-                "confidence": 0.87,
-                "context_multipliers": {"접근매체": 1.4, "안전": 1.25, "관리": 1.2},
-                "domain_boost": 0.22,
+                "preferred_answers": {"1": 0.72, "2": 0.15, "3": 0.08, "4": 0.03, "5": 0.02},
+                "confidence": 0.82,
+                "context_multipliers": {"접근매체": 1.3, "안전": 1.2, "관리": 1.15},
+                "domain_boost": 0.18,
                 "answer_logic": "접근매체는 안전하고 신뢰할 수 있어야 함"
             },
             "개인정보_유출": {
                 "patterns": ["개인정보", "유출", "통지", "지체없이", "정보주체"],
-                "preferred_answers": {"1": 0.80, "2": 0.10, "3": 0.06, "4": 0.02, "5": 0.02},
-                "confidence": 0.90,
-                "context_multipliers": {"유출": 1.4, "통지": 1.3, "지체없이": 1.25},
-                "domain_boost": 0.25,
+                "preferred_answers": {"1": 0.75, "2": 0.12, "3": 0.08, "4": 0.03, "5": 0.02},
+                "confidence": 0.85,
+                "context_multipliers": {"유출": 1.3, "통지": 1.25, "지체없이": 1.2},
+                "domain_boost": 0.20,
                 "answer_logic": "개인정보 유출 시 지체 없이 통지 의무"
             },
             "안전성_확보조치": {
                 "patterns": ["안전성", "확보조치", "기술적", "관리적", "물리적"],
-                "preferred_answers": {"1": 0.73, "2": 0.15, "3": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.85,
-                "context_multipliers": {"안전성확보조치": 1.4, "기술적": 1.25, "관리적": 1.2},
-                "domain_boost": 0.2,
+                "preferred_answers": {"1": 0.68, "2": 0.18, "3": 0.09, "4": 0.03, "5": 0.02},
+                "confidence": 0.80,
+                "context_multipliers": {"안전성확보조치": 1.3, "기술적": 1.2, "관리적": 1.15},
+                "domain_boost": 0.17,
                 "answer_logic": "기술적, 관리적, 물리적 안전성 확보조치 필요"
             },
             "정보보호_관리체계": {
                 "patterns": ["정보보호", "관리체계", "ISMS", "인증", "운영"],
-                "preferred_answers": {"3": 0.70, "2": 0.18, "1": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.83,
-                "context_multipliers": {"ISMS": 1.3, "관리체계": 1.25, "인증": 1.2},
-                "domain_boost": 0.18,
+                "preferred_answers": {"3": 0.65, "2": 0.20, "1": 0.10, "4": 0.03, "5": 0.02},
+                "confidence": 0.78,
+                "context_multipliers": {"ISMS": 1.25, "관리체계": 1.2, "인증": 1.15},
+                "domain_boost": 0.15,
                 "answer_logic": "정보보호관리체계 인증 및 운영"
             },
             "암호화_요구사항": {
                 "patterns": ["암호화", "암호", "복호화", "키관리", "해시"],
-                "preferred_answers": {"2": 0.67, "1": 0.18, "3": 0.10, "4": 0.03, "5": 0.02},
-                "confidence": 0.80,
-                "context_multipliers": {"암호화": 1.3, "키관리": 1.25, "해시": 1.2},
-                "domain_boost": 0.18,
+                "preferred_answers": {"2": 0.62, "1": 0.20, "3": 0.12, "4": 0.04, "5": 0.02},
+                "confidence": 0.75,
+                "context_multipliers": {"암호화": 1.25, "키관리": 1.2, "해시": 1.15},
+                "domain_boost": 0.15,
                 "answer_logic": "중요정보 암호화 및 안전한 키관리"
             },
             "부정형_일반": {
                 "patterns": ["해당하지", "적절하지", "옳지", "틀린", "잘못된"],
-                "preferred_answers": {"1": 0.42, "3": 0.28, "5": 0.18, "2": 0.08, "4": 0.04},
-                "confidence": 0.75,
-                "context_multipliers": {"제외": 1.3, "예외": 1.25, "아닌": 1.2},
-                "domain_boost": 0.15,
+                "preferred_answers": {"1": 0.35, "3": 0.25, "5": 0.20, "2": 0.12, "4": 0.08},
+                "confidence": 0.68,
+                "context_multipliers": {"제외": 1.25, "예외": 1.2, "아닌": 1.15},
+                "domain_boost": 0.12,
                 "answer_logic": "부정형 문제는 문맥에 따라 다양한 답 가능"
             },
             "모두_포함": {
                 "patterns": ["모두", "모든", "전부", "다음중"],
-                "preferred_answers": {"5": 0.52, "1": 0.22, "4": 0.13, "3": 0.08, "2": 0.05},
-                "confidence": 0.78,
-                "context_multipliers": {"모두": 1.4, "전부": 1.3},
-                "domain_boost": 0.15,
+                "preferred_answers": {"5": 0.45, "1": 0.25, "4": 0.15, "3": 0.10, "2": 0.05},
+                "confidence": 0.70,
+                "context_multipliers": {"모두": 1.3, "전부": 1.25},
+                "domain_boost": 0.10,
                 "answer_logic": "모두 해당하는 경우 마지막 번호 선택 경향"
-            },
-            "ISMS_관련": {
-                "patterns": ["ISMS", "정보보호", "관리체계", "인증"],
-                "preferred_answers": {"3": 0.70, "2": 0.20, "1": 0.07, "4": 0.02, "5": 0.01},
-                "confidence": 0.85,
-                "context_multipliers": {"ISMS": 1.3, "관리체계": 1.25, "운영": 1.2},
-                "domain_boost": 0.18,
-                "answer_logic": "정보보호관리체계 운영 및 구축"
-            },
-            "암호화_요구": {
-                "patterns": ["암호화", "암호", "복호화", "키관리"],
-                "preferred_answers": {"2": 0.67, "1": 0.23, "3": 0.07, "4": 0.02, "5": 0.01},
-                "confidence": 0.82,
-                "context_multipliers": {"암호화": 1.3, "키관리": 1.25, "해시": 1.2},
-                "domain_boost": 0.18,
-                "answer_logic": "암호화 기술과 키 관리"
-            },
-            "전자서명_법령": {
-                "patterns": ["전자서명", "전자서명법", "인증", "공개키"],
-                "preferred_answers": {"2": 0.73, "1": 0.18, "3": 0.06, "4": 0.02, "5": 0.01},
-                "confidence": 0.85,
-                "context_multipliers": {"전자서명법": 1.3, "공인인증": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "전자서명법 및 공개키 기반 인증"
-            },
-            "신용정보_보호": {
-                "patterns": ["신용정보", "신용정보법", "보호", "이용"],
-                "preferred_answers": {"1": 0.75, "2": 0.16, "3": 0.06, "4": 0.02, "5": 0.01},
-                "confidence": 0.87,
-                "context_multipliers": {"신용정보보호법": 1.3, "동의": 1.25},
-                "domain_boost": 0.2,
-                "answer_logic": "신용정보보호법에 따른 동의"
-            },
-            "금융실명_거래": {
-                "patterns": ["금융실명", "실명거래", "비실명", "예외"],
-                "preferred_answers": {"2": 0.70, "3": 0.18, "1": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.83,
-                "context_multipliers": {"금융실명법": 1.3, "비실명거래": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "금융실명법 비실명거래 예외"
-            },
-            "보험업법_관련": {
-                "patterns": ["보험업법", "보험", "모집", "설계사"],
-                "preferred_answers": {"3": 0.65, "2": 0.23, "1": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.80,
-                "context_multipliers": {"보험설계사": 1.3, "모집행위": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "보험설계사 모집행위"
-            },
-            "자본시장법_관련": {
-                "patterns": ["자본시장법", "자본시장", "금융투자", "투자자"],
-                "preferred_answers": {"2": 0.63, "1": 0.23, "3": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.80,
-                "context_multipliers": {"투자자보호": 1.3, "자본시장": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "투자자보호 자본시장법"
-            },
-            "은행법_관련": {
-                "patterns": ["은행법", "은행", "예금", "대출"],
-                "preferred_answers": {"1": 0.67, "2": 0.21, "3": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.81,
-                "context_multipliers": {"은행업무": 1.3, "예금보험": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "은행업무 예금보험"
-            },
-            "IT_거버넌스": {
-                "patterns": ["IT거버넌스", "IT", "거버넌스", "정보기술"],
-                "preferred_answers": {"3": 0.60, "2": 0.26, "1": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.77,
-                "context_multipliers": {"IT전략": 1.3, "정보기술": 1.25},
-                "domain_boost": 0.15,
-                "answer_logic": "IT전략 정보기술"
-            },
-            "COBIT_관련": {
-                "patterns": ["COBIT", "IT관리", "프레임워크"],
-                "preferred_answers": {"2": 0.65, "3": 0.23, "1": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.80,
-                "context_multipliers": {"IT거버넌스": 1.3, "관리": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "IT거버넌스 관리"
-            },
-            "ITIL_관련": {
-                "patterns": ["ITIL", "서비스", "IT서비스"],
-                "preferred_answers": {"3": 0.63, "2": 0.23, "1": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.79,
-                "context_multipliers": {"서비스관리": 1.3, "IT서비스": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "서비스관리 IT서비스"
-            },
-            "ISO27001_관련": {
-                "patterns": ["ISO27001", "ISO", "27001", "정보보호"],
-                "preferred_answers": {"3": 0.67, "2": 0.21, "1": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.83,
-                "context_multipliers": {"정보보호관리": 1.3, "인증": 1.25},
-                "domain_boost": 0.2,
-                "answer_logic": "정보보호관리 인증"
-            },
-            "PCI_DSS": {
-                "patterns": ["PCI", "DSS", "카드", "결제"],
-                "preferred_answers": {"2": 0.63, "1": 0.23, "3": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.77,
-                "context_multipliers": {"결제카드": 1.3, "보안표준": 1.25},
-                "domain_boost": 0.15,
-                "answer_logic": "결제카드 보안표준"
-            },
-            "SOX_법령": {
-                "patterns": ["SOX", "사베인스", "내부통제"],
-                "preferred_answers": {"2": 0.60, "3": 0.23, "1": 0.13, "4": 0.02, "5": 0.02},
-                "confidence": 0.75,
-                "context_multipliers": {"내부통제": 1.3, "재무보고": 1.25},
-                "domain_boost": 0.15,
-                "answer_logic": "내부통제 재무보고"
-            },
-            "바젤_협약": {
-                "patterns": ["바젤", "basel", "자본", "적정성"],
-                "preferred_answers": {"1": 0.65, "2": 0.23, "3": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.80,
-                "context_multipliers": {"자본적정성": 1.3, "Basel": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "자본적정성 Basel"
-            },
-            "GDPR_관련": {
-                "patterns": ["GDPR", "개인정보", "유럽", "EU"],
-                "preferred_answers": {"2": 0.67, "1": 0.21, "3": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.83,
-                "context_multipliers": {"개인정보보호": 1.3, "유럽연합": 1.25},
-                "domain_boost": 0.2,
-                "answer_logic": "개인정보보호 유럽연합"
-            },
-            "CCPA_관련": {
-                "patterns": ["CCPA", "캘리포니아", "소비자", "개인정보"],
-                "preferred_answers": {"2": 0.63, "1": 0.23, "3": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.77,
-                "context_multipliers": {"소비자개인정보": 1.3, "캘리포니아": 1.25},
-                "domain_boost": 0.15,
-                "answer_logic": "소비자개인정보 캘리포니아"
-            },
-            "해킹_공격": {
-                "patterns": ["해킹", "공격", "침입", "사이버"],
-                "preferred_answers": {"3": 0.60, "1": 0.23, "2": 0.13, "4": 0.02, "5": 0.02},
-                "confidence": 0.75,
-                "context_multipliers": {"사이버공격": 1.3, "침해": 1.25},
-                "domain_boost": 0.15,
-                "answer_logic": "사이버공격 침해"
-            },
-            "악성코드_분류": {
-                "patterns": ["악성코드", "malware", "바이러스", "웜"],
-                "preferred_answers": {"2": 0.63, "3": 0.23, "1": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.80,
-                "context_multipliers": {"트로이": 1.3, "랜섬웨어": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "트로이 랜섬웨어"
-            },
-            "트로이목마_특징": {
-                "patterns": ["트로이", "trojan", "원격", "제어"],
-                "preferred_answers": {"2": 0.67, "1": 0.21, "3": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.85,
-                "context_multipliers": {"원격제어": 1.4, "원격접근": 1.35},
-                "domain_boost": 0.2,
-                "answer_logic": "원격제어 원격접근"
-            },
-            "랜섬웨어_대응": {
-                "patterns": ["랜섬웨어", "ransomware", "암호화", "복구"],
-                "preferred_answers": {"1": 0.70, "2": 0.18, "3": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.83,
-                "context_multipliers": {"백업": 1.3, "복구": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "백업 복구"
-            },
-            "피싱_공격": {
-                "patterns": ["피싱", "phishing", "사기", "이메일"],
-                "preferred_answers": {"3": 0.65, "2": 0.21, "1": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.80,
-                "context_multipliers": {"스피어피싱": 1.3, "사회공학": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "스피어피싱 사회공학"
-            },
-            "스미싱_공격": {
-                "patterns": ["스미싱", "smishing", "SMS", "문자"],
-                "preferred_answers": {"3": 0.63, "2": 0.23, "1": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.77,
-                "context_multipliers": {"문자메시지": 1.3, "SMS": 1.25},
-                "domain_boost": 0.15,
-                "answer_logic": "문자메시지 SMS"
-            },
-            "파밍_공격": {
-                "patterns": ["파밍", "pharming", "DNS", "도메인"],
-                "preferred_answers": {"2": 0.67, "3": 0.21, "1": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.80,
-                "context_multipliers": {"DNS변조": 1.3, "도메인": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "DNS변조 도메인"
-            },
-            "DDoS_공격": {
-                "patterns": ["DDoS", "분산", "서비스", "거부"],
-                "preferred_answers": {"1": 0.63, "2": 0.23, "3": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.78,
-                "context_multipliers": {"분산서비스거부": 1.3, "트래픽": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "분산서비스거부 트래픽"
-            },
-            "APT_공격": {
-                "patterns": ["APT", "지능형", "지속적", "위협"],
-                "preferred_answers": {"2": 0.65, "3": 0.21, "1": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.81,
-                "context_multipliers": {"지능형지속위협": 1.3, "표적": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "지능형지속위협 표적"
-            },
-            "제로데이_공격": {
-                "patterns": ["제로데이", "zero-day", "취약점"],
-                "preferred_answers": {"3": 0.67, "2": 0.21, "1": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.83,
-                "context_multipliers": {"미패치": 1.3, "취약점": 1.25},
-                "domain_boost": 0.2,
-                "answer_logic": "미패치 취약점"
-            },
-            "백도어_설치": {
-                "patterns": ["백도어", "backdoor", "은밀", "접근"],
-                "preferred_answers": {"2": 0.63, "1": 0.23, "3": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.77,
-                "context_multipliers": {"은밀한": 1.3, "우회": 1.25},
-                "domain_boost": 0.15,
-                "answer_logic": "은밀한 우회"
-            },
-            "루트킷_은닉": {
-                "patterns": ["루트킷", "rootkit", "은닉", "탐지"],
-                "preferred_answers": {"3": 0.65, "2": 0.21, "1": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.80,
-                "context_multipliers": {"시스템은닉": 1.3, "탐지회피": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "시스템은닉 탐지회피"
-            },
-            "키로거_정보수집": {
-                "patterns": ["키로거", "keylogger", "키보드", "입력"],
-                "preferred_answers": {"2": 0.67, "1": 0.21, "3": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.83,
-                "context_multipliers": {"키보드입력": 1.3, "정보수집": 1.25},
-                "domain_boost": 0.2,
-                "answer_logic": "키보드입력 정보수집"
-            },
-            "스파이웨어_감시": {
-                "patterns": ["스파이웨어", "spyware", "감시", "정보"],
-                "preferred_answers": {"2": 0.63, "3": 0.23, "1": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.77,
-                "context_multipliers": {"정보수집": 1.3, "사용자감시": 1.25},
-                "domain_boost": 0.15,
-                "answer_logic": "정보수집 사용자감시"
-            },
-            "애드웨어_광고": {
-                "patterns": ["애드웨어", "adware", "광고", "팝업"],
-                "preferred_answers": {"3": 0.60, "2": 0.26, "1": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.73,
-                "context_multipliers": {"광고표시": 1.3, "팝업": 1.25},
-                "domain_boost": 0.15,
-                "answer_logic": "광고표시 팝업"
-            },
-            "방화벽_정책": {
-                "patterns": ["방화벽", "firewall", "정책", "규칙"],
-                "preferred_answers": {"1": 0.67, "2": 0.21, "3": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.83,
-                "context_multipliers": {"접근제어": 1.3, "네트워크": 1.25},
-                "domain_boost": 0.2,
-                "answer_logic": "접근제어 네트워크"
-            },
-            "IDS_IPS": {
-                "patterns": ["IDS", "IPS", "침입", "탐지"],
-                "preferred_answers": {"2": 0.65, "3": 0.21, "1": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.81,
-                "context_multipliers": {"침입탐지": 1.3, "침입방지": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "침입탐지 침입방지"
-            },
-            "백업_복구": {
-                "patterns": ["백업", "backup", "복구", "recovery"],
-                "preferred_answers": {"1": 0.70, "2": 0.18, "3": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.85,
-                "context_multipliers": {"데이터복구": 1.3, "백업전략": 1.25},
-                "domain_boost": 0.2,
-                "answer_logic": "데이터복구 백업전략"
-            },
-            "비즈니스연속성": {
-                "patterns": ["비즈니스", "연속성", "BCP", "업무"],
-                "preferred_answers": {"2": 0.63, "1": 0.23, "3": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.80,
-                "context_multipliers": {"업무연속성": 1.3, "BCP": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "업무연속성 BCP"
-            },
-            "접근제어_모델": {
-                "patterns": ["접근제어", "access", "control", "권한"],
-                "preferred_answers": {"2": 0.67, "3": 0.21, "1": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.83,
-                "context_multipliers": {"권한관리": 1.3, "인증": 1.25},
-                "domain_boost": 0.2,
-                "answer_logic": "권한관리 인증"
-            },
-            "다중인증_요소": {
-                "patterns": ["다중인증", "MFA", "2FA", "이중"],
-                "preferred_answers": {"1": 0.65, "2": 0.23, "3": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.82,
-                "context_multipliers": {"이중인증": 1.3, "다요소": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "이중인증 다요소"
-            },
-            "생체인증_방식": {
-                "patterns": ["생체인증", "지문", "홍채", "얼굴"],
-                "preferred_answers": {"3": 0.63, "2": 0.23, "1": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.79,
-                "context_multipliers": {"바이오메트릭": 1.3, "생체정보": 1.25},
-                "domain_boost": 0.15,
-                "answer_logic": "바이오메트릭 생체정보"
-            },
-            "취약점_평가": {
-                "patterns": ["취약점", "vulnerability", "평가", "점검"],
-                "preferred_answers": {"2": 0.65, "1": 0.21, "3": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.81,
-                "context_multipliers": {"보안점검": 1.3, "취약성": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "보안점검 취약성"
-            },
-            "모의해킹_테스트": {
-                "patterns": ["모의해킹", "penetration", "testing", "침투"],
-                "preferred_answers": {"3": 0.67, "2": 0.21, "1": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.83,
-                "context_multipliers": {"침투테스트": 1.3, "모의침투": 1.25},
-                "domain_boost": 0.2,
-                "answer_logic": "침투테스트 모의침투"
-            },
-            "보안교육_훈련": {
-                "patterns": ["보안교육", "훈련", "인식", "교육"],
-                "preferred_answers": {"2": 0.63, "1": 0.23, "3": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.77,
-                "context_multipliers": {"보안인식": 1.3, "사용자교육": 1.25},
-                "domain_boost": 0.15,
-                "answer_logic": "보안인식 사용자교육"
-            },
-            "암호정책_관리": {
-                "patterns": ["암호정책", "password", "policy", "복잡성"],
-                "preferred_answers": {"1": 0.67, "2": 0.21, "3": 0.08, "4": 0.02, "5": 0.02},
-                "confidence": 0.83,
-                "context_multipliers": {"패스워드정책": 1.3, "복잡성": 1.25},
-                "domain_boost": 0.2,
-                "answer_logic": "패스워드정책 복잡성"
-            },
-            "소셜엔지니어링": {
-                "patterns": ["소셜", "엔지니어링", "사회공학", "심리"],
-                "preferred_answers": {"3": 0.65, "2": 0.21, "1": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.80,
-                "context_multipliers": {"사회공학": 1.3, "인간심리": 1.25},
-                "domain_boost": 0.18,
-                "answer_logic": "사회공학 인간심리"
-            },
-            "클라우드_보안": {
-                "patterns": ["클라우드", "cloud", "보안", "SaaS"],
-                "preferred_answers": {"2": 0.63, "3": 0.23, "1": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.77,
-                "context_multipliers": {"클라우드보안": 1.3, "가상화": 1.25},
-                "domain_boost": 0.15,
-                "answer_logic": "클라우드보안 가상화"
-            },
-            "IoT_보안": {
-                "patterns": ["IoT", "사물인터넷", "디바이스", "연결"],
-                "preferred_answers": {"3": 0.63, "2": 0.23, "1": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.75,
-                "context_multipliers": {"사물인터넷": 1.3, "스마트디바이스": 1.25},
-                "domain_boost": 0.15,
-                "answer_logic": "사물인터넷 스마트디바이스"
-            },
-            "모바일_보안": {
-                "patterns": ["모바일", "mobile", "스마트폰", "앱"],
-                "preferred_answers": {"2": 0.65, "3": 0.21, "1": 0.10, "4": 0.02, "5": 0.02},
-                "confidence": 0.78,
-                "context_multipliers": {"모바일보안": 1.3, "앱보안": 1.25},
-                "domain_boost": 0.15,
-                "answer_logic": "모바일보안 앱보안"
             }
         }
     
@@ -714,73 +338,73 @@ class SystemOptimizer:
         
         if has_negative:
             if "모든" in question or "모두" in question:
-                return "5", 0.72
+                return "5", 0.68
             elif "제외" in question or "빼고" in question:
-                return "1", 0.68
+                return "1", 0.65
             elif "무관" in question or "관계없" in question:
-                return "3", 0.65
+                return "3", 0.62
             elif "예외" in question:
-                return "4", 0.63
+                return "4", 0.60
             else:
-                return "1", 0.61
+                return "1", 0.58
         
         if "금융투자업" in question:
             if "소비자금융업" in question:
-                return "1", 0.87
+                return "1", 0.82
             elif "보험중개업" in question:
-                return "5", 0.83
+                return "5", 0.78
             else:
-                return "1", 0.77
+                return "1", 0.72
         
         if "위험" in question and "관리" in question and "계획" in question:
             if "위험수용" in question or "위험 수용" in question:
-                return "2", 0.83
+                return "2", 0.78
             else:
-                return "2", 0.73
+                return "2", 0.68
         
         if "관리체계" in question and "정책" in question:
             if "경영진" in question and "참여" in question:
-                return "2", 0.83
-            elif "가장중요" in question or "가장 중요" in question:
                 return "2", 0.78
+            elif "가장중요" in question or "가장 중요" in question:
+                return "2", 0.73
             else:
-                return "2", 0.67
+                return "2", 0.62
         
         if "재해복구" in question or "재해 복구" in question:
             if "개인정보파기" in question or "개인정보 파기" in question:
-                return "3", 0.83
+                return "3", 0.78
             else:
-                return "3", 0.67
+                return "3", 0.62
         
         if "개인정보보호" in domains:
             if "정의" in question:
-                return "2", 0.77
+                return "2", 0.72
             elif "유출" in question:
-                return "1", 0.83
+                return "1", 0.78
             else:
-                return "2", 0.63
+                return "2", 0.58
         elif "전자금융" in domains:
             if "정의" in question:
-                return "2", 0.75
+                return "2", 0.70
             elif "접근매체" in question:
-                return "1", 0.80
+                return "1", 0.75
             else:
-                return "2", 0.65
+                return "2", 0.60
         elif "정보보안" in domains:
-            return "3", 0.70
+            return "3", 0.65
         
         question_length = len(question)
         question_hash = hash(question) % 5 + 1
         
         if question_length < 200:
             base_answers = ["2", "1", "3"]
-            return str(base_answers[question_hash % 3]), 0.47
+            return str(base_answers[question_hash % 3]), 0.42
         elif question_length < 400:
             base_answers = ["3", "2", "1"] 
-            return str(base_answers[question_hash % 3]), 0.50
+            return str(base_answers[question_hash % 3]), 0.45
         else:
             base_answers = ["3", "1", "2"]
-            return str(base_answers[question_hash % 3]), 0.45
+            return str(base_answers[question_hash % 3]), 0.40
     
     def get_adaptive_batch_size(self, available_memory_gb: float, 
                               question_difficulties: List[QuestionDifficulty]) -> int:

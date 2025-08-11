@@ -77,10 +77,7 @@ class FinancialAIInference:
             "model_generation_success": 0,
             "pattern_extraction_success": 0,
             "pattern_based_answers": 0,
-            "high_confidence_answers": 0,
-            "unified_pattern_usage": 0,
-            "multi_pattern_consensus": 0,
-            "enhanced_prompts_used": 0
+            "high_confidence_answers": 0
         }
         
         self.answer_cache = {}
@@ -97,10 +94,6 @@ class FinancialAIInference:
             if self.auto_learner.load_model():
                 if self.verbose:
                     print(f"자동 학습 모델 로드: {len(self.auto_learner.pattern_weights)}개 패턴")
-            
-            if self.pattern_learner.load_patterns():
-                if self.verbose:
-                    print(f"패턴 학습기 로드: {len(self.pattern_learner.learned_rules)}개 규칙")
             
             corrections = self.correction_system.load_corrections_from_csv("./corrections.csv")
             if corrections > 0 and self.verbose:
@@ -155,7 +148,7 @@ class FinancialAIInference:
             
             hint, conf = self.optimizer.get_smart_answer_hint(question, structure)
             
-            if conf > 0.3:
+            if conf > 0.4:
                 self.stats["smart_hints_used"] += 1
                 return hint
             else:
@@ -194,99 +187,20 @@ class FinancialAIInference:
         
         return "관련 법령과 규정에 따라 체계적인 보안 관리 방안을 수립하고, 지속적인 모니터링과 개선을 통해 안전성을 확보해야 합니다."
     
-    def _apply_unified_pattern_analysis(self, question: str, structure: Dict) -> Tuple[Optional[str], float, str]:
-        
-        cache_key = hash(question[:200])
+    def _apply_pattern_based_answer(self, question: str, structure: Dict) -> Tuple[Optional[str], float]:
+        cache_key = hash(question[:100])
         if cache_key in self.pattern_analysis_cache:
             return self.pattern_analysis_cache[cache_key]
         
-        pattern_results = []
+        hint_answer, hint_confidence = self.optimizer.get_smart_answer_hint(question, structure)
         
-        pattern_match = self.pattern_learner.analyze_question_pattern(question)
-        if pattern_match and pattern_match["base_confidence"] > 0.4:
-            answers = pattern_match["answers"]
-            best_answer = max(answers.items(), key=lambda x: x[1])
-            confidence = pattern_match["base_confidence"] * pattern_match["match_score"]
-            pattern_results.append({
-                "answer": best_answer[0],
-                "confidence": confidence,
-                "source": "pattern_learner",
-                "details": pattern_match["rule"]
-            })
-        
-        if self.enable_learning:
-            auto_answer, auto_conf = self.auto_learner.predict_with_patterns(
-                question, structure["question_type"]
-            )
-            if auto_conf > 0.35:
-                pattern_results.append({
-                    "answer": auto_answer,
-                    "confidence": auto_conf,
-                    "source": "auto_learner",
-                    "details": "자동 학습 패턴"
-                })
-            
-            learning_answer, learning_conf = self.learning_system.predict_with_learning(
-                question, structure["question_type"], structure.get("domain_hints", [])
-            )
-            if learning_conf > 0.3:
-                pattern_results.append({
-                    "answer": learning_answer,
-                    "confidence": learning_conf,
-                    "source": "learning_system",
-                    "details": "통합 학습 시스템"
-                })
-        
-        optimizer_answer, optimizer_conf = self.optimizer.get_smart_answer_hint(question, structure)
-        if optimizer_conf > 0.3:
-            pattern_results.append({
-                "answer": optimizer_answer,
-                "confidence": optimizer_conf,
-                "source": "optimizer",
-                "details": "최적화 시스템"
-            })
-        
-        if not pattern_results:
-            result = (None, 0, "패턴 매칭 실패")
-        elif len(pattern_results) == 1:
-            p = pattern_results[0]
-            result = (p["answer"], p["confidence"], p["details"])
+        if hint_confidence > 0.65:
+            self.stats["pattern_based_answers"] += 1
+            result = (hint_answer, hint_confidence)
         else:
-            answer_votes = {}
-            total_confidence = 0
-            
-            for p in pattern_results:
-                answer = p["answer"]
-                conf = p["confidence"]
-                
-                if answer in answer_votes:
-                    answer_votes[answer]["confidence"] += conf
-                    answer_votes[answer]["votes"] += 1
-                    answer_votes[answer]["sources"].append(p["source"])
-                else:
-                    answer_votes[answer] = {
-                        "confidence": conf,
-                        "votes": 1,
-                        "sources": [p["source"]]
-                    }
-                total_confidence += conf
-            
-            best_answer_data = max(answer_votes.items(), key=lambda x: x[1]["confidence"] * x[1]["votes"])
-            best_answer = best_answer_data[0]
-            consensus_confidence = min(best_answer_data[1]["confidence"] / total_confidence * 1.5, 0.95)
-            
-            if best_answer_data[1]["votes"] > 1:
-                self.stats["multi_pattern_consensus"] += 1
-                consensus_confidence += 0.1
-            
-            sources = "+".join(best_answer_data[1]["sources"])
-            result = (best_answer, consensus_confidence, f"다중 패턴 합의 ({sources})")
+            result = (None, 0)
         
         self.pattern_analysis_cache[cache_key] = result
-        
-        if result[0]:
-            self.stats["unified_pattern_usage"] += 1
-        
         return result
     
     def process_question(self, question: str, question_id: str, idx: int) -> str:
@@ -306,8 +220,12 @@ class FinancialAIInference:
             difficulty = self.optimizer.evaluate_question_difficulty(question, structure)
             
             if self.enable_learning:
+                learned_answer, learned_confidence = self.auto_learner.predict_with_patterns(
+                    question, structure["question_type"]
+                )
+                
                 corrected_answer, correction_conf = self.correction_system.apply_corrections(
-                    question, ""
+                    question, learned_answer
                 )
                 
                 if correction_conf > 0.80:
@@ -317,21 +235,25 @@ class FinancialAIInference:
                         return corrected_answer
             
             if is_mc:
-                pattern_answer, pattern_conf, pattern_source = self._apply_unified_pattern_analysis(question, structure)
+                pattern_answer, pattern_conf = self._apply_pattern_based_answer(question, structure)
                 
-                if pattern_answer and pattern_conf > 0.45:
+                if pattern_answer and pattern_conf > 0.65:
                     self.stats["smart_hints_used"] += 1
                     self.stats["high_confidence_answers"] += 1
-                    self.stats["pattern_based_answers"] += 1
                     self.answer_cache[cache_key] = pattern_answer
                     return pattern_answer
+                
+                if difficulty.score > 0.7 or self.stats["total"] > 200:
+                    if pattern_answer and pattern_conf > 0.45:
+                        self.stats["smart_hints_used"] += 1
+                        self.answer_cache[cache_key] = pattern_answer
+                        return pattern_answer
                 
                 prompt = self.prompt_engineer.create_korean_reinforced_prompt(
                     question, structure["question_type"]
                 )
-                self.stats["enhanced_prompts_used"] += 1
                 
-                max_attempts = 5 if difficulty.score > 0.6 else 3
+                max_attempts = 2 if self.stats["total"] < 100 else 3
                 
                 result = self.model_handler.generate_response(
                     prompt=prompt,
@@ -349,34 +271,19 @@ class FinancialAIInference:
                     if result.confidence > 0.6:
                         self.stats["high_confidence_answers"] += 1
                 else:
-                    if pattern_answer and pattern_conf > 0.25:
+                    if pattern_answer and pattern_conf > 0.3:
                         self.stats["smart_hints_used"] += 1
-                        self.stats["pattern_based_answers"] += 1
                         answer = pattern_answer
                     else:
                         self.stats["fallback_used"] += 1
                         answer = self._get_domain_specific_fallback(question, "multiple_choice")
             
             elif is_subjective:
-                if self.enable_learning:
-                    learning_answer, learning_conf = self.learning_system.predict_with_learning(
-                        question, structure["question_type"], structure.get("domain_hints", [])
-                    )
-                    
-                    if learning_conf > 0.55:
-                        is_valid, quality = self._validate_korean_quality(learning_answer, structure["question_type"])
-                        if is_valid and quality > 0.6:
-                            self.stats["pattern_based_answers"] += 1
-                            self.stats["high_confidence_answers"] += 1
-                            self.answer_cache[cache_key] = learning_answer
-                            return learning_answer
-                
                 prompt = self.prompt_engineer.create_korean_reinforced_prompt(
                     question, structure["question_type"]
                 )
-                self.stats["enhanced_prompts_used"] += 1
                 
-                max_attempts = 5 if difficulty.score > 0.6 else 3
+                max_attempts = 2 if self.stats["total"] < 100 else 3
                 
                 result = self.model_handler.generate_response(
                     prompt=prompt,
@@ -408,13 +315,13 @@ class FinancialAIInference:
                 self.stats["fallback_used"] += 1
                 answer = self._get_domain_specific_fallback(question, "multiple_choice")
             
-            if self.enable_learning and 'result' in locals() and result.confidence > 0.35:
+            if self.enable_learning and 'result' in locals() and result.confidence > 0.45:
                 self.auto_learner.learn_from_prediction(
                     question, answer, result.confidence,
                     structure["question_type"], analysis.get("domain", ["일반"])
                 )
                 
-                if result.confidence > 0.45:
+                if result.confidence > 0.55:
                     self.learning_system.add_training_sample(
                         question=question,
                         correct_answer=answer,
@@ -490,14 +397,12 @@ class FinancialAIInference:
             if not self.verbose and self.stats["total"] % 100 == 0:
                 print(f"진행률: {self.stats['total']}/{len(test_df)}")
             
-            if self.stats["total"] % 20 == 0:
+            if self.stats["total"] % 30 == 0:
                 torch.cuda.empty_cache()
                 gc.collect()
             
-            if self.enable_learning and self.stats["total"] % 20 == 0:
+            if self.enable_learning and self.stats["total"] % 50 == 0:
                 self.auto_learner.optimize_patterns()
-                self.learning_system.optimize_rules()
-                self.pattern_learner.optimize_rules()
         
         if enable_manual_correction and self.enable_learning:
             print("\n수동 교정 모드 시작...")
@@ -518,9 +423,6 @@ class FinancialAIInference:
                 if self.auto_learner.save_model():
                     if self.verbose:
                         print("자동 학습 모델 저장 완료")
-                if self.pattern_learner.save_patterns():
-                    if self.verbose:
-                        print("패턴 학습기 저장 완료")
                 if self.correction_system.save_corrections_to_csv():
                     if self.verbose:
                         print("교정 데이터 저장 완료")
@@ -564,9 +466,6 @@ class FinancialAIInference:
         print(f"\n처리 통계:")
         print(f"  모델 생성 성공: {self.stats['model_generation_success']}/{self.stats['total']} ({self.stats['model_generation_success']/max(self.stats['total'],1)*100:.1f}%)")
         print(f"  패턴 기반 답변: {self.stats['pattern_based_answers']}회")
-        print(f"  통합 패턴 활용: {self.stats['unified_pattern_usage']}회")
-        print(f"  다중 패턴 합의: {self.stats['multi_pattern_consensus']}회")
-        print(f"  향상된 프롬프트: {self.stats['enhanced_prompts_used']}회")
         print(f"  고신뢰도 답변: {self.stats['high_confidence_answers']}회")
         print(f"  스마트 힌트 사용: {self.stats['smart_hints_used']}회")
         print(f"  폴백 사용: {self.stats['fallback_used']}회")
@@ -594,16 +493,7 @@ class FinancialAIInference:
         if self.enable_learning:
             print(f"\n학습 통계:")
             print(f"  학습된 샘플: {self.stats['learned']}개")
-            
-            total_patterns = 0
-            if hasattr(self.auto_learner, 'pattern_weights'):
-                total_patterns += len(self.auto_learner.pattern_weights)
-            if hasattr(self.pattern_learner, 'learned_rules'):
-                total_patterns += len(self.pattern_learner.learned_rules)
-            if hasattr(self.learning_system, 'learned_rules'):
-                total_patterns += len(self.learning_system.learned_rules)
-            
-            print(f"  통합 패턴 수: {total_patterns}개")
+            print(f"  패턴 수: {len(self.auto_learner.pattern_weights)}개")
             print(f"  정확도: {self.learning_system.get_current_accuracy():.2%}")
         
         if mc_answers:
@@ -634,9 +524,6 @@ class FinancialAIInference:
             "processing_stats": {
                 "model_success": self.stats["model_generation_success"],
                 "pattern_based": self.stats["pattern_based_answers"],
-                "unified_patterns": self.stats["unified_pattern_usage"],
-                "multi_consensus": self.stats["multi_pattern_consensus"],
-                "enhanced_prompts": self.stats["enhanced_prompts_used"],
                 "high_confidence": self.stats["high_confidence_answers"],
                 "smart_hints": self.stats["smart_hints_used"],
                 "fallback_used": self.stats["fallback_used"],
@@ -715,17 +602,11 @@ def main():
             pattern_rate = processing_stats["pattern_based"] / results["total_questions"] * 100
             print(f"패턴 기반 답변률: {pattern_rate:.1f}%")
             
-            unified_rate = processing_stats["unified_patterns"] / results["total_questions"] * 100
-            print(f"통합 패턴 활용률: {unified_rate:.1f}%")
-            
             confidence_rate = processing_stats["high_confidence"] / results["total_questions"] * 100
             print(f"고신뢰도 답변률: {confidence_rate:.1f}%")
             
             if processing_stats["smart_hints"] > 0:
                 print(f"스마트 힌트 활용: {processing_stats['smart_hints']}회")
-            
-            if processing_stats["multi_consensus"] > 0:
-                print(f"다중 패턴 합의: {processing_stats['multi_consensus']}회")
             
             quality = results["korean_quality"]["avg_score"]
             if quality > 0.7:
