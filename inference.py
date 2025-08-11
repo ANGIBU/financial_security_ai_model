@@ -77,11 +77,23 @@ class FinancialAIInference:
             "model_generation_success": 0,
             "pattern_extraction_success": 0,
             "pattern_based_answers": 0,
-            "high_confidence_answers": 0
+            "high_confidence_answers": 0,
+            "pattern_priority_used": 0,
+            "learning_prediction_used": 0,
+            "cache_hits": 0
         }
         
         self.answer_cache = {}
         self.pattern_analysis_cache = {}
+        
+        # 전략 파라미터
+        self.strategy_params = {
+            "pattern_confidence_threshold": 0.5,  # 패턴 우선 임계값 낮춤
+            "model_retry_threshold": 100,
+            "cache_size_limit": 1000,
+            "batch_processing_size": 10,
+            "pattern_priority_boost": 0.2
+        }
         
         print("초기화 완료")
     
@@ -98,6 +110,12 @@ class FinancialAIInference:
             corrections = self.correction_system.load_corrections_from_csv("./corrections.csv")
             if corrections > 0 and self.verbose:
                 print(f"교정 데이터 로드: {corrections}개")
+            
+            # 패턴 학습기 로드
+            if self.pattern_learner.load_patterns():
+                if self.verbose:
+                    print("패턴 학습기 데이터 로드 완료")
+                    
         except Exception as e:
             if self.verbose:
                 print(f"학습 데이터 로드 오류: {e}")
@@ -146,9 +164,10 @@ class FinancialAIInference:
         if question_type == "multiple_choice":
             structure = self.data_processor.analyze_question_structure(question)
             
+            # 패턴 기반 힌트 강화
             hint, conf = self.optimizer.get_smart_answer_hint(question, structure)
             
-            if conf > 0.4:
+            if conf > 0.35:  # 임계값 낮춤
                 self.stats["smart_hints_used"] += 1
                 return hint
             else:
@@ -158,6 +177,7 @@ class FinancialAIInference:
         
         question_lower = question.lower()
         
+        # 주관식 폴백 답변들
         if "트로이" in question or "악성코드" in question or "RAT" in question.upper():
             return "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 원격 접근 트로이 목마는 공격자가 감염된 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결, 시스템 리소스 사용 증가, 알 수 없는 프로세스 실행, 방화벽 규칙 변경, 레지스트리 변경, 이상한 파일 생성 등이 있습니다."
         
@@ -190,15 +210,27 @@ class FinancialAIInference:
     def _apply_pattern_based_answer(self, question: str, structure: Dict) -> Tuple[Optional[str], float]:
         cache_key = hash(question[:100])
         if cache_key in self.pattern_analysis_cache:
+            self.stats["cache_hits"] += 1
             return self.pattern_analysis_cache[cache_key]
         
+        # 패턴 학습기 활용
+        pattern_answer, pattern_conf = self.pattern_learner.predict_answer(question, structure)
+        
+        # 옵티마이저 힌트
         hint_answer, hint_confidence = self.optimizer.get_smart_answer_hint(question, structure)
         
-        if hint_confidence > 0.65:
-            self.stats["pattern_based_answers"] += 1
-            result = (hint_answer, hint_confidence)
+        # 두 방법 중 더 높은 신뢰도 선택
+        if pattern_conf > hint_confidence:
+            result = (pattern_answer, pattern_conf)
         else:
-            result = (None, 0)
+            result = (hint_answer, hint_confidence)
+        
+        # 신뢰도 부스트
+        if pattern_conf > 0.5 and hint_confidence > 0.5 and pattern_answer == hint_answer:
+            result = (pattern_answer, min(pattern_conf + hint_confidence * 0.3, 0.95))
+        
+        if result[1] > self.strategy_params["pattern_confidence_threshold"]:
+            self.stats["pattern_based_answers"] += 1
         
         self.pattern_analysis_cache[cache_key] = result
         return result
@@ -207,6 +239,7 @@ class FinancialAIInference:
         try:
             cache_key = hash(question[:200])
             if cache_key in self.answer_cache:
+                self.stats["cache_hits"] += 1
                 return self.answer_cache[cache_key]
             
             structure = self.data_processor.analyze_question_structure(question)
@@ -219,11 +252,14 @@ class FinancialAIInference:
             
             difficulty = self.optimizer.evaluate_question_difficulty(question, structure)
             
+            # 학습 시스템 예측 우선
             if self.enable_learning:
+                # 자동 학습기 예측
                 learned_answer, learned_confidence = self.auto_learner.predict_with_patterns(
                     question, structure["question_type"]
                 )
                 
+                # 교정 시스템 적용
                 corrected_answer, correction_conf = self.correction_system.apply_corrections(
                     question, learned_answer
                 )
@@ -231,52 +267,95 @@ class FinancialAIInference:
                 if correction_conf > 0.80:
                     is_valid, quality = self._validate_korean_quality(corrected_answer, structure["question_type"])
                     if is_valid:
+                        self.stats["learning_prediction_used"] += 1
                         self.answer_cache[cache_key] = corrected_answer
                         return corrected_answer
+                
+                # 통합 학습 시스템 예측
+                learning_answer, learning_conf = self.learning_system.predict_with_learning(
+                    question, structure["question_type"], analysis.get("domain", ["일반"])
+                )
+                
+                if learning_conf > 0.6:
+                    is_valid, quality = self._validate_korean_quality(learning_answer, structure["question_type"])
+                    if is_valid:
+                        self.stats["learning_prediction_used"] += 1
+                        self.answer_cache[cache_key] = learning_answer
+                        return learning_answer
             
             if is_mc:
+                # 패턴 기반 답변 우선 시도
                 pattern_answer, pattern_conf = self._apply_pattern_based_answer(question, structure)
                 
-                if pattern_answer and pattern_conf > 0.65:
+                # 높은 신뢰도면 바로 사용
+                if pattern_answer and pattern_conf > 0.6:
                     self.stats["smart_hints_used"] += 1
-                    self.stats["high_confidence_answers"] += 1
+                    self.stats["pattern_priority_used"] += 1
+                    if pattern_conf > 0.75:
+                        self.stats["high_confidence_answers"] += 1
                     self.answer_cache[cache_key] = pattern_answer
                     return pattern_answer
                 
-                if difficulty.score > 0.7 or self.stats["total"] > 200:
-                    if pattern_answer and pattern_conf > 0.45:
-                        self.stats["smart_hints_used"] += 1
-                        self.answer_cache[cache_key] = pattern_answer
-                        return pattern_answer
-                
-                prompt = self.prompt_engineer.create_korean_reinforced_prompt(
-                    question, structure["question_type"]
-                )
-                
-                max_attempts = 2 if self.stats["total"] < 100 else 3
-                
-                result = self.model_handler.generate_response(
-                    prompt=prompt,
-                    question_type=structure["question_type"],
-                    max_attempts=max_attempts
-                )
-                
-                extracted = self.data_processor.extract_mc_answer_fast(result.response)
-                
-                if extracted and extracted.isdigit() and 1 <= int(extracted) <= 5:
-                    self.stats["model_generation_success"] += 1
-                    self.stats["pattern_extraction_success"] += 1
-                    answer = extracted
+                # 중간 신뢰도면 모델과 함께 고려
+                if pattern_answer and pattern_conf > 0.45:
+                    # 빠른 모델 생성 시도
+                    prompt = self.prompt_engineer.create_korean_reinforced_prompt(
+                        question, structure["question_type"]
+                    )
                     
-                    if result.confidence > 0.6:
-                        self.stats["high_confidence_answers"] += 1
-                else:
-                    if pattern_answer and pattern_conf > 0.3:
+                    result = self.model_handler.generate_response(
+                        prompt=prompt,
+                        question_type=structure["question_type"],
+                        max_attempts=2
+                    )
+                    
+                    extracted = self.data_processor.extract_mc_answer_fast(result.response)
+                    
+                    if extracted and extracted.isdigit() and 1 <= int(extracted) <= 5:
+                        # 모델과 패턴이 일치하면 높은 신뢰도
+                        if extracted == pattern_answer:
+                            self.stats["model_generation_success"] += 1
+                            self.stats["high_confidence_answers"] += 1
+                            answer = extracted
+                        # 불일치 시 패턴 우선
+                        else:
+                            self.stats["pattern_priority_used"] += 1
+                            answer = pattern_answer
+                    else:
+                        # 모델 실패 시 패턴 사용
                         self.stats["smart_hints_used"] += 1
                         answer = pattern_answer
+                else:
+                    # 낮은 신뢰도 - 모델 우선
+                    prompt = self.prompt_engineer.create_korean_reinforced_prompt(
+                        question, structure["question_type"]
+                    )
+                    
+                    max_attempts = 2 if self.stats["total"] < 100 else 3
+                    
+                    result = self.model_handler.generate_response(
+                        prompt=prompt,
+                        question_type=structure["question_type"],
+                        max_attempts=max_attempts
+                    )
+                    
+                    extracted = self.data_processor.extract_mc_answer_fast(result.response)
+                    
+                    if extracted and extracted.isdigit() and 1 <= int(extracted) <= 5:
+                        self.stats["model_generation_success"] += 1
+                        self.stats["pattern_extraction_success"] += 1
+                        answer = extracted
+                        
+                        if result.confidence > 0.6:
+                            self.stats["high_confidence_answers"] += 1
                     else:
-                        self.stats["fallback_used"] += 1
-                        answer = self._get_domain_specific_fallback(question, "multiple_choice")
+                        # 모델 실패 시 패턴 또는 폴백
+                        if pattern_answer and pattern_conf > 0.3:
+                            self.stats["smart_hints_used"] += 1
+                            answer = pattern_answer
+                        else:
+                            self.stats["fallback_used"] += 1
+                            answer = self._get_domain_specific_fallback(question, "multiple_choice")
             
             elif is_subjective:
                 prompt = self.prompt_engineer.create_korean_reinforced_prompt(
@@ -315,13 +394,17 @@ class FinancialAIInference:
                 self.stats["fallback_used"] += 1
                 answer = self._get_domain_specific_fallback(question, "multiple_choice")
             
-            if self.enable_learning and 'result' in locals() and result.confidence > 0.45:
-                self.auto_learner.learn_from_prediction(
-                    question, answer, result.confidence,
-                    structure["question_type"], analysis.get("domain", ["일반"])
-                )
+            # 학습 시스템에 결과 추가
+            if self.enable_learning and 'result' in locals():
+                model_success = ('extracted' in locals() and extracted) or (is_subjective and is_valid)
                 
-                if result.confidence > 0.55:
+                if result.confidence > 0.35:
+                    self.auto_learner.learn_from_prediction(
+                        question, answer, result.confidence,
+                        structure["question_type"], analysis.get("domain", ["일반"])
+                    )
+                
+                if result.confidence > 0.45:
                     self.learning_system.add_training_sample(
                         question=question,
                         correct_answer=answer,
@@ -329,9 +412,23 @@ class FinancialAIInference:
                         confidence=result.confidence,
                         question_type=structure["question_type"],
                         domain=analysis.get("domain", ["일반"]),
-                        question_id=question_id
+                        question_id=question_id,
+                        model_success=model_success
                     )
                     self.stats["learned"] += 1
+                
+                # 패턴 학습기 업데이트
+                if is_mc:
+                    self.pattern_learner.update_patterns(
+                        question, answer, structure,
+                        (answer, result.confidence) if 'result' in locals() else None
+                    )
+            
+            # 캐시 저장
+            if len(self.answer_cache) > self.strategy_params["cache_size_limit"]:
+                # 오래된 항목 제거
+                oldest_key = next(iter(self.answer_cache))
+                del self.answer_cache[oldest_key]
             
             self.answer_cache[cache_key] = answer
             return answer
@@ -378,6 +475,10 @@ class FinancialAIInference:
         
         if self.enable_learning:
             print(f"학습 모드: 활성화")
+            # 학습 시스템 최적화
+            self.learning_system.optimize_rules()
+            self.auto_learner.optimize_patterns()
+            self.pattern_learner.optimize_rules()
         
         answers = [""] * len(test_df)
         
@@ -403,6 +504,7 @@ class FinancialAIInference:
             
             if self.enable_learning and self.stats["total"] % 50 == 0:
                 self.auto_learner.optimize_patterns()
+                self.pattern_learner.optimize_rules()
         
         if enable_manual_correction and self.enable_learning:
             print("\n수동 교정 모드 시작...")
@@ -426,6 +528,9 @@ class FinancialAIInference:
                 if self.correction_system.save_corrections_to_csv():
                     if self.verbose:
                         print("교정 데이터 저장 완료")
+                if self.pattern_learner.save_patterns():
+                    if self.verbose:
+                        print("패턴 학습 데이터 저장 완료")
             except Exception as e:
                 if self.verbose:
                     print(f"데이터 저장 오류: {e}")
@@ -466,8 +571,11 @@ class FinancialAIInference:
         print(f"\n처리 통계:")
         print(f"  모델 생성 성공: {self.stats['model_generation_success']}/{self.stats['total']} ({self.stats['model_generation_success']/max(self.stats['total'],1)*100:.1f}%)")
         print(f"  패턴 기반 답변: {self.stats['pattern_based_answers']}회")
+        print(f"  패턴 우선 사용: {self.stats['pattern_priority_used']}회")
+        print(f"  학습 예측 사용: {self.stats['learning_prediction_used']}회")
         print(f"  고신뢰도 답변: {self.stats['high_confidence_answers']}회")
         print(f"  스마트 힌트 사용: {self.stats['smart_hints_used']}회")
+        print(f"  캐시 히트: {self.stats['cache_hits']}회")
         print(f"  폴백 사용: {self.stats['fallback_used']}회")
         print(f"  처리 오류: {self.stats['errors']}회")
         
@@ -495,6 +603,12 @@ class FinancialAIInference:
             print(f"  학습된 샘플: {self.stats['learned']}개")
             print(f"  패턴 수: {len(self.auto_learner.pattern_weights)}개")
             print(f"  정확도: {self.learning_system.get_current_accuracy():.2%}")
+            
+            # 패턴 성능 리포트
+            pattern_insights = self.pattern_learner.get_pattern_insights()
+            if pattern_insights:
+                print(f"  패턴 활용률: {pattern_insights['usage_statistics'].get('total_predictions', 0)}회")
+                print(f"  고유 패턴: {pattern_insights['usage_statistics'].get('unique_patterns_used', 0)}개")
         
         if mc_answers:
             print(f"\n객관식 답변 분포 ({len(mc_answers)}개):")
@@ -524,8 +638,11 @@ class FinancialAIInference:
             "processing_stats": {
                 "model_success": self.stats["model_generation_success"],
                 "pattern_based": self.stats["pattern_based_answers"],
+                "pattern_priority": self.stats["pattern_priority_used"],
+                "learning_prediction": self.stats["learning_prediction_used"],
                 "high_confidence": self.stats["high_confidence_answers"],
                 "smart_hints": self.stats["smart_hints_used"],
+                "cache_hits": self.stats["cache_hits"],
                 "fallback_used": self.stats["fallback_used"],
                 "errors": self.stats["errors"]
             },
@@ -599,7 +716,7 @@ def main():
             success_rate = processing_stats["model_success"] / results["total_questions"] * 100
             print(f"모델 생성 성공률: {success_rate:.1f}%")
             
-            pattern_rate = processing_stats["pattern_based"] / results["total_questions"] * 100
+            pattern_rate = (processing_stats["pattern_based"] + processing_stats["pattern_priority"]) / results["total_questions"] * 100
             print(f"패턴 기반 답변률: {pattern_rate:.1f}%")
             
             confidence_rate = processing_stats["high_confidence"] / results["total_questions"] * 100
@@ -607,6 +724,9 @@ def main():
             
             if processing_stats["smart_hints"] > 0:
                 print(f"스마트 힌트 활용: {processing_stats['smart_hints']}회")
+            
+            if processing_stats["cache_hits"] > 0:
+                print(f"캐시 효율: {processing_stats['cache_hits']}회")
             
             quality = results["korean_quality"]["avg_score"]
             if quality > 0.7:
