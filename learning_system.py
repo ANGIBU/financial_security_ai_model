@@ -77,6 +77,17 @@ class QuestionDifficulty:
     processing_priority: int
     memory_requirement: str
 
+@dataclass
+class DynamicPattern:
+    pattern_id: str
+    keywords: List[str]
+    co_occurrence: Dict[str, float]
+    success_rate: float
+    confidence: float
+    sample_count: int
+    last_update: float
+    pattern_type: str
+
 class LearningSystem:
     
     def __init__(self, debug_mode: bool = False):
@@ -101,16 +112,21 @@ class LearningSystem:
         self.learning_history = []
         self.prediction_cache = {}
         self.pattern_cache = {}
-        self.max_cache_size = 500
+        self.max_cache_size = 800
         
         self.stats = {
             "total_samples": 0,
             "correct_predictions": 0,
             "patterns_learned": 0,
-            "korean_quality_avg": 0.0
+            "korean_quality_avg": 0.0,
+            "dynamic_patterns_created": 0,
+            "pattern_optimizations": 0
         }
         
         self.answer_patterns = self._initialize_patterns()
+        self.dynamic_patterns = {}
+        self.pattern_discovery_threshold = 3
+        self.text_analysis_cache = {}
         
         if torch.cuda.is_available():
             self.gpu_memory_total = torch.cuda.get_device_properties(0).total_memory / (1024**3)
@@ -129,7 +145,8 @@ class LearningSystem:
                 "confidence": 0.92,
                 "context_multipliers": {"소비자금융업": 1.4, "해당하지": 1.3, "금융투자업": 1.2, "보험중개업": 1.25},
                 "domain_boost": 0.25,
-                "answer_logic": "소비자금융업과 보험중개업은 금융투자업이 아님"
+                "answer_logic": "소비자금융업과 보험중개업은 금융투자업이 아님",
+                "adaptable": True
             },
             "위험관리_계획": {
                 "patterns": ["위험", "관리", "계획", "수립", "고려", "요소", "적절하지", "위험수용", "대응전략"],
@@ -137,7 +154,8 @@ class LearningSystem:
                 "confidence": 0.88,
                 "context_multipliers": {"위험수용": 1.5, "적절하지": 1.3, "위험관리": 1.15},
                 "domain_boost": 0.22,
-                "answer_logic": "위험수용은 위험대응전략의 하나이지 별도 고려요소가 아님"
+                "answer_logic": "위험수용은 위험대응전략의 하나이지 별도 고려요소가 아님",
+                "adaptable": True
             },
             "관리체계_정책수립": {
                 "patterns": ["관리체계", "수립", "운영", "정책수립", "단계", "중요한", "경영진", "참여", "최고책임자"],
@@ -145,7 +163,8 @@ class LearningSystem:
                 "confidence": 0.83,
                 "context_multipliers": {"경영진": 1.4, "참여": 1.3, "가장중요": 1.2},
                 "domain_boost": 0.18,
-                "answer_logic": "정책수립 단계에서 경영진의 참여가 가장 중요함"
+                "answer_logic": "정책수립 단계에서 경영진의 참여가 가장 중요함",
+                "adaptable": True
             },
             "재해복구_계획": {
                 "patterns": ["재해", "복구", "계획", "수립", "고려", "요소", "옳지", "복구절차", "비상연락", "개인정보파기"],
@@ -153,7 +172,8 @@ class LearningSystem:
                 "confidence": 0.87,
                 "context_multipliers": {"개인정보파기": 1.5, "옳지않": 1.3, "재해복구": 1.2},
                 "domain_boost": 0.20,
-                "answer_logic": "개인정보파기절차는 재해복구와 직접 관련 없음"
+                "answer_logic": "개인정보파기절차는 재해복구와 직접 관련 없음",
+                "adaptable": True
             },
             "개인정보_정의": {
                 "patterns": ["개인정보", "정의", "의미", "개념", "식별", "살아있는"],
@@ -161,7 +181,8 @@ class LearningSystem:
                 "confidence": 0.85,
                 "context_multipliers": {"법령": 1.2, "제2조": 1.25, "개인정보보호법": 1.15},
                 "domain_boost": 0.17,
-                "answer_logic": "살아있는 개인에 관한 정보로서 개인을 알아볼 수 있는 정보"
+                "answer_logic": "살아있는 개인에 관한 정보로서 개인을 알아볼 수 있는 정보",
+                "adaptable": True
             },
             "전자금융_정의": {
                 "patterns": ["전자금융거래", "전자적장치", "금융상품", "서비스", "제공"],
@@ -169,7 +190,8 @@ class LearningSystem:
                 "confidence": 0.80,
                 "context_multipliers": {"전자금융거래법": 1.25, "제2조": 1.2, "전자적": 1.15},
                 "domain_boost": 0.15,
-                "answer_logic": "전자적 장치를 통한 금융상품 및 서비스 거래"
+                "answer_logic": "전자적 장치를 통한 금융상품 및 서비스 거래",
+                "adaptable": True
             },
             "접근매체_관리": {
                 "patterns": ["접근매체", "선정", "사용", "관리", "안전", "신뢰"],
@@ -177,31 +199,8 @@ class LearningSystem:
                 "confidence": 0.82,
                 "context_multipliers": {"접근매체": 1.3, "안전": 1.2, "관리": 1.15},
                 "domain_boost": 0.18,
-                "answer_logic": "접근매체는 안전하고 신뢰할 수 있어야 함"
-            },
-            "개인정보_유출": {
-                "patterns": ["개인정보", "유출", "통지", "지체없이", "정보주체"],
-                "preferred_answers": {"1": 0.75, "2": 0.12, "3": 0.08, "4": 0.03, "5": 0.02},
-                "confidence": 0.85,
-                "context_multipliers": {"유출": 1.3, "통지": 1.25, "지체없이": 1.2},
-                "domain_boost": 0.20,
-                "answer_logic": "개인정보 유출 시 지체 없이 통지 의무"
-            },
-            "안전성_확보조치": {
-                "patterns": ["안전성", "확보조치", "기술적", "관리적", "물리적"],
-                "preferred_answers": {"1": 0.68, "2": 0.18, "3": 0.09, "4": 0.03, "5": 0.02},
-                "confidence": 0.80,
-                "context_multipliers": {"안전성확보조치": 1.3, "기술적": 1.2, "관리적": 1.15},
-                "domain_boost": 0.17,
-                "answer_logic": "기술적, 관리적, 물리적 안전성 확보조치 필요"
-            },
-            "정보보호_관리체계": {
-                "patterns": ["정보보호", "관리체계", "ISMS", "인증", "운영"],
-                "preferred_answers": {"3": 0.65, "2": 0.20, "1": 0.10, "4": 0.03, "5": 0.02},
-                "confidence": 0.78,
-                "context_multipliers": {"ISMS": 1.25, "관리체계": 1.2, "인증": 1.15},
-                "domain_boost": 0.15,
-                "answer_logic": "정보보호관리체계 인증 및 운영"
+                "answer_logic": "접근매체는 안전하고 신뢰할 수 있어야 함",
+                "adaptable": True
             },
             "부정형_일반": {
                 "patterns": ["해당하지", "적절하지", "옳지", "틀린", "잘못된"],
@@ -209,15 +208,8 @@ class LearningSystem:
                 "confidence": 0.68,
                 "context_multipliers": {"제외": 1.25, "예외": 1.2, "아닌": 1.15},
                 "domain_boost": 0.12,
-                "answer_logic": "부정형 문제는 문맥에 따라 다양한 답 가능"
-            },
-            "모두_포함": {
-                "patterns": ["모두", "모든", "전부", "다음중"],
-                "preferred_answers": {"5": 0.45, "1": 0.25, "4": 0.15, "3": 0.10, "2": 0.05},
-                "confidence": 0.70,
-                "context_multipliers": {"모두": 1.3, "전부": 1.25},
-                "domain_boost": 0.10,
-                "answer_logic": "모두 해당하는 경우 마지막 번호 선택 경향"
+                "answer_logic": "부정형 문제는 문맥에 따라 다양한 답 가능",
+                "adaptable": True
             }
         }
     
@@ -227,31 +219,36 @@ class LearningSystem:
                 "keywords": ["개인정보", "정의", "의미", "개념", "식별", "살아있는"],
                 "preferred_answers": {"2": 0.75, "1": 0.18, "3": 0.05, "4": 0.01, "5": 0.01},
                 "confidence": 0.88,
-                "boost_keywords": ["살아있는", "개인", "알아볼", "식별할"]
+                "boost_keywords": ["살아있는", "개인", "알아볼", "식별할"],
+                "adaptable": True
             },
             "전자금융_정의": {
                 "keywords": ["전자금융", "정의", "전자적", "거래", "장치"],
                 "preferred_answers": {"2": 0.72, "3": 0.18, "1": 0.07, "4": 0.02, "5": 0.01},
                 "confidence": 0.85,
-                "boost_keywords": ["금융상품", "서비스", "제공"]
+                "boost_keywords": ["금융상품", "서비스", "제공"],
+                "adaptable": True
             },
             "유출_신고": {
                 "keywords": ["유출", "신고", "즉시", "지체", "통지", "개인정보"],
                 "preferred_answers": {"1": 0.78, "2": 0.15, "3": 0.05, "4": 0.01, "5": 0.01},
                 "confidence": 0.90,
-                "boost_keywords": ["지체없이", "정보주체"]
+                "boost_keywords": ["지체없이", "정보주체"],
+                "adaptable": True
             },
             "금융투자업_분류": {
                 "keywords": ["금융투자업", "구분", "해당하지", "소비자금융", "보험중개"],
                 "preferred_answers": {"1": 0.82, "5": 0.12, "2": 0.04, "3": 0.01, "4": 0.01},
                 "confidence": 0.95,
-                "boost_keywords": ["소비자금융업", "보험중개업"]
+                "boost_keywords": ["소비자금융업", "보험중개업"],
+                "adaptable": True
             },
             "위험관리_계획": {
                 "keywords": ["위험", "관리", "계획", "수립", "고려", "요소"],
                 "preferred_answers": {"2": 0.80, "1": 0.12, "3": 0.05, "4": 0.02, "5": 0.01},
                 "confidence": 0.88,
-                "boost_keywords": ["위험수용", "대응전략"]
+                "boost_keywords": ["위험수용", "대응전략"],
+                "adaptable": True
             }
         }
     
@@ -279,6 +276,110 @@ class LearningSystem:
             ]
         }
     
+    def discover_new_patterns(self, question: str, answer: str, confidence: float) -> Optional[DynamicPattern]:
+        if confidence < 0.6:
+            return None
+        
+        text_hash = hash(question[:100])
+        
+        if text_hash in self.text_analysis_cache:
+            analysis = self.text_analysis_cache[text_hash]
+        else:
+            analysis = self._analyze_text_for_patterns(question)
+            if len(self.text_analysis_cache) > 200:
+                oldest_key = next(iter(self.text_analysis_cache))
+                del self.text_analysis_cache[oldest_key]
+            self.text_analysis_cache[text_hash] = analysis
+        
+        for potential_pattern in analysis:
+            pattern_id = potential_pattern["pattern_id"]
+            
+            if pattern_id in self.dynamic_patterns:
+                self._update_dynamic_pattern(pattern_id, answer, confidence)
+            else:
+                new_pattern = self._create_dynamic_pattern(potential_pattern, answer, confidence)
+                if new_pattern:
+                    self.dynamic_patterns[pattern_id] = new_pattern
+                    self.stats["dynamic_patterns_created"] += 1
+                    self._debug_print(f"새 패턴 생성: {pattern_id}")
+        
+        return None
+    
+    def _analyze_text_for_patterns(self, text: str) -> List[Dict]:
+        patterns = []
+        text_lower = text.lower()
+        
+        keyword_groups = [
+            ["암호", "키", "관리"],
+            ["인증", "서명", "전자"],
+            ["백업", "복구", "재해"],
+            ["모니터링", "탐지", "침입"],
+            ["방화벽", "네트워크", "보안"],
+            ["법령", "규정", "준수"],
+            ["감사", "점검", "평가"],
+            ["교육", "훈련", "인식"],
+            ["사고", "대응", "복구"]
+        ]
+        
+        for group in keyword_groups:
+            matches = sum(1 for keyword in group if keyword in text_lower)
+            if matches >= 2:
+                pattern_id = "_".join(group[:2])
+                patterns.append({
+                    "pattern_id": pattern_id,
+                    "keywords": group,
+                    "match_count": matches,
+                    "text_segment": text[:200]
+                })
+        
+        technical_terms = re.findall(r'[A-Z]{2,}', text)
+        if len(technical_terms) >= 2:
+            patterns.append({
+                "pattern_id": "technical_acronym",
+                "keywords": technical_terms,
+                "match_count": len(technical_terms),
+                "text_segment": text[:200]
+            })
+        
+        legal_patterns = re.findall(r'제\d+조|제\d+항', text)
+        if legal_patterns:
+            patterns.append({
+                "pattern_id": "legal_reference",
+                "keywords": legal_patterns,
+                "match_count": len(legal_patterns),
+                "text_segment": text[:200]
+            })
+        
+        return patterns
+    
+    def _create_dynamic_pattern(self, pattern_data: Dict, answer: str, confidence: float) -> Optional[DynamicPattern]:
+        if pattern_data["match_count"] < self.pattern_discovery_threshold:
+            return None
+        
+        return DynamicPattern(
+            pattern_id=pattern_data["pattern_id"],
+            keywords=pattern_data["keywords"],
+            co_occurrence={answer: confidence},
+            success_rate=confidence,
+            confidence=confidence,
+            sample_count=1,
+            last_update=time.time(),
+            pattern_type="discovered"
+        )
+    
+    def _update_dynamic_pattern(self, pattern_id: str, answer: str, confidence: float):
+        pattern = self.dynamic_patterns[pattern_id]
+        
+        if answer in pattern.co_occurrence:
+            pattern.co_occurrence[answer] = (pattern.co_occurrence[answer] + confidence) / 2
+        else:
+            pattern.co_occurrence[answer] = confidence
+        
+        pattern.sample_count += 1
+        pattern.success_rate = (pattern.success_rate * (pattern.sample_count - 1) + confidence) / pattern.sample_count
+        pattern.confidence = min(pattern.success_rate * 1.1, 0.95)
+        pattern.last_update = time.time()
+    
     def evaluate_question_difficulty(self, question: str, structure: Dict) -> QuestionDifficulty:
         q_hash = hash(question[:200])
         
@@ -298,6 +399,9 @@ class LearningSystem:
         
         law_references = len(re.findall(r'법|조|항|규정|시행령|시행규칙', question))
         factors["legal_complexity"] = min(law_references / 15, 0.2)
+        
+        technical_terms = structure.get("technical_terms", [])
+        factors["technical_complexity"] = min(len(technical_terms) / 8, 0.15)
         
         total_score = sum(factors.values())
         
@@ -349,6 +453,9 @@ class LearningSystem:
     def get_smart_answer_hint(self, question: str, structure: Dict) -> Tuple[str, float]:
         question_id = hashlib.md5(question.encode()).hexdigest()[:8]
         
+        if question_id in self.prediction_cache:
+            return self.prediction_cache[question_id]
+        
         question_normalized = re.sub(r'\s+', '', question.lower())
         
         self._debug_print(f"스마트 힌트 분석 시작 - 문제 ID: {question_id}")
@@ -356,8 +463,12 @@ class LearningSystem:
         best_match = None
         best_score = 0
         matched_rule_name = None
+        source_type = "static"
         
         for pattern_name, pattern_info in self.answer_patterns.items():
+            if not pattern_info.get("adaptable", False):
+                continue
+                
             patterns = pattern_info["patterns"]
             context_multipliers = pattern_info.get("context_multipliers", {})
             
@@ -387,6 +498,32 @@ class LearningSystem:
                     best_score = final_score
                     best_match = pattern_info
                     matched_rule_name = pattern_name
+                    source_type = "static"
+        
+        for pattern_id, dynamic_pattern in self.dynamic_patterns.items():
+            if dynamic_pattern.sample_count < 2:
+                continue
+                
+            match_score = 0
+            for keyword in dynamic_pattern.keywords:
+                if str(keyword).lower() in question_normalized:
+                    match_score += 1
+            
+            if match_score > 0:
+                normalized_score = match_score / len(dynamic_pattern.keywords)
+                confidence_adjusted_score = normalized_score * dynamic_pattern.confidence
+                
+                if confidence_adjusted_score > best_score:
+                    best_score = confidence_adjusted_score
+                    best_answer = max(dynamic_pattern.co_occurrence.items(), key=lambda x: x[1])
+                    result = (best_answer[0], dynamic_pattern.confidence)
+                    
+                    if len(self.prediction_cache) > self.max_cache_size // 2:
+                        oldest_key = next(iter(self.prediction_cache))
+                        del self.prediction_cache[oldest_key]
+                    self.prediction_cache[question_id] = result
+                    
+                    return result
         
         if best_match:
             answers = best_match["preferred_answers"]
@@ -395,9 +532,16 @@ class LearningSystem:
             base_confidence = best_match["confidence"]
             adjusted_confidence = min(base_confidence * (best_score ** 0.5), 0.95)
             
-            return best_answer[0], adjusted_confidence
+            result = (best_answer[0], adjusted_confidence)
+        else:
+            result = self._statistical_fallback(question, structure)
         
-        return self._statistical_fallback(question, structure)
+        if len(self.prediction_cache) > self.max_cache_size // 2:
+            oldest_key = next(iter(self.prediction_cache))
+            del self.prediction_cache[oldest_key]
+        self.prediction_cache[question_id] = result
+        
+        return result
     
     def _statistical_fallback(self, question: str, structure: Dict) -> Tuple[str, float]:
         question_lower = question.lower()
@@ -509,16 +653,19 @@ class LearningSystem:
         if korean_quality > 0.5 and question_type != "multiple_choice":
             self._learn_korean_patterns(prediction, domain)
         
+        discovered_pattern = self.discover_new_patterns(question, prediction, confidence)
+        
         self.learning_history.append({
             "question_sample": question[:80],
             "prediction": prediction[:80] if len(prediction) > 80 else prediction,
             "confidence": confidence,
             "korean_quality": korean_quality,
-            "patterns": len(patterns)
+            "patterns": len(patterns),
+            "discovered_patterns": 1 if discovered_pattern else 0
         })
         
-        if len(self.learning_history) > 200:
-            self.learning_history = self.learning_history[-200:]
+        if len(self.learning_history) > 300:
+            self.learning_history = self.learning_history[-300:]
         
         self.stats["total_samples"] += 1
     
@@ -535,11 +682,20 @@ class LearningSystem:
         question_lower = question.lower()
         
         for rule_name, rule_info in self.learned_rules.items():
+            if not rule_info.get("adaptable", False):
+                continue
+                
             rule_keywords = rule_info["keywords"]
             match_count = sum(1 for keyword in rule_keywords if keyword in question_lower)
             
             if match_count >= 1:
                 patterns.append(rule_name)
+        
+        for pattern_id, dynamic_pattern in self.dynamic_patterns.items():
+            match_count = sum(1 for keyword in dynamic_pattern.keywords 
+                            if str(keyword).lower() in question_lower)
+            if match_count >= 1:
+                patterns.append(f"dynamic_{pattern_id}")
         
         if self._is_negative_question(question):
             patterns.append("negative_question")
@@ -560,7 +716,7 @@ class LearningSystem:
             if sum(1 for kw in keywords if kw in question_lower) >= 1:
                 patterns.append(f"domain_{domain}")
         
-        return patterns[:12]
+        return patterns[:15]
     
     def _learn_korean_patterns(self, text: str, domains: List[str]) -> None:
         if 30 <= len(text) <= 600:
@@ -571,12 +727,12 @@ class LearningSystem:
                     "structure": self._analyze_text_structure(text)
                 })
                 
-                if len(self.successful_answers[domain]) > 50:
+                if len(self.successful_answers[domain]) > 60:
                     self.successful_answers[domain] = sorted(
                         self.successful_answers[domain],
                         key=lambda x: self._evaluate_korean_quality(x["text"], "subjective"),
                         reverse=True
-                    )[:50]
+                    )[:60]
     
     def _analyze_text_structure(self, text: str) -> Dict:
         return {
@@ -595,9 +751,10 @@ class LearningSystem:
         for rule_name in patterns:
             if rule_name in self.learned_rules:
                 rule = self.learned_rules[rule_name]
-                answers = rule["preferred_answers"]
-                best_answer = max(answers.items(), key=lambda x: x[1])
-                return best_answer[0], rule["confidence"]
+                if rule.get("adaptable", False):
+                    answers = rule["preferred_answers"]
+                    best_answer = max(answers.items(), key=lambda x: x[1])
+                    return best_answer[0], rule["confidence"]
         
         answer_scores = defaultdict(_default_float)
         total_weight = 0
@@ -668,6 +825,7 @@ class LearningSystem:
     def optimize_patterns(self) -> Dict:
         optimized = 0
         removed = 0
+        dynamic_optimized = 0
         
         patterns_to_remove = []
         for pattern, count in self.pattern_counts.items():
@@ -693,18 +851,34 @@ class LearningSystem:
                             self.pattern_weights[pattern][answer] *= 0.85
                 optimized += 1
         
-        if len(self.learning_history) > 30:
-            recent_qualities = [h.get("korean_quality", 0) for h in self.learning_history[-15:]]
+        current_time = time.time()
+        stale_patterns = []
+        for pattern_id, pattern in self.dynamic_patterns.items():
+            if current_time - pattern.last_update > 3600 and pattern.sample_count < 3:
+                stale_patterns.append(pattern_id)
+            elif pattern.sample_count >= 5:
+                pattern.confidence = min(pattern.confidence * 1.05, 0.95)
+                dynamic_optimized += 1
+        
+        for pattern_id in stale_patterns:
+            del self.dynamic_patterns[pattern_id]
+        
+        if len(self.learning_history) > 50:
+            recent_qualities = [h.get("korean_quality", 0) for h in self.learning_history[-25:]]
             if recent_qualities:
                 avg_quality = sum(recent_qualities) / len(recent_qualities)
                 if avg_quality > 0.6:
-                    self.confidence_threshold = max(self.confidence_threshold - 0.05, 0.25)
+                    self.confidence_threshold = max(self.confidence_threshold - 0.03, 0.25)
                 elif avg_quality < 0.4:
-                    self.confidence_threshold = min(self.confidence_threshold + 0.05, 0.7)
+                    self.confidence_threshold = min(self.confidence_threshold + 0.03, 0.7)
+        
+        self.stats["pattern_optimizations"] += 1
         
         return {
             "optimized": optimized,
             "removed": removed,
+            "dynamic_optimized": dynamic_optimized,
+            "dynamic_patterns": len(self.dynamic_patterns),
             "remaining": len(self.pattern_weights),
             "confidence_threshold": self.confidence_threshold
         }
@@ -723,14 +897,26 @@ class LearningSystem:
                 "domain": {k: dict(v) for k, v in self.answer_distribution["domain"].items()},
                 "negative": dict(self.answer_distribution["negative"])
             },
-            "successful_answers": {k: v[-30:] for k, v in self.successful_answers.items()},
-            "learning_history": self.learning_history[-100:],
+            "successful_answers": {k: v[-40:] for k, v in self.successful_answers.items()},
+            "learning_history": self.learning_history[-150:],
             "learned_rules": self.learned_rules,
+            "dynamic_patterns": {k: {
+                "pattern_id": v.pattern_id,
+                "keywords": v.keywords,
+                "co_occurrence": v.co_occurrence,
+                "success_rate": v.success_rate,
+                "confidence": v.confidence,
+                "sample_count": v.sample_count,
+                "last_update": v.last_update,
+                "pattern_type": v.pattern_type
+            } for k, v in self.dynamic_patterns.items()},
             "parameters": {
                 "learning_rate": self.learning_rate,
                 "confidence_threshold": self.confidence_threshold,
-                "min_samples": self.min_samples
-            }
+                "min_samples": self.min_samples,
+                "pattern_discovery_threshold": self.pattern_discovery_threshold
+            },
+            "stats": self.stats
         }
         
         return atomic_save_model(model_data, filepath)
@@ -763,10 +949,27 @@ class LearningSystem:
             if "learned_rules" in model_data:
                 self.learned_rules.update(model_data["learned_rules"])
             
+            dynamic_patterns_data = model_data.get("dynamic_patterns", {})
+            for k, v in dynamic_patterns_data.items():
+                self.dynamic_patterns[k] = DynamicPattern(
+                    pattern_id=v["pattern_id"],
+                    keywords=v["keywords"],
+                    co_occurrence=v["co_occurrence"],
+                    success_rate=v["success_rate"],
+                    confidence=v["confidence"],
+                    sample_count=v["sample_count"],
+                    last_update=v["last_update"],
+                    pattern_type=v["pattern_type"]
+                )
+            
             params = model_data.get("parameters", {})
             self.learning_rate = params.get("learning_rate", 0.35)
             self.confidence_threshold = params.get("confidence_threshold", 0.35)
             self.min_samples = params.get("min_samples", 1)
+            self.pattern_discovery_threshold = params.get("pattern_discovery_threshold", 3)
+            
+            if "stats" in model_data:
+                self.stats.update(model_data["stats"])
             
             return True
         except Exception:
@@ -775,5 +978,6 @@ class LearningSystem:
     def cleanup(self):
         total_patterns = len(self.pattern_weights)
         total_samples = len(self.learning_history)
+        dynamic_patterns = len(self.dynamic_patterns)
         if total_patterns > 0 or total_samples > 0:
-            print(f"학습 시스템: {total_patterns}개 패턴, {total_samples}개 샘플")
+            print(f"학습 시스템: {total_patterns}개 패턴, {dynamic_patterns}개 동적 패턴, {total_samples}개 샘플")
