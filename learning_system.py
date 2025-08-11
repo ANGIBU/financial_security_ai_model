@@ -9,7 +9,7 @@ import os
 import tempfile
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, asdict
-from collections import defaultdict
+from collections import defaultdict, Counter
 import time
 
 def _default_list():
@@ -23,6 +23,9 @@ def _default_float():
 
 def _default_int_dict():
     return defaultdict(_default_int)
+
+def _default_counter():
+    return Counter()
 
 def atomic_save(obj, filepath: str) -> bool:
     try:
@@ -98,6 +101,12 @@ class UnifiedLearningSystem:
         
         self.prediction_cache = {}
         self.max_cache_size = 200
+        
+        self.word_frequency = defaultdict(_default_int)
+        self.word_associations = defaultdict(_default_counter)
+        self.context_patterns = defaultdict(_default_counter)
+        self.domain_vocabularies = defaultdict(set)
+        self.learned_sequences = defaultdict(_default_counter)
         
     def _initialize_korean_templates(self) -> Dict[str, List[str]]:
         return {
@@ -242,6 +251,43 @@ class UnifiedLearningSystem:
                     self.successful_answers[d] = self.successful_answers[d][-30:]
         
         self._extract_patterns(sample)
+        self._learn_word_patterns(sample)
+    
+    def _learn_word_patterns(self, sample: LearningData):
+        words = re.findall(r'[가-힣]{2,}', sample.question.lower())
+        
+        for word in words:
+            self.word_frequency[word] += 1
+            for domain in sample.domain:
+                self.domain_vocabularies[domain].add(word)
+        
+        for i in range(len(words)):
+            word = words[i]
+            self.word_associations[word][sample.correct_answer] += sample.confidence
+            
+            for j in range(i+1, min(i+4, len(words))):
+                context_window = " ".join(words[i:j+1])
+                if len(context_window) <= 50:
+                    self.context_patterns[context_window][sample.correct_answer] += sample.confidence
+        
+        sequences = []
+        if "해당하지" in sample.question.lower():
+            sequences.append("부정형")
+        if "정의" in sample.question.lower():
+            sequences.append("정의질문")
+        if "방안" in sample.question.lower() or "대책" in sample.question.lower():
+            sequences.append("방안질문")
+        
+        for seq in sequences:
+            self.learned_sequences[seq][sample.correct_answer] += sample.confidence
+        
+        for domain in sample.domain:
+            domain_words = list(self.domain_vocabularies[domain])
+            question_words = set(words)
+            overlap = len(question_words & set(domain_words))
+            if overlap >= 2:
+                domain_pattern = f"domain_{domain}_{overlap}"
+                self.learned_sequences[domain_pattern][sample.correct_answer] += sample.confidence * 1.2
     
     def _update_korean_quality_stats(self, quality: float) -> None:
         self.korean_quality_stats["total_samples"] += 1
@@ -272,7 +318,7 @@ class UnifiedLearningSystem:
     def _extract_patterns(self, sample: LearningData) -> None:
         question_lower = sample.question.lower()
         
-        keywords = self._extract_keywords(question_lower)[:8]
+        keywords = self._extract_keywords_enhanced(question_lower)
         for keyword in keywords:
             self.pattern_bank[keyword].append({
                 "answer": sample.correct_answer,
@@ -298,18 +344,28 @@ class UnifiedLearningSystem:
         else:
             self._learn_subjective_pattern(sample)
     
-    def _extract_keywords(self, text: str) -> List[str]:
+    def _extract_keywords_enhanced(self, text: str) -> List[str]:
         keywords = []
         
         key_terms = [
             "개인정보", "전자금융", "암호화", "보안", "관리체계", "위험관리", 
             "재해복구", "정보보호", "ISMS", "ISO", "접근매체", "안전성확보조치",
             "트로이", "악성코드", "피싱", "스미싱", "해킹", "방화벽", "백업",
-            "취약점", "침입탐지", "침입방지", "다중인증", "생체인증", "소셜엔지니어링"
+            "취약점", "침입탐지", "침입방지", "다중인증", "생체인증", "소셜엔지니어링",
+            "전자서명", "신용정보", "금융실명", "보험업법", "자본시장법", "은행법",
+            "정보통신망법", "개인정보보호법", "전자금융거래법", "GDPR", "CCPA"
         ]
         for term in key_terms:
             if term in text:
                 keywords.append(term)
+        
+        phrases = [
+            "해당하지 않는", "적절하지 않은", "옳지 않은", "가장 적절한",
+            "가장 중요한", "우선적으로", "반드시", "필수적으로"
+        ]
+        for phrase in phrases:
+            if phrase in text:
+                keywords.append(phrase.replace(" ", "_"))
         
         if "해당하지" in text or "적절하지" in text or "옳지않" in text:
             keywords.append("부정형")
@@ -317,6 +373,10 @@ class UnifiedLearningSystem:
             keywords.append("정의문제")
         if "방안" in text or "대책" in text:
             keywords.append("방안문제")
+        
+        words = re.findall(r'[가-힣]{3,}', text)
+        frequent_words = [word for word in words if self.word_frequency.get(word, 0) >= 3]
+        keywords.extend(frequent_words[:5])
         
         return keywords
     
@@ -384,7 +444,7 @@ class UnifiedLearningSystem:
             return self.prediction_cache[cache_key]
         
         if question_type == "multiple_choice":
-            prediction = self._predict_mc(question, domain)
+            prediction = self._predict_mc_enhanced(question, domain)
         else:
             prediction = self._predict_subjective_korean(question, domain)
         
@@ -396,7 +456,10 @@ class UnifiedLearningSystem:
         
         return prediction
     
-    def _predict_mc(self, question: str, domain: List[str]) -> Tuple[str, float]:
+    def _predict_mc_enhanced(self, question: str, domain: List[str]) -> Tuple[str, float]:
+        question_lower = question.lower()
+        prediction_scores = defaultdict(float)
+        
         if "해당하지" in question or "적절하지" in question:
             if "negative_mc" in self.learned_rules:
                 rule = self.learned_rules["negative_mc"]
@@ -405,7 +468,35 @@ class UnifiedLearningSystem:
                     if answers:
                         best_answer = max(answers.items(), key=lambda x: x[1])
                         confidence = min(best_answer[1] / sum(answers.values()) * rule["success_rate"], 0.85)
-                        return best_answer[0], confidence
+                        prediction_scores[best_answer[0]] += confidence
+        
+        words = re.findall(r'[가-힣]{2,}', question_lower)
+        for word in words:
+            if word in self.word_associations:
+                total_count = sum(self.word_associations[word].values())
+                if total_count >= 2:
+                    for answer, count in self.word_associations[word].items():
+                        weight = (count / total_count) * 0.4
+                        prediction_scores[answer] += weight
+        
+        for i in range(len(words)-1):
+            context = f"{words[i]} {words[i+1]}"
+            if context in self.context_patterns:
+                total_count = sum(self.context_patterns[context].values())
+                if total_count >= 2:
+                    for answer, count in self.context_patterns[context].items():
+                        weight = (count / total_count) * 0.6
+                        prediction_scores[answer] += weight
+        
+        for seq_key, answer_counts in self.learned_sequences.items():
+            if ("부정형" in seq_key and ("해당하지" in question or "적절하지" in question)) or \
+               ("정의질문" in seq_key and "정의" in question) or \
+               ("방안질문" in seq_key and ("방안" in question or "대책" in question)):
+                total_count = sum(answer_counts.values())
+                if total_count >= 2:
+                    for answer, count in answer_counts.items():
+                        weight = (count / total_count) * 0.7
+                        prediction_scores[answer] += weight
         
         for d in domain:
             if d in self.answer_statistics:
@@ -413,9 +504,14 @@ class UnifiedLearningSystem:
                 if stats:
                     total = sum(stats.values())
                     if total >= 2:
-                        best_answer = max(stats.items(), key=lambda x: x[1])
-                        confidence = best_answer[1] / total * 0.7
-                        return best_answer[0], confidence
+                        for answer, count in stats.items():
+                            weight = (count / total) * 0.5
+                            prediction_scores[answer] += weight
+        
+        if prediction_scores:
+            best_answer = max(prediction_scores.items(), key=lambda x: x[1])
+            confidence = min(best_answer[1], 0.9)
+            return best_answer[0], confidence
         
         return "3", 0.25
     
@@ -441,6 +537,20 @@ class UnifiedLearningSystem:
                     if templates:
                         best_template = max(templates, key=lambda x: x["quality"])
                         return best_template["text"], 0.6
+        
+        words = re.findall(r'[가-힣]{2,}', question.lower())
+        for word in words:
+            if word in self.word_associations:
+                answer_counts = self.word_associations[word]
+                total_count = sum(answer_counts.values())
+                if total_count >= 3:
+                    non_mc_answers = {k: v for k, v in answer_counts.items() 
+                                    if not (k.isdigit() and 1 <= int(k) <= 5)}
+                    if non_mc_answers:
+                        best_answer = max(non_mc_answers.items(), key=lambda x: x[1])
+                        confidence = best_answer[1] / total_count
+                        if confidence > 0.4:
+                            return best_answer[0], confidence * 0.7
         
         return self._generate_korean_fallback(domain), 0.4
     
@@ -479,7 +589,28 @@ class UnifiedLearningSystem:
             if rule in self.rule_performance:
                 del self.rule_performance[rule]
         
+        self._optimize_word_patterns()
+        
         self.learning_metrics["rules_created"] = len(self.learned_rules)
+    
+    def _optimize_word_patterns(self):
+        for word in list(self.word_associations.keys()):
+            total_count = sum(self.word_associations[word].values())
+            if total_count < 2:
+                del self.word_associations[word]
+            elif total_count > 50:
+                top_answers = dict(Counter(self.word_associations[word]).most_common(5))
+                self.word_associations[word] = Counter(top_answers)
+        
+        for context in list(self.context_patterns.keys()):
+            total_count = sum(self.context_patterns[context].values())
+            if total_count < 2:
+                del self.context_patterns[context]
+        
+        for seq_key in list(self.learned_sequences.keys()):
+            total_count = sum(self.learned_sequences[seq_key].values())
+            if total_count < 2:
+                del self.learned_sequences[seq_key]
     
     def save_learning_data(self, filepath: str = "./learning_data.pkl") -> bool:
         save_data = {
@@ -490,7 +621,12 @@ class UnifiedLearningSystem:
             "rule_performance": {k: list(v)[-30:] for k, v in self.rule_performance.items()},
             "learning_metrics": self.learning_metrics,
             "korean_quality_stats": self.korean_quality_stats,
-            "successful_answers": {k: v[-15:] for k, v in self.successful_answers.items()}
+            "successful_answers": {k: v[-15:] for k, v in self.successful_answers.items()},
+            "word_frequency": dict(self.word_frequency),
+            "word_associations": {k: dict(v) for k, v in self.word_associations.items()},
+            "context_patterns": {k: dict(v) for k, v in self.context_patterns.items()},
+            "domain_vocabularies": {k: list(v) for k, v in self.domain_vocabularies.items()},
+            "learned_sequences": {k: dict(v) for k, v in self.learned_sequences.items()}
         }
         
         return atomic_save(save_data, filepath)
@@ -524,15 +660,44 @@ class UnifiedLearningSystem:
             for k, v in success_answers.items():
                 self.successful_answers[k] = list(v)
             
+            if "word_frequency" in data:
+                self.word_frequency = defaultdict(_default_int, data["word_frequency"])
+            
+            if "word_associations" in data:
+                word_assoc_data = data["word_associations"]
+                self.word_associations = defaultdict(_default_counter)
+                for k, v in word_assoc_data.items():
+                    self.word_associations[k] = Counter(v)
+            
+            if "context_patterns" in data:
+                context_data = data["context_patterns"]
+                self.context_patterns = defaultdict(_default_counter)
+                for k, v in context_data.items():
+                    self.context_patterns[k] = Counter(v)
+            
+            if "domain_vocabularies" in data:
+                domain_vocab_data = data["domain_vocabularies"]
+                self.domain_vocabularies = defaultdict(set)
+                for k, v in domain_vocab_data.items():
+                    self.domain_vocabularies[k] = set(v)
+            
+            if "learned_sequences" in data:
+                seq_data = data["learned_sequences"]
+                self.learned_sequences = defaultdict(_default_counter)
+                for k, v in seq_data.items():
+                    self.learned_sequences[k] = Counter(v)
+            
             return True
         except Exception:
             return False
     
     def get_learning_report(self) -> Dict:
+        word_patterns_count = len(self.word_associations) + len(self.context_patterns) + len(self.learned_sequences)
+        
         return {
             "total_samples": self.learning_metrics["total_samples"],
             "accuracy": self.get_current_accuracy(),
-            "patterns_learned": self.learning_metrics["patterns_learned"],
+            "patterns_learned": word_patterns_count,
             "rules_created": self.learning_metrics["rules_created"],
             "korean_quality": {
                 "average": self.korean_quality_stats["avg_quality"],
@@ -544,12 +709,19 @@ class UnifiedLearningSystem:
                 for domain, stats in self.answer_statistics.items()
             },
             "successful_templates": sum(len(answers) for answers in self.successful_answers.values()),
-            "cache_size": len(self.prediction_cache)
+            "cache_size": len(self.prediction_cache),
+            "word_patterns": {
+                "word_associations": len(self.word_associations),
+                "context_patterns": len(self.context_patterns),
+                "learned_sequences": len(self.learned_sequences),
+                "domain_vocabularies": sum(len(vocab) for vocab in self.domain_vocabularies.values())
+            }
         }
     
     def cleanup(self):
         self.prediction_cache.clear()
         total = self.learning_metrics['total_samples']
         quality = self.korean_quality_stats['avg_quality']
+        word_patterns = len(self.word_associations) + len(self.context_patterns)
         if total > 0:
-            print(f"학습 시스템: {total}개 샘플, 품질 {quality:.2f}")
+            print(f"학습 시스템: {total}개 샘플, 품질 {quality:.2f}, 단어 패턴 {word_patterns}개")
