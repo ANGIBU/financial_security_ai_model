@@ -30,12 +30,11 @@ class DataProcessor:
         self.knowledge_base = FinancialSecurityKnowledgeBase()
         
         self.structure_cache = {}
-        self.max_cache_size = 800
+        self.max_cache_size = 600
         
-        self.korean_cleanup_patterns = self._build_enhanced_korean_patterns()
+        self.korean_cleanup_patterns = self._build_safe_korean_patterns()
         self.answer_extraction_patterns = self._build_extraction_patterns()
         self.validation_rules = self._build_validation_rules()
-        self.korean_grammar_rules = self._build_korean_grammar_rules()
         
         self.cache_stats = {"hits": 0, "misses": 0}
         
@@ -43,51 +42,22 @@ class DataProcessor:
         if self.debug_mode:
             print(f"[DEBUG] {message}")
     
-    def _build_enhanced_korean_patterns(self) -> Dict[str, str]:
+    def _build_safe_korean_patterns(self) -> Dict[str, str]:
         return {
-            r'[軟软][件体體]': '소프트웨어',
-            r'[硬硬][件体體]': '하드웨어',
+            r'軟件|软件': '소프트웨어',
+            r'硬件': '하드웨어',
             r'金融': '금융',
             r'交易': '거래',
             r'安全': '안전',
-            r'方案': '방안',
-            r'[資资]訊': '정보',
-            r'[系係][統统]': '시스템',
             r'管理': '관리',
-            r'[技技][術术]': '기술',
-            r'[規规]定': '규정',
-            r'法律': '법률',
-            r'[個个]人': '개인',
-            r'情[報报]': '정보',
-            r'[電电]子': '전자',
+            r'個人|个人': '개인',
+            r'資訊|资讯': '정보',
+            r'電子|电子': '전자',
+            r'系統|系统': '시스템',
+            r'保護|保护': '보호',
+            r'認證|认证': '인증',
             r'加密': '암호화',
-            r'密[码碼]': '암호',
-            r'[网網]络': '네트워크',
-            r'数据[库庫]': '데이터베이스',
-            r'[访訪]问': '접근',
-            r'[权權]限': '권한',
-            r'[监監]控': '모니터링',
-            r'[检檢]测': '탐지',
-            r'[备備]份': '백업',
-            r'恢复': '복구',
-            r'[认認][证證]': '인증',
-            r'[验驗][证證]': '검증',
-            r'[设設][备備]': '장비',
-            r'[网網][站络]': '웹사이트',
-            r'[计計][算汇]机': '컴퓨터',
-            r'[终終]端': '단말',
-            r'[服務务][器噐]': '서버',
-            r'[客戶户]端': '클라이언트',
-            r'[应應]用': '응용',
-            r'[程敞]序': '프로그램',
-            r'[协協][议議]': '프로토콜',
-            r'[传傳]输': '전송',
-            r'[协協]调': '조정',
-            r'[实實][施时]': '실시',
-            r'[维維][护護]': '유지',
-            r'[操噪]作': '운영',
-            r'[环環]境': '환경',
-            r'[标標]准': '표준'
+            r'網路|网络': '네트워크'
         }
     
     def _build_extraction_patterns(self) -> Dict[str, List[str]]:
@@ -98,63 +68,33 @@ class DataProcessor:
                 r'최종\s*답[:\s]*([1-5])',
                 r'선택[:\s]*([1-5])',
                 r'^([1-5])$',
-                r'^([1-5])\s*$',
-                r'결론[:\s]*([1-5])',
-                r'([1-5])\s*번이\s*정답'
+                r'^([1-5])\s*$'
             ],
             "choice_reference": [
                 r'([1-5])번',
                 r'선택지\s*([1-5])',
                 r'([1-5])\s*가\s*정답',
-                r'([1-5])\s*이\s*정답',
-                r'([1-5])\s*번\s*선택',
-                r'번호\s*([1-5])'
+                r'([1-5])\s*이\s*정답'
             ],
             "reasoning_conclusion": [
                 r'따라서\s*([1-5])',
                 r'그러므로\s*([1-5])',
                 r'결론적으로\s*([1-5])',
-                r'분석\s*결과\s*([1-5])',
-                r'이유는\s*([1-5])',
-                r'답은\s*([1-5])'
+                r'분석\s*결과\s*([1-5])'
             ]
         }
     
     def _build_validation_rules(self) -> Dict[str, callable]:
         return {
             "choice_range": lambda x: x.isdigit() and 1 <= int(x) <= 5,
-            "length_appropriate": lambda x: 10 <= len(x) <= 2000,
+            "length_appropriate": lambda x: 15 <= len(x) <= 1500,
             "not_empty": lambda x: x.strip() != "",
             "korean_content": lambda x: bool(re.search(r'[가-힣]', x)),
             "no_chinese_chars": lambda x: not bool(re.search(r'[\u4e00-\u9fff]', x)),
             "minimal_english": lambda x: len(re.findall(r'[A-Za-z]', x)) < len(x) * 0.3,
             "no_japanese": lambda x: not bool(re.search(r'[\u3040-\u309f\u30a0-\u30ff]', x)),
-            "proper_punctuation": lambda x: not bool(re.search(r'[。、]', x))
+            "no_symbols": lambda x: not bool(re.search(r'[①②③④⑤➀➁❶❷❸]', x))
         }
-    
-    def _build_korean_grammar_rules(self) -> List[Dict]:
-        return [
-            {
-                "pattern": r'([가-힣]+)을\s+([가-힣]+)니다',
-                "check": lambda m: m.group(1)[-1] in 'ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ',
-                "correction": lambda m: f"{m.group(1)}를 {m.group(2)}니다"
-            },
-            {
-                "pattern": r'([가-힣]+)를\s+([가-힣]+)니다',
-                "check": lambda m: m.group(1)[-1] not in 'ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ',
-                "correction": lambda m: f"{m.group(1)}을 {m.group(2)}니다"
-            },
-            {
-                "pattern": r'해당되지',
-                "check": lambda m: True,
-                "correction": lambda m: "해당하지"
-            },
-            {
-                "pattern": r'\s+합니다\.',
-                "check": lambda m: True,
-                "correction": lambda m: "합니다."
-            }
-        ]
     
     def _clean_korean_text(self, text: str) -> str:
         if not text:
@@ -163,37 +103,23 @@ class DataProcessor:
         text = re.sub(r'[\u0000-\u001f\u007f-\u009f]', '', text)
         
         for pattern, replacement in self.korean_cleanup_patterns.items():
-            text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+            text = re.sub(pattern, replacement, text)
         
         text = re.sub(r'[\u4e00-\u9fff]+', '', text)
         text = re.sub(r'[\u3040-\u309f]+', '', text)
         text = re.sub(r'[\u30a0-\u30ff]+', '', text)
         text = re.sub(r'[а-яё]+', '', text, flags=re.IGNORECASE)
         
+        text = re.sub(r'[①②③④⑤➀➁❶❷❸❹❺]', '', text)
+        text = re.sub(r'bo+', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\([^가-힣\s]*\)', '', text)
         text = re.sub(r'[^\w\s가-힣0-9.,!?()·\-\n]', ' ', text)
+        
         text = re.sub(r'\s+', ' ', text)
         text = re.sub(r'\.{2,}', '.', text)
         text = re.sub(r',{2,}', ',', text)
         
-        text = self._apply_korean_grammar_rules(text)
-        
         return text.strip()
-    
-    def _apply_korean_grammar_rules(self, text: str) -> str:
-        for rule in self.korean_grammar_rules:
-            pattern = rule["pattern"]
-            
-            if isinstance(pattern, str):
-                if not callable(rule.get("check", lambda x: True)):
-                    text = re.sub(pattern, rule["correction"](None), text)
-                else:
-                    matches = list(re.finditer(pattern, text))
-                    for match in reversed(matches):
-                        if rule["check"](match):
-                            correction = rule["correction"](match)
-                            text = text[:match.start()] + correction + text[match.end():]
-        
-        return text
     
     def analyze_question_structure(self, question: str) -> Dict:
         q_hash = hash(question[:200])
@@ -269,8 +195,7 @@ class DataProcessor:
         subjective_indicators = [
             "설명하세요", "기술하세요", "서술하세요", "논하세요", "작성하세요",
             "특징을", "방법을", "과정을", "절차를", "방안을", "대책을",
-            "어떻게", "무엇인지", "왜", "어떤",
-            "트로이", "악성코드", "탐지지표", "원격제어"
+            "어떻게", "무엇인지", "왜", "어떤"
         ]
         
         has_subjective_indicators = any(indicator in full_text for indicator in subjective_indicators)
@@ -279,10 +204,10 @@ class DataProcessor:
             "다음 중", "가장 적절한", "옳은 것", "해당하는 것", "틀린 것"
         ])
         
-        if has_subjective_indicators and not (has_multiple_choices and has_choice_question):
-            structure["question_type"] = "subjective"
-        elif has_multiple_choices and has_choice_question:
+        if has_multiple_choices and has_choice_question:
             structure["question_type"] = "multiple_choice"
+        elif has_subjective_indicators:
+            structure["question_type"] = "subjective"
         elif len(choices) >= 3:
             structure["question_type"] = "multiple_choice"
         else:
@@ -309,7 +234,8 @@ class DataProcessor:
         technical_terms = [
             "암호화", "복호화", "해시", "PKI", "SSL", "TLS", "VPN", 
             "IDS", "IPS", "방화벽", "DDoS", "APT", "제로데이",
-            "백도어", "키로거", "봇넷", "C&C", "멀웨어", "랜섬웨어"
+            "백도어", "키로거", "봇넷", "멀웨어", "랜섬웨어",
+            "트로이", "악성코드", "피싱", "스미싱", "파밍"
         ]
         
         found_terms = []
@@ -342,28 +268,28 @@ class DataProcessor:
         score = 0.0
         
         text_length = len(structure["question_text"])
-        score += min(text_length / 2000, 0.15)
+        score += min(text_length / 1500, 0.15)
         
         choice_count = structure["choice_count"]
-        score += min(choice_count / 10, 0.1)
+        score += min(choice_count / 8, 0.1)
         
         if structure["has_negative"]:
-            score += 0.2
+            score += 0.15
         
         tech_terms = len(structure["technical_terms"])
-        score += min(tech_terms / 5, 0.15)
+        score += min(tech_terms / 4, 0.1)
         
         legal_refs = len(structure["legal_references"])
-        score += min(legal_refs / 3, 0.1)
+        score += min(legal_refs / 2, 0.1)
         
-        if structure["korean_ratio"] < 0.7:
-            score += 0.1
+        if structure["korean_ratio"] < 0.8:
+            score += 0.05
         
         return min(score, 1.0)
     
     def _manage_cache_size(self):
         if len(self.structure_cache) >= self.max_cache_size:
-            keys_to_remove = list(self.structure_cache.keys())[:self.max_cache_size // 4]
+            keys_to_remove = list(self.structure_cache.keys())[:self.max_cache_size // 3]
             for key in keys_to_remove:
                 del self.structure_cache[key]
     
@@ -375,9 +301,7 @@ class DataProcessor:
             r"틀린\s*것",
             r"잘못된\s*것",
             r"부적절한",
-            r"아닌\s*것",
-            r"제외한",
-            r"빼고"
+            r"아닌\s*것"
         ]
         
         compiled_negative = re.compile("|".join(negative_patterns), re.IGNORECASE)
@@ -385,15 +309,15 @@ class DataProcessor:
     
     def _extract_domain_hints(self, question: str) -> List[str]:
         domain_keywords = {
-            "개인정보보호": ["개인정보", "정보주체", "개인정보처리", "동의", "개인정보보호법", "민감정보"],
-            "전자금융": ["전자금융", "전자적장치", "접근매체", "전자서명", "전자금융거래법", "전자지급"],
-            "정보보안": ["정보보안", "보안관리", "접근통제", "보안정책", "ISMS", "정보보호"],
-            "사이버보안": ["해킹", "악성코드", "피싱", "트로이", "원격제어", "탐지지표", "멀웨어"],
-            "위험관리": ["위험", "관리", "계획", "수립", "위험평가", "위험통제", "위험분석"],
-            "관리체계": ["관리체계", "정책", "수립", "운영", "경영진", "조직", "체계"],
-            "금융투자업": ["금융투자업", "투자매매업", "소비자금융업", "보험중개업", "투자자문업"],
-            "재해복구": ["재해", "복구", "비상계획", "백업", "BCP", "업무연속성"],
-            "암호화": ["암호화", "복호화", "암호", "키관리", "해시함수", "대칭키", "공개키"]
+            "개인정보보호": ["개인정보", "정보주체", "개인정보처리", "동의", "개인정보보호법"],
+            "전자금융": ["전자금융", "전자적장치", "접근매체", "전자서명", "전자금융거래법"],
+            "정보보안": ["정보보안", "보안관리", "접근통제", "보안정책", "ISMS"],
+            "사이버보안": ["해킹", "악성코드", "피싱", "트로이", "원격제어", "탐지지표"],
+            "위험관리": ["위험", "관리", "계획", "수립", "위험평가"],
+            "관리체계": ["관리체계", "정책", "수립", "운영", "경영진"],
+            "금융투자업": ["금융투자업", "투자매매업", "소비자금융업", "보험중개업"],
+            "재해복구": ["재해", "복구", "비상계획", "백업", "BCP"],
+            "암호화": ["암호화", "복호화", "암호", "키관리", "해시함수"]
         }
         
         detected_domains = []
@@ -403,11 +327,11 @@ class DataProcessor:
             match_count = sum(1 for keyword in keywords if keyword in question_lower)
             confidence = match_count / len(keywords)
             
-            if match_count >= 1 and confidence > 0.05:
+            if match_count >= 1 and confidence > 0.1:
                 detected_domains.append((domain, confidence))
         
         detected_domains.sort(key=lambda x: x[1], reverse=True)
-        return [domain for domain, confidence in detected_domains if confidence > 0.05]
+        return [domain for domain, confidence in detected_domains if confidence > 0.1]
     
     def extract_mc_answer_fast(self, response: str) -> str:
         self._debug_print(f"답변 추출 시도: {response[:100]}")
@@ -494,7 +418,7 @@ class DataProcessor:
     def _extract_subjective_answer_optimized(self, response: str, structure: Dict) -> ProcessedAnswer:
         is_valid, korean_quality = self._validate_korean_text_enhanced(response, "subjective")
         
-        if not is_valid:
+        if not is_valid or korean_quality < 0.4:
             fallback = self._generate_domain_specific_fallback(structure)
             return ProcessedAnswer(
                 final_answer=fallback,
@@ -504,7 +428,7 @@ class DataProcessor:
                 korean_quality=0.85
             )
         
-        if len(response) < 20:
+        if len(response) < 25:
             fallback = self._generate_domain_specific_fallback(structure)
             return ProcessedAnswer(
                 final_answer=fallback,
@@ -513,8 +437,8 @@ class DataProcessor:
                 validation_passed=True,
                 korean_quality=0.85
             )
-        elif len(response) > 1200:
-            response = response[:1197] + "..."
+        elif len(response) > 1000:
+            response = response[:997] + "..."
         
         return ProcessedAnswer(
             final_answer=response.strip(),
@@ -530,7 +454,7 @@ class DataProcessor:
                 return True, 1.0
             return False, 0.0
         
-        if not text or len(text.strip()) < 10:
+        if not text or len(text.strip()) < 15:
             return False, 0.0
         
         validation_score = 0.0
@@ -552,13 +476,13 @@ class DataProcessor:
         korean_chars = len(re.findall(r'[가-힣]', text))
         korean_ratio = korean_chars / total_chars
         
-        if korean_ratio < 0.3:
+        if korean_ratio < 0.4:
             return False, korean_ratio
         
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
-        if english_ratio > 0.4:
+        if english_ratio > 0.3:
             return False, korean_ratio * (1 - english_ratio * 0.4)
         
         quality_score = korean_ratio * 0.8 + validation_score / len(self.validation_rules) * 0.2
@@ -604,8 +528,7 @@ class DataProcessor:
             "cache_size": len(self.structure_cache),
             "max_cache_size": self.max_cache_size,
             "total_patterns": len(self.korean_cleanup_patterns),
-            "validation_rules": len(self.validation_rules),
-            "grammar_rules": len(self.korean_grammar_rules)
+            "validation_rules": len(self.validation_rules)
         }
     
     def cleanup(self):
