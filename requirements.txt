@@ -1,26 +1,33 @@
-# 핵심 딥러닝 패키지
-torch>=2.1.0
-torchvision>=0.16.0
-torchaudio>=2.1.0
-
-# Transformers 생태계
-transformers>=4.35.0
-tokenizers>=0.15.0
-accelerate>=0.24.0
-safetensors>=0.4.0
-huggingface-hub>=0.19.0
-
-# 데이터 처리
-pandas>=2.0.0
-numpy>=1.24.0
-
-# 프로그레스바 및 시스템 유틸리티
-tqdm>=4.65.0
-psutil>=5.9.0
-
-# 개발 및 디버깅 도구 (선택)
-ipython>=8.10.0
-jupyter>=1.0.0
+torch==2.1.0
+transformers==4.36.0
+pandas==2.0.3
+numpy==1.24.3
+tqdm==4.66.1
+scipy==1.11.4
+scikit-learn==1.3.2
+bitsandbytes==0.41.3
+accelerate==0.25.0
+datasets==2.15.0
+tokenizers==0.15.0
+huggingface-hub==0.19.4
+safetensors==0.4.1
+peft==0.7.1
+sentencepiece==0.1.99
+protobuf==4.25.1
+typing-extensions==4.8.0
+packaging==23.2
+filelock==3.13.1
+fsspec==2023.10.0
+pyyaml==6.0.1
+regex==2023.10.3
+requests==2.31.0
+urllib3==2.1.0
+certifi==2023.11.17
+charset-normalizer==3.3.2
+idna==3.6
+setuptools==69.0.3
+wheel==0.42.0
+pip==23.3.1
 
 # 개별설치 (선택)
 # pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
