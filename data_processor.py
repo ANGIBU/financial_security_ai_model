@@ -1,12 +1,12 @@
 # data_processor.py
 
 """
-데이터 처리기 (강화버전)
+데이터 처리기
 - 문제 구조 분석
 - 한국어 텍스트 정리
 - 답변 추출 및 검증
 - 도메인 힌트 추출
-- 고급 패턴 분석 연동
+- 패턴 분석 연동
 - 다단계 검증 시스템
 - 문맥 인식 처리
 """
@@ -33,7 +33,7 @@ class ProcessedAnswer:
     fallback_used: bool
 
 @dataclass
-class AdvancedAnalysis:
+class Analysis:
     semantic_coherence: float
     structural_integrity: float
     domain_alignment: float
@@ -57,8 +57,8 @@ class DataProcessor:
         
         self.diverse_templates = self._build_diverse_templates()
         
-        # 고급 기능 추가
-        self.advanced_validators = self._build_advanced_validators()
+        # 기능 추가
+        self.validators = self._build_validators()
         self.context_analyzers = self._build_context_analyzers()
         self.multi_stage_processors = self._build_multi_stage_processors()
         
@@ -66,7 +66,7 @@ class DataProcessor:
             "total_processed": 0,
             "mc_extractions": 0,
             "subj_validations": 0,
-            "advanced_validations": 0,
+            "validations": 0,
             "fallback_generations": 0,
             "quality_improvements": 0
         }
@@ -88,7 +88,7 @@ class DataProcessor:
         if self.debug_mode:
             print(f"[DEBUG] {message}")
     
-    def _build_advanced_validators(self) -> Dict:
+    def _build_validators(self) -> Dict:
         return {
             "semantic_coherence": {
                 "min_coherence_score": 0.6,
@@ -269,7 +269,7 @@ class DataProcessor:
         ]
     
     def analyze_question_structure_advanced(self, question: str) -> Dict:
-        """고급 질문 구조 분석"""
+        """질문 구조 분석"""
         start_time = time.time()
         
         q_hash = hash(question[:200])
@@ -284,8 +284,8 @@ class DataProcessor:
         # 기본 구조 분석
         basic_structure = self.analyze_question_structure(question)
         
-        # 고급 분석 추가
-        advanced_analysis = self._perform_advanced_analysis(question, basic_structure)
+        # 분석 추가
+        analysis = self._perform_analysis(question, basic_structure)
         
         # 문맥 분석
         context_analysis = self._analyze_question_context(question)
@@ -296,7 +296,7 @@ class DataProcessor:
         # 통합 결과
         enhanced_structure = {
             **basic_structure,
-            "advanced_analysis": advanced_analysis,
+            "analysis": analysis,
             "context_analysis": context_analysis,
             "intent_analysis": intent_analysis,
             "processing_time": time.time() - start_time,
@@ -309,8 +309,8 @@ class DataProcessor:
         
         return enhanced_structure
     
-    def _perform_advanced_analysis(self, question: str, basic_structure: Dict) -> AdvancedAnalysis:
-        """고급 분석 수행"""
+    def _perform_analysis(self, question: str, basic_structure: Dict) -> Analysis:
+        """분석 수행"""
         
         # 의미적 일관성 분석
         semantic_coherence = self._calculate_semantic_coherence(question)
@@ -327,7 +327,7 @@ class DataProcessor:
         # 신뢰도 지표 추출
         confidence_indicators = self._extract_confidence_indicators(question)
         
-        return AdvancedAnalysis(
+        return Analysis(
             semantic_coherence=semantic_coherence,
             structural_integrity=structural_integrity,
             domain_alignment=domain_alignment,
@@ -378,7 +378,7 @@ class DataProcessor:
             integrity_score += 0.2
         
         # 논리적 흐름 지시어
-        flow_indicators = self.advanced_validators["structural_integrity"]["logical_flow_indicators"]
+        flow_indicators = self.validators["structural_integrity"]["logical_flow_indicators"]
         flow_count = sum(1 for indicator in flow_indicators if indicator in question)
         integrity_score += min(flow_count * 0.1, 0.3)
         
@@ -450,7 +450,7 @@ class DataProcessor:
         """신뢰도 지표 추출"""
         indicators = []
         
-        confidence_rules = self.advanced_validators["confidence_indicators"]
+        confidence_rules = self.validators["confidence_indicators"]
         
         for category, terms in confidence_rules.items():
             for term in terms:
@@ -795,7 +795,7 @@ class DataProcessor:
         return final_answer
     
     def _clean_korean_text_enhanced(self, text: str) -> str:
-        """향상된 한국어 텍스트 정리"""
+        """텍스트 정리"""
         if not text:
             return ""
         
@@ -924,15 +924,15 @@ class DataProcessor:
         if penalties > 5:
             return False, validation_score / len(self.validation_rules)
         
-        # 고급 품질 검증
-        advanced_quality = self._evaluate_korean_quality_enhanced(text)
+        # 품질 검증
+        quality = self._evaluate_korean_quality_enhanced(text)
         
-        final_quality = (validation_score / len(self.validation_rules)) * 0.6 + advanced_quality * 0.4
+        final_quality = (validation_score / len(self.validation_rules)) * 0.6 + quality * 0.4
         
         return final_quality > 0.6, final_quality
     
     def _evaluate_korean_quality_enhanced(self, text: str) -> float:
-        """향상된 한국어 품질 평가"""
+        """한국어 품질 평가"""
         if not text:
             return 0.0
         
@@ -1366,7 +1366,7 @@ class DataProcessor:
             "validation_rules": len(self.validation_rules),
             "processing_stats": self.processing_stats,
             "avg_processing_time": avg_processing_time,
-            "advanced_validators": len(self.advanced_validators),
+            "validators": len(self.validators),
             "multi_stage_processors": len(self.multi_stage_processors)
         }
     
@@ -1392,3 +1392,44 @@ class DataProcessor:
         
         if self.debug_mode:
             print(f"데이터 처리기 정리 완료 - 처리: {total_processed}건, 캐시 적중률: {cache_hit_rate:.2%}")
+
+    # 추가 헬퍼 메서드들
+    def _clean_korean_text(self, text: str) -> str:
+        """기본 한국어 텍스트 정리 (호환성 유지)"""
+        return self._clean_korean_text_enhanced(text)
+    
+    def _check_answer_context_alignment(self, answer: str, question: str) -> float:
+        """답변 문맥 일치성 확인"""
+        return 0.5  # 기본 구현
+    
+    def _check_domain_answer_alignment(self, answer: str, question: str) -> float:
+        """도메인 답변 정렬성 확인"""
+        return 0.5  # 기본 구현
+    
+    def _improve_sentence_structure(self, text: str) -> str:
+        """문장 구조 개선"""
+        return text  # 기본 구현
+    
+    def _verify_technical_terms(self, text: str, question: str) -> str:
+        """전문 용어 검증"""
+        return text  # 기본 구현
+    
+    def _improve_logical_flow(self, text: str) -> str:
+        """논리적 흐름 개선"""
+        return text  # 기본 구현
+    
+    def _remove_redundancy(self, text: str) -> str:
+        """중복 내용 제거"""
+        return text  # 기본 구현
+    
+    def _apply_grammar_corrections(self, text: str) -> str:
+        """문법 수정 적용"""
+        return text  # 기본 구현
+    
+    def _optimize_answer_length(self, text: str) -> str:
+        """답변 길이 최적화"""
+        return text  # 기본 구현
+    
+    def _validate_mc_answer_context(self, answer: str, question: str) -> float:
+        """객관식 답변 문맥 검증"""
+        return 0.1  # 기본 구현

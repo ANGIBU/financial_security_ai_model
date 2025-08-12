@@ -1,12 +1,12 @@
 # inference.py
 
 """
-메인 추론 시스템 (강화버전)
+메인 추론 시스템
 - 금융보안 객관식/주관식 문제 추론
 - 학습 시스템 통합 관리
 - 한국어 답변 생성 및 검증
 - 오프라인 환경 대응
-- 고급 패턴 분석 통합
+- 패턴 분석 통합
 - 다단계 추론 시스템
 - 메타 학습 및 적응
 - 동적 전략 조정
@@ -39,14 +39,14 @@ from model_handler import ModelHandler
 from data_processor import DataProcessor
 from prompt_engineering import PromptEngineer
 from learning_system import LearningSystem
-from advanced_pattern_analyzer import AdvancedPatternAnalyzer
+from pattern_analyzer import PatternAnalyzer
 
 class FinancialAIInference:
     
-    def __init__(self, enable_learning: bool = True, enable_advanced_patterns: bool = True, verbose: bool = False):
+    def __init__(self, enable_learning: bool = True, enable_patterns: bool = True, verbose: bool = False):
         self.start_time = time.time()
         self.enable_learning = enable_learning
-        self.enable_advanced_patterns = enable_advanced_patterns
+        self.enable_patterns = enable_patterns
         self.verbose = verbose
         
         if torch.cuda.is_available():
@@ -71,9 +71,9 @@ class FinancialAIInference:
             self.learning_system = LearningSystem(debug_mode=self.verbose)
             self._load_existing_learning_data()
         
-        # 고급 패턴 분석기 초기화
-        if self.enable_advanced_patterns:
-            self.advanced_pattern_analyzer = AdvancedPatternAnalyzer(debug_mode=self.verbose)
+        # 패턴 분석기 초기화
+        if self.enable_patterns:
+            self.pattern_analyzer = PatternAnalyzer(debug_mode=self.verbose)
             self._load_existing_pattern_data()
         
         # 통합 통계
@@ -96,14 +96,14 @@ class FinancialAIInference:
             "answer_distribution": {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0},
             "quality_scores": [],
             "processing_times": [],
-            "advanced_pattern_usage": 0,
+            "pattern_usage": 0,
             "multi_stage_reasoning": 0,
             "confidence_calibrations": 0,
             "strategy_adaptations": 0,
             "error_recoveries": 0
         }
         
-        # 고급 기능
+        # 기능 추가
         self.answer_cache = {}
         self.pattern_analysis_cache = {}
         self.max_cache_size = 400
@@ -137,8 +137,8 @@ class FinancialAIInference:
             "calibration_history": []
         }
         
-        # 향상된 폴백 시스템
-        self.enhanced_fallback_templates = self._build_enhanced_fallback_templates()
+        # 폴백 시스템
+        self.fallback_templates = self._build_fallback_templates()
         
         # 성능 모니터링
         self.performance_monitor = {
@@ -150,7 +150,7 @@ class FinancialAIInference:
         
         print("초기화 완료")
     
-    def _build_enhanced_fallback_templates(self) -> Dict[str, List[str]]:
+    def _build_fallback_templates(self) -> Dict[str, List[str]]:
         return {
             "사이버보안": [
                 "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 원격 접근 기능을 통해 시스템을 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결, 시스템 리소스 사용 증가, 알 수 없는 프로세스 실행 등이 있으며, 정기적인 보안 점검과 실시간 모니터링을 통해 대응해야 합니다.",
@@ -195,10 +195,10 @@ class FinancialAIInference:
     
     def _load_existing_pattern_data(self) -> None:
         try:
-            if self.enable_advanced_patterns and self.advanced_pattern_analyzer.load_patterns():
+            if self.enable_patterns and self.pattern_analyzer.load_patterns():
                 if self.verbose:
-                    pattern_count = len(self.advanced_pattern_analyzer.pattern_success_history)
-                    print(f"고급 패턴 데이터 로드: {pattern_count}개")
+                    pattern_count = len(self.pattern_analyzer.pattern_success_history)
+                    print(f"패턴 데이터 로드: {pattern_count}개")
         except Exception as e:
             if self.verbose:
                 print(f"패턴 데이터 로드 오류: {e}")
@@ -279,12 +279,12 @@ class FinancialAIInference:
                     self.stats["answer_distribution"][selected] += 1
                     return selected
             
-            # 고급 패턴 분석 활용
-            if self.enable_advanced_patterns:
-                hint, conf = self.advanced_pattern_analyzer.get_enhanced_prediction(question, structure or {})
+            # 패턴 분석 활용
+            if self.enable_patterns:
+                hint, conf = self.pattern_analyzer.get_prediction(question, structure or {})
                 if conf > 0.45:
                     self.stats["smart_hints_used"] += 1
-                    self.stats["advanced_pattern_usage"] += 1
+                    self.stats["pattern_usage"] += 1
                     self.stats["answer_distribution"][hint] += 1
                     return hint
             
@@ -307,10 +307,10 @@ class FinancialAIInference:
         question_lower = question.lower()
         domain = self._extract_simple_domain(question)
         
-        if domain in self.enhanced_fallback_templates:
-            return random.choice(self.enhanced_fallback_templates[domain])
+        if domain in self.fallback_templates:
+            return random.choice(self.fallback_templates[domain])
         else:
-            return random.choice(self.enhanced_fallback_templates["일반"])
+            return random.choice(self.fallback_templates["일반"])
     
     def _analyze_question_features(self, question: str, structure: Dict = None) -> Dict:
         """질문 특성 분석"""
@@ -440,9 +440,9 @@ class FinancialAIInference:
     def _stage1_pattern_matching(self, question: str, structure: Dict) -> Tuple[str, float]:
         """1단계: 빠른 패턴 매칭"""
         
-        # 고급 패턴 분석기 우선 사용
-        if self.enable_advanced_patterns:
-            pattern_answer, pattern_conf = self.advanced_pattern_analyzer.get_enhanced_prediction(question, structure)
+        # 패턴 분석기 우선 사용
+        if self.enable_patterns:
+            pattern_answer, pattern_conf = self.pattern_analyzer.get_prediction(question, structure)
             if pattern_conf > 0.5:
                 return pattern_answer, pattern_conf
         
@@ -578,8 +578,8 @@ class FinancialAIInference:
         """단일 단계 처리 (기본 모드)"""
         
         # 패턴 매칭 시도
-        if self.enable_advanced_patterns:
-            hint_answer, hint_confidence = self.advanced_pattern_analyzer.get_enhanced_prediction(question, structure)
+        if self.enable_patterns:
+            hint_answer, hint_confidence = self.pattern_analyzer.get_prediction(question, structure)
             if hint_confidence > 0.5:
                 return hint_answer, hint_confidence, ["single_stage_pattern"]
         
@@ -630,8 +630,8 @@ class FinancialAIInference:
                 self.stats["cache_hits"] += 1
                 return self.answer_cache[cache_key]
             
-            # 질문 구조 분석 (고급 분석 포함)
-            if self.enable_advanced_patterns:
+            # 질문 구조 분석
+            if self.enable_patterns:
                 structure = self.data_processor.analyze_question_structure_advanced(question)
             else:
                 structure = self.data_processor.analyze_question_structure(question)
@@ -701,8 +701,8 @@ class FinancialAIInference:
                 )
                 self.stats["learned"] += 1
             
-            if self.enable_advanced_patterns and confidence > 0.6:
-                self.advanced_pattern_analyzer.learn_from_success(question, answer, confidence)
+            if self.enable_patterns and confidence > 0.6:
+                self.pattern_analyzer.learn_from_success(question, answer, confidence)
             
             # 성능 통계 업데이트
             processing_time = time.time() - start_time
@@ -739,9 +739,9 @@ class FinancialAIInference:
             # 학습 시스템 최적화
             self.learning_system.optimize_patterns()
             
-            # 고급 패턴 분석기 최적화
-            if self.enable_advanced_patterns:
-                self.advanced_pattern_analyzer.optimize_patterns()
+            # 패턴 분석기 최적화
+            if self.enable_patterns:
+                self.pattern_analyzer.optimize_patterns()
             
             # 성능 기반 전략 조정
             recent_performance = self._calculate_recent_performance()
@@ -803,7 +803,7 @@ class FinancialAIInference:
         
         for idx, row in test_df.iterrows():
             question = row['Question']
-            if self.enable_advanced_patterns:
+            if self.enable_patterns:
                 structure = self.data_processor.analyze_question_structure_advanced(question)
             else:
                 structure = self.data_processor.analyze_question_structure(question)
@@ -824,8 +824,8 @@ class FinancialAIInference:
         if self.enable_learning:
             print(f"학습 모드: 활성화")
         
-        if self.enable_advanced_patterns:
-            print(f"고급 패턴 분석: 활성화")
+        if self.enable_patterns:
+            print(f"패턴 분석: 활성화")
         
         print(f"다단계 추론: {'활성화' if self.multi_stage_config['enable_multi_stage'] else '비활성화'}")
         
@@ -856,8 +856,8 @@ class FinancialAIInference:
             if self.enable_learning and self.stats["total"] % 30 == 0:
                 self.learning_system.optimize_patterns()
             
-            if self.enable_advanced_patterns and self.stats["total"] % 25 == 0:
-                self.advanced_pattern_analyzer.optimize_patterns()
+            if self.enable_patterns and self.stats["total"] % 25 == 0:
+                self.pattern_analyzer.optimize_patterns()
         
         submission_df['Answer'] = answers
         submission_df.to_csv(output_file, index=False, encoding='utf-8-sig')
@@ -873,9 +873,9 @@ class FinancialAIInference:
                     print(f"데이터 저장 오류: {e}")
         
         # 패턴 데이터 저장
-        if self.enable_advanced_patterns:
+        if self.enable_patterns:
             try:
-                if self.advanced_pattern_analyzer.save_patterns():
+                if self.pattern_analyzer.save_patterns():
                     if self.verbose:
                         print("패턴 데이터 저장 완료")
             except Exception as e:
@@ -892,9 +892,9 @@ class FinancialAIInference:
             
             print(f"  중간 통계: 모델성공 {success_rate:.1f}%, 패턴활용 {pattern_rate:.1f}%, 폴백 {fallback_rate:.1f}%")
             
-            if self.enable_advanced_patterns:
-                advanced_rate = self.stats["advanced_pattern_usage"] / self.stats["total"] * 100
-                print(f"  고급패턴: {advanced_rate:.1f}%, 다단계추론: {self.stats['multi_stage_reasoning']}회")
+            if self.enable_patterns:
+                pattern_usage_rate = self.stats["pattern_usage"] / self.stats["total"] * 100
+                print(f"  패턴 분석: {pattern_usage_rate:.1f}%, 다단계추론: {self.stats['multi_stage_reasoning']}회")
             
             distribution = self.stats["answer_distribution"]
             total_mc = sum(distribution.values())
@@ -952,9 +952,9 @@ class FinancialAIInference:
         print(f"  처리 오류: {self.stats['errors']}회")
         print(f"  캐시 적중: {self.stats['cache_hits']}회")
         
-        if self.enable_advanced_patterns:
-            print(f"\n고급 기능 통계:")
-            print(f"  고급 패턴 사용: {self.stats['advanced_pattern_usage']}회")
+        if self.enable_patterns:
+            print(f"\n패턴 분석 통계:")
+            print(f"  패턴 사용: {self.stats['pattern_usage']}회")
             print(f"  다단계 추론: {self.stats['multi_stage_reasoning']}회")
             print(f"  신뢰도 보정: {self.stats['confidence_calibrations']}회")
             print(f"  전략 적응: {self.stats['strategy_adaptations']}회")
@@ -981,9 +981,9 @@ class FinancialAIInference:
             print(f"  최근 성능: {meta_stats.get('recent_performance', 0):.2%}")
             print(f"  현재 정확도: {self.learning_system.get_current_accuracy():.2%}")
         
-        if self.enable_advanced_patterns:
-            pattern_stats = self.advanced_pattern_analyzer.get_performance_stats()
-            print(f"\n고급 패턴 통계:")
+        if self.enable_patterns:
+            pattern_stats = self.pattern_analyzer.get_performance_stats()
+            print(f"\n패턴 분석 통계:")
             print(f"  총 분석: {pattern_stats.get('total_analyses', 0)}회")
             print(f"  성공 예측: {pattern_stats.get('successful_predictions', 0)}회")
             print(f"  성공률: {pattern_stats.get('success_rate', 0):.2%}")
@@ -1039,7 +1039,7 @@ class FinancialAIInference:
                 "errors": self.stats["errors"],
                 "cache_hits": self.stats["cache_hits"],
                 "avg_processing_time": avg_processing_time,
-                "advanced_pattern_usage": self.stats["advanced_pattern_usage"],
+                "pattern_usage": self.stats["pattern_usage"],
                 "multi_stage_reasoning": self.stats["multi_stage_reasoning"],
                 "confidence_calibrations": self.stats["confidence_calibrations"],
                 "strategy_adaptations": self.stats["strategy_adaptations"],
@@ -1057,9 +1057,9 @@ class FinancialAIInference:
                 "meta_learning": self.learning_system.get_meta_learning_stats() if self.enable_learning else {},
                 "accuracy": self.learning_system.get_current_accuracy() if self.enable_learning else 0
             },
-            "advanced_patterns": {
-                "enabled": self.enable_advanced_patterns,
-                "performance_stats": self.advanced_pattern_analyzer.get_performance_stats() if self.enable_advanced_patterns else {}
+            "pattern_analysis": {
+                "enabled": self.enable_patterns,
+                "performance_stats": self.pattern_analyzer.get_performance_stats() if self.enable_patterns else {}
             },
             "component_performance": {
                 "model_handler": model_stats,
@@ -1081,8 +1081,8 @@ class FinancialAIInference:
             print(f"    패턴 활용: {self.stats['smart_hints_used']}회")
             print(f"    폴백 사용: {self.stats['fallback_used']}회")
             
-            if self.enable_advanced_patterns:
-                print(f"    고급 패턴: {self.stats['advanced_pattern_usage']}회")
+            if self.enable_patterns:
+                print(f"    패턴 분석: {self.stats['pattern_usage']}회")
                 print(f"    다단계 추론: {self.stats['multi_stage_reasoning']}회")
             
             # 컴포넌트 정리
@@ -1093,8 +1093,8 @@ class FinancialAIInference:
             if self.enable_learning:
                 self.learning_system.cleanup()
             
-            if self.enable_advanced_patterns:
-                self.advanced_pattern_analyzer.cleanup()
+            if self.enable_patterns:
+                self.pattern_analyzer.cleanup()
             
             # 캐시 정리
             self.answer_cache.clear()
@@ -1129,16 +1129,16 @@ def main():
         print(f"오류: {submission_file} 파일 없음")
         sys.exit(1)
     
-    # 고급 기능 활성화 설정
+    # 기능 활성화 설정
     enable_learning = True
-    enable_advanced_patterns = True
+    enable_patterns = True
     verbose = False
     
     engine = None
     try:
         engine = FinancialAIInference(
             enable_learning=enable_learning,
-            enable_advanced_patterns=enable_advanced_patterns,
+            enable_patterns=enable_patterns,
             verbose=verbose
         )
         results = engine.execute_inference(test_file, submission_file)
@@ -1153,9 +1153,9 @@ def main():
             print(f"패턴 매칭률: {processing_stats['pattern_based']/results['total_questions']*100:.1f}%")
             print(f"학습 성과: {results['learning_stats']['learned_samples']}개 샘플")
             
-            if enable_advanced_patterns:
-                advanced_stats = results['advanced_patterns']['performance_stats']
-                print(f"고급 패턴 성공률: {advanced_stats.get('success_rate', 0):.1%}")
+            if enable_patterns:
+                pattern_stats = results['pattern_analysis']['performance_stats']
+                print(f"패턴 분석 성공률: {pattern_stats.get('success_rate', 0):.1%}")
                 print(f"다단계 추론: {processing_stats['multi_stage_reasoning']}회")
         
     except KeyboardInterrupt:

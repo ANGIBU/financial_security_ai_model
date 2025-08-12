@@ -27,6 +27,7 @@ from model_handler import ModelHandler
 from data_processor import DataProcessor
 from prompt_engineering import PromptEngineer
 from learning_system import LearningSystem
+from pattern_analyzer import PatternAnalyzer
 
 class TestRunner:
     
@@ -40,6 +41,7 @@ class TestRunner:
             torch.cuda.empty_cache()
             print(f"GPU: {torch.cuda.get_device_name(0)}")
         
+        # 모든 컴포넌트 초기화
         self.model_handler = ModelHandler(
             model_name="upstage/SOLAR-10.7B-Instruct-v1.0",
             device="cuda" if torch.cuda.is_available() else "cpu",
@@ -51,12 +53,21 @@ class TestRunner:
         self.data_processor = DataProcessor(debug_mode=False)
         self.prompt_engineer = PromptEngineer()
         self.learning_system = LearningSystem(debug_mode=False)
+        self.pattern_analyzer = PatternAnalyzer(debug_mode=False)
         
+        # 기존 학습 데이터 로드
         try:
             self.learning_system.load_model()
             print("기존 학습 데이터 로드 완료")
         except:
             print("새로운 학습 세션 시작")
+        
+        # 기존 패턴 데이터 로드
+        try:
+            self.pattern_analyzer.load_patterns()
+            print("기존 패턴 데이터 로드 완료")
+        except:
+            print("새로운 패턴 분석 세션 시작")
         
         self.stats = {
             "total": 0,
@@ -72,11 +83,11 @@ class TestRunner:
             "smart_hints_used": 0
         }
         
-        self.enhanced_fallback_templates = self._build_enhanced_templates()
+        self.fallback_templates = self._build_fallback_templates()
         
         print("초기화 완료\n")
     
-    def _build_enhanced_templates(self) -> Dict[str, List[str]]:
+    def _build_fallback_templates(self) -> Dict[str, List[str]]:
         return {
             "사이버보안": [
                 "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결과 시스템 리소스 사용 증가가 있습니다.",
@@ -164,6 +175,7 @@ class TestRunner:
             if is_mc:
                 self.stats["mc_count"] += 1
                 
+                # 답변 분포 균형 조정
                 current_distribution = self.stats["answer_distribution"]
                 total_mc_answers = sum(current_distribution.values())
                 
@@ -181,6 +193,19 @@ class TestRunner:
                         self.stats["pattern_success"] += 1
                         return answer
                 
+                # 패턴 분석기 사용
+                pattern_answer, pattern_conf = self.pattern_analyzer.get_prediction(question, structure)
+                
+                if pattern_conf > 0.50:
+                    self.stats["pattern_success"] += 1
+                    self.stats["smart_hints_used"] += 1
+                    if pattern_conf > 0.65:
+                        self.stats["high_confidence_count"] += 1
+                    answer = pattern_answer
+                    self.stats["answer_distribution"][answer] += 1
+                    return answer
+                
+                # 학습 시스템 사용
                 hint_answer, hint_confidence = self.learning_system.get_smart_answer_hint(question, structure)
                 
                 if hint_confidence > 0.50:
@@ -190,27 +215,29 @@ class TestRunner:
                         self.stats["high_confidence_count"] += 1
                     answer = hint_answer
                     self.stats["answer_distribution"][answer] += 1
+                    return answer
+                
+                # 모델 생성
+                prompt = self.prompt_engineer.create_korean_reinforced_prompt(question, "multiple_choice")
+                
+                result = self.model_handler.generate_response(
+                    prompt=prompt,
+                    question_type="multiple_choice",
+                    max_attempts=2
+                )
+                
+                extracted = self.data_processor.extract_mc_answer_fast(result.response)
+                
+                if extracted and extracted.isdigit() and 1 <= int(extracted) <= 5:
+                    self.stats["model_success"] += 1
+                    if result.confidence > 0.7:
+                        self.stats["high_confidence_count"] += 1
+                    answer = extracted
+                    self.stats["answer_distribution"][answer] += 1
                 else:
-                    prompt = self.prompt_engineer.create_korean_reinforced_prompt(question, "multiple_choice")
-                    
-                    result = self.model_handler.generate_response(
-                        prompt=prompt,
-                        question_type="multiple_choice",
-                        max_attempts=2
-                    )
-                    
-                    extracted = self.data_processor.extract_mc_answer_fast(result.response)
-                    
-                    if extracted and extracted.isdigit() and 1 <= int(extracted) <= 5:
-                        self.stats["model_success"] += 1
-                        if result.confidence > 0.7:
-                            self.stats["high_confidence_count"] += 1
-                        answer = extracted
-                        self.stats["answer_distribution"][answer] += 1
-                    else:
-                        self.stats["fallback_used"] += 1
-                        answer = self._get_enhanced_fallback_mc(question, structure)
-                        self.stats["answer_distribution"][answer] += 1
+                    self.stats["fallback_used"] += 1
+                    answer = self._get_fallback_mc(question, structure)
+                    self.stats["answer_distribution"][answer] += 1
             
             else:
                 self.stats["subj_count"] += 1
@@ -223,14 +250,14 @@ class TestRunner:
                     max_attempts=2
                 )
                 
-                answer = self.data_processor._clean_korean_text(result.response)
+                answer = self.data_processor._clean_korean_text_enhanced(result.response)
                 
-                is_valid, quality = self._validate_korean_quality_enhanced(answer)
+                is_valid, quality = self._validate_korean_quality(answer)
                 self.stats["korean_quality_sum"] += quality
                 
                 if not is_valid or quality < 0.65 or len(answer) < 30:
                     self.stats["fallback_used"] += 1
-                    answer = self._get_enhanced_fallback_subj(question)
+                    answer = self._get_fallback_subj(question)
                 else:
                     self.stats["model_success"] += 1
                     if quality > 0.8:
@@ -242,6 +269,18 @@ class TestRunner:
             self.stats["total"] += 1
             processing_time = time.time() - start_time
             self.stats["processing_times"].append(processing_time)
+            
+            # 학습 시스템 업데이트
+            if self.stats["total"] % 5 == 0:
+                self.learning_system.learn_from_prediction(
+                    question, answer, 0.7, 
+                    structure["question_type"], 
+                    structure.get("domain_hints", ["일반"])
+                )
+            
+            # 패턴 분석기 업데이트
+            if self.stats["total"] % 5 == 0:
+                self.pattern_analyzer.learn_from_success(question, answer, 0.7)
             
             if self.stats["total"] % 10 == 0:
                 print(f"  진행: {self.stats['total']}/{self.test_size} ({self.stats['total']/self.test_size*100:.0f}%)")
@@ -257,9 +296,9 @@ class TestRunner:
                 self.stats["answer_distribution"][fallback_answer] += 1
                 return fallback_answer
             else:
-                return random.choice(self.enhanced_fallback_templates["일반"])
+                return random.choice(self.fallback_templates["일반"])
     
-    def _get_enhanced_fallback_mc(self, question: str, structure: Dict) -> str:
+    def _get_fallback_mc(self, question: str, structure: Dict) -> str:
         question_lower = question.lower()
         has_negative = structure.get("has_negative", False)
         
@@ -299,9 +338,9 @@ class TestRunner:
         
         return str((question_hash % 5) + 1)
     
-    def _get_enhanced_fallback_subj(self, question: str) -> str:
+    def _get_fallback_subj(self, question: str) -> str:
         domain = self._extract_simple_domain(question)
-        return random.choice(self.enhanced_fallback_templates.get(domain, self.enhanced_fallback_templates["일반"]))
+        return random.choice(self.fallback_templates.get(domain, self.fallback_templates["일반"]))
     
     def _extract_simple_domain(self, question: str) -> str:
         question_lower = question.lower()
@@ -319,7 +358,7 @@ class TestRunner:
         
         return "일반"
     
-    def _validate_korean_quality_enhanced(self, text: str) -> tuple:
+    def _validate_korean_quality(self, text: str) -> tuple:
         if not text or len(text) < 20:
             return False, 0.0
         
@@ -396,11 +435,19 @@ class TestRunner:
         
         self._print_results(output_file, question_analysis)
         
+        # 학습 데이터 저장
         try:
             self.learning_system.save_model()
             print("학습 데이터 저장 완료")
         except:
             print("학습 데이터 저장 실패")
+        
+        # 패턴 데이터 저장
+        try:
+            self.pattern_analyzer.save_patterns()
+            print("패턴 데이터 저장 완료")
+        except:
+            print("패턴 데이터 저장 실패")
     
     def _print_results(self, output_file: str, question_analysis: dict):
         total_time = time.time() - self.start_time
@@ -445,6 +492,26 @@ class TestRunner:
             else:
                 print(f"  분포 균형: 개선 필요")
         
+        print(f"\n컴포넌트 성능:")
+        
+        # 학습 시스템 통계
+        learning_stats = self.learning_system.get_meta_learning_stats()
+        print(f"  학습 시스템: 패턴 {len(self.learning_system.pattern_weights)}개")
+        print(f"  현재 전략: {learning_stats.get('current_strategy', 'unknown')}")
+        
+        # 패턴 분석 통계
+        pattern_stats = self.pattern_analyzer.get_performance_stats()
+        print(f"  패턴 분석: 활성 패턴 {pattern_stats.get('active_patterns', 0)}개")
+        print(f"  분석 성공률: {pattern_stats.get('success_rate', 0):.2%}")
+        
+        # 모델 핸들러 통계
+        model_stats = self.model_handler.get_performance_stats()
+        print(f"  모델 핸들러: 생성 성공률 {model_stats.get('success_rate', 0):.1%}")
+        
+        # 프롬프트 엔지니어링 통계
+        prompt_stats = self.prompt_engineer.get_stats_report()
+        print(f"  프롬프트 엔지니어링: 캐시 적중률 {prompt_stats.get('cache_hit_rate', 0):.1%}")
+        
         print(f"\n결과 파일: {output_file}")
         
         if torch.cuda.is_available():
@@ -457,6 +524,7 @@ class TestRunner:
             self.data_processor.cleanup()
             self.prompt_engineer.cleanup()
             self.learning_system.cleanup()
+            self.pattern_analyzer.cleanup()
             
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()

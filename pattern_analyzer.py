@@ -1,7 +1,7 @@
-# advanced_pattern_analyzer.py
+# pattern_analyzer.py
 
 """
-고급 패턴 분석 시스템
+패턴 분석 시스템
 - N-gram 패턴 분석
 - 의미적 클러스터링
 - 문맥 임베딩 분석
@@ -40,7 +40,7 @@ class PatternCluster:
     dominant_domain: str
     answer_preferences: Dict[str, float]
 
-class AdvancedPatternAnalyzer:
+class PatternAnalyzer:
     
     def __init__(self, debug_mode: bool = False):
         self.debug_mode = debug_mode
@@ -54,11 +54,11 @@ class AdvancedPatternAnalyzer:
         self.domain_transition_matrix = defaultdict(lambda: defaultdict(float))
         self.temporal_pattern_weights = defaultdict(float)
         
-        self.enhanced_domain_keywords = self._build_enhanced_domain_keywords()
+        self.domain_keywords = self._build_domain_keywords()
         self.semantic_similarity_cache = {}
         self.pattern_evolution_tracker = defaultdict(list)
         
-        self.advanced_rules = self._build_advanced_pattern_rules()
+        self.pattern_rules = self._build_pattern_rules()
         self.multi_level_patterns = self._build_multi_level_patterns()
         
         self.cache_hit_rate = 0.0
@@ -66,9 +66,9 @@ class AdvancedPatternAnalyzer:
         self.successful_predictions = 0
         
         if self.debug_mode:
-            print("고급 패턴 분석기 초기화 완료")
+            print("패턴 분석기 초기화 완료")
     
-    def _build_enhanced_domain_keywords(self) -> Dict[str, Dict]:
+    def _build_domain_keywords(self) -> Dict[str, Dict]:
         return {
             "개인정보보호": {
                 "핵심키워드": ["개인정보", "정보주체", "개인정보처리자", "개인정보보호법"],
@@ -112,9 +112,9 @@ class AdvancedPatternAnalyzer:
             }
         }
     
-    def _build_advanced_pattern_rules(self) -> Dict:
+    def _build_pattern_rules(self) -> Dict:
         return {
-            "부정표현_강화패턴": {
+            "부정표현_패턴": {
                 "해당하지_않는": {
                     "키워드조합": ["해당하지", "않는", "것은"],
                     "선호답변": {"1": 0.15, "3": 0.28, "4": 0.25, "5": 0.22, "2": 0.10},
@@ -185,7 +185,7 @@ class AdvancedPatternAnalyzer:
             }
         }
     
-    def analyze_advanced_patterns(self, question: str, question_structure: Dict) -> Dict:
+    def analyze_patterns(self, question: str, question_structure: Dict) -> Dict:
         self.total_analyses += 1
         
         cache_key = hashlib.md5(question.encode()).hexdigest()[:12]
@@ -213,7 +213,7 @@ class AdvancedPatternAnalyzer:
         analysis_result["패턴레벨"] = pattern_level
         
         if pattern_level >= 2:
-            structural_analysis = self._analyze_question_structure_advanced(question, question_structure)
+            structural_analysis = self._analyze_question_structure(question, question_structure)
             analysis_result.update(structural_analysis)
         
         if pattern_level >= 3:
@@ -239,7 +239,7 @@ class AdvancedPatternAnalyzer:
     def _analyze_domain_with_weights(self, question: str) -> Dict[str, float]:
         domain_scores = {}
         
-        for domain, domain_data in self.enhanced_domain_keywords.items():
+        for domain, domain_data in self.domain_keywords.items():
             total_score = 0.0
             match_count = 0
             
@@ -291,7 +291,7 @@ class AdvancedPatternAnalyzer:
         else:
             return 1
     
-    def _analyze_question_structure_advanced(self, question: str, structure: Dict) -> Dict:
+    def _analyze_question_structure(self, question: str, structure: Dict) -> Dict:
         result = {
             "구조_분석": "완료",
             "문맥_강도": 0.0,
@@ -318,7 +318,7 @@ class AdvancedPatternAnalyzer:
         result["문맥_강도"] = min(context_strength, 1.0)
         
         semantic_connectivity = 0.0
-        for rule_type, rules in self.advanced_rules["문맥_분석패턴"].items():
+        for rule_type, rules in self.pattern_rules["문맥_분석패턴"].items():
             indicators = rules.get("지시어", [])
             if any(indicator in question_lower for indicator in indicators):
                 semantic_connectivity += 0.3
@@ -337,9 +337,9 @@ class AdvancedPatternAnalyzer:
         
         primary_domain = max(domain_scores.items(), key=lambda x: x[1])[0] if domain_scores else "일반"
         
-        if primary_domain in self.enhanced_domain_keywords:
+        if primary_domain in self.domain_keywords:
             domain_keywords = []
-            for category, keywords in self.enhanced_domain_keywords[primary_domain].items():
+            for category, keywords in self.domain_keywords[primary_domain].items():
                 if category != "가중치":
                     domain_keywords.extend(keywords)
             
@@ -396,12 +396,12 @@ class AdvancedPatternAnalyzer:
         question_lower = question.lower()
         applied_rules = []
         
-        for rule_category, rules in self.advanced_rules["부정표현_강화패턴"].items():
+        for rule_category, rules in self.pattern_rules["부정표현_패턴"].items():
             keywords = rules["키워드조합"]
             if all(keyword in question_lower for keyword in keywords):
                 applied_rules.append(f"부정표현_{rule_category}")
         
-        for rule_category, rules in self.advanced_rules["도메인_특화패턴"].items():
+        for rule_category, rules in self.pattern_rules["도메인_특화패턴"].items():
             keywords = rules["키워드조합"]
             if all(keyword in question_lower for keyword in keywords):
                 applied_rules.append(f"도메인특화_{rule_category}")
@@ -449,7 +449,7 @@ class AdvancedPatternAnalyzer:
         
         for rule in special_rules:
             if "부정표현" in rule:
-                for rule_name, rule_data in self.advanced_rules["부정표현_강화패턴"].items():
+                for rule_name, rule_data in self.pattern_rules["부정표현_패턴"].items():
                     if rule_name in rule:
                         preferred_answers = rule_data["선호답변"]
                         confidence = rule_data["신뢰도"]
@@ -461,7 +461,7 @@ class AdvancedPatternAnalyzer:
                             base_confidence = confidence
             
             elif "도메인특화" in rule:
-                for rule_name, rule_data in self.advanced_rules["도메인_특화패턴"].items():
+                for rule_name, rule_data in self.pattern_rules["도메인_특화패턴"].items():
                     if rule_name in rule:
                         preferred_answers = rule_data["선호답변"]
                         confidence = rule_data["신뢰도"]
@@ -527,8 +527,8 @@ class AdvancedPatternAnalyzer:
         if len(self.pattern_evolution_tracker[primary_domain]) > 50:
             self.pattern_evolution_tracker[primary_domain] = self.pattern_evolution_tracker[primary_domain][-50:]
     
-    def get_enhanced_prediction(self, question: str, question_structure: Dict) -> Tuple[Optional[str], float]:
-        analysis = self.analyze_advanced_patterns(question, question_structure)
+    def get_prediction(self, question: str, question_structure: Dict) -> Tuple[Optional[str], float]:
+        analysis = self.analyze_patterns(question, question_structure)
         
         pattern_answer = analysis.get("추천_답변", {})
         
@@ -633,13 +633,13 @@ class AdvancedPatternAnalyzer:
             "success_rate": success_rate,
             "cache_hit_rate": self.cache_hit_rate,
             "active_patterns": len(self.pattern_success_history),
-            "domain_clusters": len(self.enhanced_domain_keywords),
+            "domain_clusters": len(self.domain_keywords),
             "cross_domain_transitions": len(self.domain_transition_matrix),
             "semantic_cache_size": len(self.semantic_similarity_cache),
             "temporal_weights_active": len(self.temporal_pattern_weights)
         }
     
-    def save_patterns(self, filepath: str = "./advanced_patterns.pkl") -> bool:
+    def save_patterns(self, filepath: str = "./patterns.pkl") -> bool:
         try:
             pattern_data = {
                 "ngram_patterns": dict(self.ngram_patterns),
@@ -657,7 +657,7 @@ class AdvancedPatternAnalyzer:
         except Exception:
             return False
     
-    def load_patterns(self, filepath: str = "./advanced_patterns.pkl") -> bool:
+    def load_patterns(self, filepath: str = "./patterns.pkl") -> bool:
         try:
             if not os.path.exists(filepath):
                 return False
@@ -677,7 +677,7 @@ class AdvancedPatternAnalyzer:
             self.cache_hit_rate = stats.get("cache_hit_rate", 0.0)
             
             if self.debug_mode:
-                print(f"고급 패턴 데이터 로드: {len(self.pattern_success_history)}개 패턴")
+                print(f"패턴 데이터 로드: {len(self.pattern_success_history)}개 패턴")
             
             return True
         except Exception:
@@ -692,4 +692,4 @@ class AdvancedPatternAnalyzer:
         self.domain_transition_matrix.clear()
         
         if self.debug_mode:
-            print(f"고급 패턴 분석기 정리: {pattern_count}개 패턴, 캐시효율 {cache_efficiency:.2%}")
+            print(f"패턴 분석기 정리: {pattern_count}개 패턴, 캐시효율 {cache_efficiency:.2%}")
