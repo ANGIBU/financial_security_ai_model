@@ -12,7 +12,6 @@ import torch
 import re
 import time
 import gc
-import os
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 from transformers import (
@@ -23,8 +22,6 @@ from transformers import (
 )
 import warnings
 warnings.filterwarnings("ignore")
-
-os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 
 @dataclass
 class InferenceResult:
@@ -170,33 +167,34 @@ class ModelHandler:
         
         best_result = None
         best_score = 0
-        last_exception = None
         
         for attempt in range(max_attempts):
             try:
                 if question_type == "multiple_choice":
                     gen_config = GenerationConfig(
                         do_sample=True,
-                        temperature=0.6,
+                        temperature=0.5,
                         top_p=0.8,
-                        top_k=35,
-                        max_new_tokens=20,
-                        repetition_penalty=1.08,
+                        top_k=30,
+                        max_new_tokens=15,
+                        repetition_penalty=1.1,
                         pad_token_id=self.tokenizer.pad_token_id,
                         eos_token_id=self.tokenizer.eos_token_id,
+                        early_stopping=True,
                         use_cache=True,
                         bad_words_ids=self.bad_words_ids[:10] if self.bad_words_ids else None
                     )
                 else:
                     gen_config = GenerationConfig(
                         do_sample=True,
-                        temperature=0.75,
-                        top_p=0.9,
-                        top_k=45,
-                        max_new_tokens=280,
-                        repetition_penalty=1.03,
+                        temperature=0.7,
+                        top_p=0.85,
+                        top_k=40,
+                        max_new_tokens=250,
+                        repetition_penalty=1.05,
                         pad_token_id=self.tokenizer.pad_token_id,
                         eos_token_id=self.tokenizer.eos_token_id,
+                        early_stopping=True,
                         use_cache=True,
                         bad_words_ids=self.bad_words_ids[:15] if self.bad_words_ids else None
                     )
@@ -260,19 +258,11 @@ class ModelHandler:
                         break
                         
             except Exception as e:
-                last_exception = e
                 if self.verbose:
-                    print(f"생성 오류 (시도 {attempt+1}): {str(e)[:100]}")
-                
-                if attempt < max_attempts - 1:
-                    import time
-                    time.sleep(0.1)
+                    print(f"생성 오류 (시도 {attempt+1}): {e}")
                 continue
         
         if best_result is None:
-            if self.verbose and last_exception:
-                print(f"모든 시도 실패, 마지막 오류: {str(last_exception)[:100]}")
-            
             best_result = self._create_fallback_result(question_type)
             best_result.inference_time = time.time() - start_time
             self._update_generation_stats(best_result, False)
