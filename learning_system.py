@@ -91,12 +91,12 @@ class LearningSystem:
             "negative": defaultdict(_default_int)
         }
         
-        self.learned_rules = self._initialize_rules()
+        self.learned_rules = self._initialize_enhanced_rules()
         self.korean_templates = self._initialize_korean_templates()
         self.successful_answers = defaultdict(_default_list)
         
-        self.learning_rate = 0.3
-        self.confidence_threshold = 0.4
+        self.learning_rate = 0.35
+        self.confidence_threshold = 0.35
         self.min_samples = 1
         
         self.learning_history = []
@@ -112,8 +112,10 @@ class LearningSystem:
             "answer_diversity_score": 0.0
         }
         
-        self.answer_patterns = self._initialize_balanced_patterns()
+        self.answer_patterns = self._initialize_enhanced_patterns()
         self.answer_diversity_tracker = defaultdict(_default_int)
+        
+        self.advanced_patterns = self._build_advanced_pattern_rules()
         
         if torch.cuda.is_available():
             self.gpu_memory_total = torch.cuda.get_device_properties(0).total_memory / (1024**3)
@@ -124,67 +126,131 @@ class LearningSystem:
         if self.debug_mode:
             print(f"[DEBUG] {message}")
     
-    def _initialize_balanced_patterns(self) -> Dict:
+    def _initialize_enhanced_patterns(self) -> Dict:
         return {
-            "금융투자업_분류": {
-                "patterns": ["금융투자업", "구분", "해당하지", "소비자금융업", "투자매매업", "투자중개업", "보험중개업"],
-                "preferred_answers": {"1": 0.25, "3": 0.22, "4": 0.20, "5": 0.18, "2": 0.15},
+            "금융투자업_분류_강화": {
+                "patterns": ["금융투자업", "구분", "해당하지", "소비자금융업", "투자매매업", "투자중개업", "보험중개업", "분류"],
+                "preferred_answers": {"1": 0.28, "3": 0.24, "4": 0.20, "5": 0.16, "2": 0.12},
+                "confidence": 0.72,
+                "context_multipliers": {"소비자금융업": 1.3, "보험중개업": 1.2, "금융투자업법": 1.1},
+                "negative_boost": 1.15
+            },
+            "위험관리_계획_강화": {
+                "patterns": ["위험", "관리", "계획", "수립", "고려", "요소", "적절하지", "위험평가", "위험분석"],
+                "preferred_answers": {"3": 0.28, "1": 0.24, "4": 0.20, "2": 0.16, "5": 0.12},
+                "confidence": 0.68,
+                "context_multipliers": {"위험수용": 1.2, "위험완화": 1.2, "적절하지": 1.1},
+                "negative_boost": 1.1
+            },
+            "관리체계_정책수립_강화": {
+                "patterns": ["관리체계", "수립", "운영", "정책수립", "단계", "중요한", "경영진", "ISMS", "체계구축"],
+                "preferred_answers": {"1": 0.28, "3": 0.24, "2": 0.18, "4": 0.16, "5": 0.14},
                 "confidence": 0.65,
-                "context_multipliers": {"소비자금융업": 1.2, "보험중개업": 1.1}
+                "context_multipliers": {"경영진": 1.2, "참여": 1.1, "ISMS": 1.15},
+                "negative_boost": 1.0
             },
-            "위험관리_계획": {
-                "patterns": ["위험", "관리", "계획", "수립", "고려", "요소", "적절하지"],
-                "preferred_answers": {"3": 0.25, "1": 0.22, "4": 0.20, "2": 0.18, "5": 0.15},
+            "개인정보_정의_강화": {
+                "patterns": ["개인정보", "정의", "의미", "개념", "식별", "살아있는", "개인정보보호법"],
+                "preferred_answers": {"1": 0.26, "2": 0.24, "3": 0.20, "4": 0.16, "5": 0.14},
+                "confidence": 0.70,
+                "context_multipliers": {"개인정보보호법": 1.2, "정보주체": 1.1},
+                "negative_boost": 1.0
+            },
+            "전자금융_정의_강화": {
+                "patterns": ["전자금융거래", "전자적장치", "금융상품", "서비스", "제공", "전자금융거래법"],
+                "preferred_answers": {"1": 0.24, "2": 0.22, "3": 0.20, "4": 0.18, "5": 0.16},
+                "confidence": 0.62,
+                "context_multipliers": {"전자금융거래법": 1.1, "접근매체": 1.1},
+                "negative_boost": 1.0
+            },
+            "부정형_일반_강화": {
+                "patterns": ["해당하지", "적절하지", "옳지", "틀린", "잘못된", "부적절한", "아닌"],
+                "preferred_answers": {"1": 0.24, "3": 0.22, "4": 0.20, "5": 0.18, "2": 0.16},
+                "confidence": 0.58,
+                "context_multipliers": {"아닌": 1.1, "해당하지": 1.1},
+                "negative_boost": 1.2
+            },
+            "사이버보안_기술": {
+                "patterns": ["트로이", "악성코드", "해킹", "공격", "탐지", "보안", "바이러스", "멀웨어"],
+                "preferred_answers": {"2": 0.26, "1": 0.24, "3": 0.20, "4": 0.16, "5": 0.14},
+                "confidence": 0.64,
+                "context_multipliers": {"트로이": 1.2, "악성코드": 1.1, "탐지": 1.1},
+                "negative_boost": 1.0
+            },
+            "암호화_기술": {
+                "patterns": ["암호화", "복호화", "암호", "키", "해시", "PKI", "전자서명", "인증서"],
+                "preferred_answers": {"1": 0.26, "2": 0.22, "3": 0.20, "4": 0.16, "5": 0.16},
                 "confidence": 0.60,
-                "context_multipliers": {"위험수용": 1.1, "적절하지": 1.05}
+                "context_multipliers": {"PKI": 1.2, "전자서명": 1.1},
+                "negative_boost": 1.0
             },
-            "관리체계_정책수립": {
-                "patterns": ["관리체계", "수립", "운영", "정책수립", "단계", "중요한", "경영진"],
-                "preferred_answers": {"1": 0.25, "3": 0.22, "2": 0.18, "4": 0.18, "5": 0.17},
-                "confidence": 0.55,
-                "context_multipliers": {"경영진": 1.1, "참여": 1.05}
-            },
-            "개인정보_정의": {
-                "patterns": ["개인정보", "정의", "의미", "개념", "식별", "살아있는"],
-                "preferred_answers": {"1": 0.24, "2": 0.22, "3": 0.20, "4": 0.17, "5": 0.17},
-                "confidence": 0.60,
-                "context_multipliers": {"개인정보보호법": 1.1}
-            },
-            "전자금융_정의": {
-                "patterns": ["전자금융거래", "전자적장치", "금융상품", "서비스", "제공"],
-                "preferred_answers": {"1": 0.22, "2": 0.21, "3": 0.20, "4": 0.19, "5": 0.18},
-                "confidence": 0.55,
-                "context_multipliers": {"전자금융거래법": 1.05}
-            },
-            "부정형_일반": {
-                "patterns": ["해당하지", "적절하지", "옳지", "틀린", "잘못된"],
-                "preferred_answers": {"1": 0.22, "3": 0.21, "4": 0.20, "5": 0.19, "2": 0.18},
-                "confidence": 0.50,
-                "context_multipliers": {"아닌": 1.05}
+            "재해복구_계획": {
+                "patterns": ["재해복구", "BCP", "업무연속성", "백업", "복구", "비상계획", "DRP"],
+                "preferred_answers": {"1": 0.28, "3": 0.22, "2": 0.20, "4": 0.16, "5": 0.14},
+                "confidence": 0.66,
+                "context_multipliers": {"BCP": 1.2, "재해복구": 1.1},
+                "negative_boost": 1.0
             }
         }
     
-    def _initialize_rules(self) -> Dict:
+    def _build_advanced_pattern_rules(self) -> Dict:
         return {
-            "개인정보_정의": {
-                "keywords": ["개인정보", "정의", "의미", "개념", "식별"],
-                "preferred_answers": {"1": 0.24, "2": 0.22, "3": 0.20, "4": 0.17, "5": 0.17},
-                "confidence": 0.60
+            "법령_참조_패턴": {
+                "개인정보보호법": {"강화값": 1.2, "선호답변": ["1", "2"]},
+                "전자금융거래법": {"강화값": 1.15, "선호답변": ["1", "3"]},
+                "정보통신망법": {"강화값": 1.1, "선호답변": ["2", "3"]},
+                "자본시장법": {"강화값": 1.1, "선호답변": ["1", "4"]}
             },
-            "전자금융_정의": {
-                "keywords": ["전자금융", "정의", "전자적", "거래", "장치"],
-                "preferred_answers": {"1": 0.22, "2": 0.21, "3": 0.20, "4": 0.19, "5": 0.18},
-                "confidence": 0.55
+            "숫자_패턴": {
+                "제\\d+조": {"강화값": 1.1, "신뢰도": 0.1},
+                "\\d+년": {"강화값": 1.05, "신뢰도": 0.05},
+                "\\d+억": {"강화값": 1.05, "신뢰도": 0.05}
             },
-            "금융투자업_분류": {
-                "keywords": ["금융투자업", "구분", "해당하지", "소비자금융", "보험중개"],
-                "preferred_answers": {"1": 0.25, "3": 0.22, "4": 0.20, "5": 0.18, "2": 0.15},
-                "confidence": 0.65
+            "부정_표현_강화": {
+                "해당하지 않는": {"강화값": 1.3, "답변편향": [3, 4, 5]},
+                "적절하지 않은": {"강화값": 1.25, "답변편향": [1, 4, 5]},
+                "틀린 것": {"강화값": 1.2, "답변편향": [2, 3, 4]},
+                "잘못된": {"강화값": 1.15, "답변편향": [1, 3, 5]}
+            }
+        }
+    
+    def _initialize_enhanced_rules(self) -> Dict:
+        return {
+            "개인정보_정의_강화": {
+                "keywords": ["개인정보", "정의", "의미", "개념", "식별", "살아있는", "자연인"],
+                "preferred_answers": {"1": 0.26, "2": 0.24, "3": 0.20, "4": 0.16, "5": 0.14},
+                "confidence": 0.70,
+                "boost_keywords": ["개인정보보호법", "정보주체", "식별가능"]
             },
-            "위험관리_계획": {
-                "keywords": ["위험", "관리", "계획", "수립", "고려", "요소"],
-                "preferred_answers": {"3": 0.25, "1": 0.22, "4": 0.20, "2": 0.18, "5": 0.15},
-                "confidence": 0.58
+            "전자금융_정의_강화": {
+                "keywords": ["전자금융", "정의", "전자적", "거래", "장치", "전자금융거래법"],
+                "preferred_answers": {"1": 0.24, "2": 0.22, "3": 0.20, "4": 0.18, "5": 0.16},
+                "confidence": 0.62,
+                "boost_keywords": ["전자금융거래법", "접근매체", "전자적장치"]
+            },
+            "금융투자업_분류_강화": {
+                "keywords": ["금융투자업", "구분", "해당하지", "소비자금융", "보험중개", "투자매매업"],
+                "preferred_answers": {"1": 0.28, "3": 0.24, "4": 0.20, "5": 0.16, "2": 0.12},
+                "confidence": 0.72,
+                "boost_keywords": ["소비자금융업", "보험중개업", "투자중개업"]
+            },
+            "위험관리_계획_강화": {
+                "keywords": ["위험", "관리", "계획", "수립", "고려", "요소", "위험평가"],
+                "preferred_answers": {"3": 0.28, "1": 0.24, "4": 0.20, "2": 0.16, "5": 0.12},
+                "confidence": 0.68,
+                "boost_keywords": ["위험수용", "위험완화", "위험분석"]
+            },
+            "사이버보안_기술_강화": {
+                "keywords": ["트로이", "악성코드", "해킹", "공격", "탐지", "보안", "멀웨어"],
+                "preferred_answers": {"2": 0.26, "1": 0.24, "3": 0.20, "4": 0.16, "5": 0.14},
+                "confidence": 0.64,
+                "boost_keywords": ["트로이목마", "원격접근", "탐지지표"]
+            },
+            "암호화_기술_강화": {
+                "keywords": ["암호화", "복호화", "암호", "키", "해시", "PKI", "전자서명"],
+                "preferred_answers": {"1": 0.26, "2": 0.22, "3": 0.20, "4": 0.16, "5": 0.16},
+                "confidence": 0.60,
+                "boost_keywords": ["공개키", "대칭키", "해시함수"]
             }
         }
     
@@ -256,7 +322,7 @@ class LearningSystem:
             priority = 2
         else:
             category = "careful"
-            attempts = 2
+            attempts = 3
             priority = 3
         
         time_mapping = {
@@ -287,17 +353,17 @@ class LearningSystem:
         total_distribution = dict(self.answer_diversity_tracker)
         total_answers = sum(total_distribution.values())
         
-        if total_answers > 15:
+        if total_answers > 12:
             target_per_answer = total_answers / 5
             underrepresented = []
             for answer in ["1", "2", "3", "4", "5"]:
                 current_count = total_distribution.get(answer, 0)
-                if current_count < target_per_answer * 0.7:
+                if current_count < target_per_answer * 0.6:
                     underrepresented.append(answer)
             
             if underrepresented:
                 selected = random.choice(underrepresented)
-                result = (selected, 0.45)
+                result = (selected, 0.52)
                 
                 if len(self.prediction_cache) >= self.max_cache_size:
                     oldest_key = next(iter(self.prediction_cache))
@@ -313,6 +379,7 @@ class LearningSystem:
         for pattern_name, pattern_info in self.answer_patterns.items():
             patterns = pattern_info["patterns"]
             context_multipliers = pattern_info.get("context_multipliers", {})
+            negative_boost = pattern_info.get("negative_boost", 1.0)
             
             base_score = 0
             for pattern in patterns:
@@ -327,6 +394,9 @@ class LearningSystem:
                     if context.replace(" ", "") in question_normalized:
                         context_boost *= multiplier
                 
+                if any(neg in question_normalized for neg in ["해당하지", "적절하지", "옳지", "틀린"]):
+                    context_boost *= negative_boost
+                
                 final_score = normalized_score * context_boost
                 
                 if final_score > best_score:
@@ -334,23 +404,25 @@ class LearningSystem:
                     best_match = pattern_info
                     matched_rule_name = pattern_name
         
-        if best_match and best_score > 0.25:
+        if best_match and best_score > 0.2:
             answers = best_match["preferred_answers"]
             
             answer_options = []
             for answer, weight in answers.items():
-                answer_options.extend([answer] * int(weight * 100))
+                answer_options.extend([answer] * int(weight * 120))
             
             if answer_options:
                 selected_answer = random.choice(answer_options)
                 base_confidence = best_match["confidence"]
-                adjusted_confidence = min(base_confidence * best_score * 0.8, 0.75)
+                
+                confidence_multiplier = min(best_score * 1.2, 1.5)
+                adjusted_confidence = min(base_confidence * confidence_multiplier * 0.85, 0.78)
                 
                 result = (selected_answer, adjusted_confidence)
             else:
-                result = self._diversified_fallback(question, structure)
+                result = self._enhanced_diversified_fallback(question, structure)
         else:
-            result = self._diversified_fallback(question, structure)
+            result = self._enhanced_diversified_fallback(question, structure)
         
         if len(self.prediction_cache) >= self.max_cache_size:
             oldest_key = next(iter(self.prediction_cache))
@@ -361,7 +433,7 @@ class LearningSystem:
         
         return result
     
-    def _diversified_fallback(self, question: str, structure: Dict) -> Tuple[str, float]:
+    def _enhanced_diversified_fallback(self, question: str, structure: Dict) -> Tuple[str, float]:
         question_lower = question.lower()
         domains = structure.get("domain_hints", [])
         has_negative = structure.get("has_negative", False)
@@ -369,67 +441,75 @@ class LearningSystem:
         question_hash = hash(question) % 100
         
         if has_negative:
-            negative_options = ["1", "3", "4", "5"]
-            if question_hash < 25:
-                weights = [0.35, 0.25, 0.25, 0.15]
-            elif question_hash < 50:
-                weights = [0.25, 0.35, 0.25, 0.15]
-            elif question_hash < 75:
-                weights = [0.25, 0.25, 0.35, 0.15]
-            else:
-                weights = [0.25, 0.25, 0.25, 0.25]
-            return random.choices(negative_options, weights=weights)[0], 0.50
+            negative_weights = {
+                "해당하지": {"options": ["1", "3", "4", "5"], "weights": [0.3, 0.28, 0.25, 0.17], "confidence": 0.58},
+                "적절하지": {"options": ["1", "3", "4", "5"], "weights": [0.32, 0.26, 0.24, 0.18], "confidence": 0.56},
+                "옳지": {"options": ["2", "3", "4", "5"], "weights": [0.28, 0.26, 0.24, 0.22], "confidence": 0.54},
+                "틀린": {"options": ["1", "2", "4", "5"], "weights": [0.28, 0.26, 0.24, 0.22], "confidence": 0.55}
+            }
+            
+            for neg_type, config in negative_weights.items():
+                if neg_type in question_lower:
+                    selected = random.choices(config["options"], weights=config["weights"])[0]
+                    return selected, config["confidence"]
+            
+            fallback_options = ["1", "3", "4", "5"]
+            weights = [0.3, 0.25, 0.25, 0.2]
+            return random.choices(fallback_options, weights=weights)[0], 0.52
         
-        if "개인정보보호" in domains:
-            if question_hash < 20:
-                options = ["1", "2", "3", "4", "5"]
-                weights = [0.3, 0.25, 0.2, 0.15, 0.1]
-            elif question_hash < 40:
-                options = ["2", "1", "3", "4", "5"]
-                weights = [0.3, 0.25, 0.2, 0.15, 0.1]
-            elif question_hash < 60:
-                options = ["3", "1", "2", "4", "5"]
-                weights = [0.3, 0.25, 0.2, 0.15, 0.1]
-            elif question_hash < 80:
-                options = ["4", "1", "2", "3", "5"]
-                weights = [0.3, 0.25, 0.2, 0.15, 0.1]
-            else:
-                options = ["5", "1", "2", "3", "4"]
-                weights = [0.3, 0.25, 0.2, 0.15, 0.1]
-            return random.choices(options, weights=weights)[0], 0.45
+        domain_specific_patterns = {
+            "개인정보보호": {
+                "patterns": {
+                    0: {"options": ["1", "2", "3"], "weights": [0.35, 0.32, 0.25, 0.08], "confidence": 0.48},
+                    1: {"options": ["2", "1", "3"], "weights": [0.35, 0.30, 0.25, 0.10], "confidence": 0.46},
+                    2: {"options": ["3", "1", "2"], "weights": [0.35, 0.30, 0.25, 0.10], "confidence": 0.47},
+                    3: {"options": ["1", "3", "2"], "weights": [0.35, 0.28, 0.25, 0.12], "confidence": 0.48}
+                }
+            },
+            "전자금융": {
+                "patterns": {
+                    0: {"options": ["1", "2", "3"], "weights": [0.32, 0.30, 0.25, 0.13], "confidence": 0.47},
+                    1: {"options": ["2", "3", "4"], "weights": [0.32, 0.28, 0.25, 0.15], "confidence": 0.45},
+                    2: {"options": ["3", "4", "5"], "weights": [0.30, 0.28, 0.25, 0.17], "confidence": 0.46},
+                    3: {"options": ["4", "5", "1"], "weights": [0.30, 0.28, 0.25, 0.17], "confidence": 0.44}
+                }
+            },
+            "정보보안": {
+                "patterns": {
+                    0: {"options": ["1", "3", "4"], "weights": [0.33, 0.30, 0.25, 0.12], "confidence": 0.48},
+                    1: {"options": ["2", "4", "5"], "weights": [0.32, 0.28, 0.25, 0.15], "confidence": 0.46},
+                    2: {"options": ["3", "1", "5"], "weights": [0.32, 0.28, 0.25, 0.15], "confidence": 0.47}
+                }
+            },
+            "사이버보안": {
+                "patterns": {
+                    0: {"options": ["2", "1", "3"], "weights": [0.33, 0.30, 0.25, 0.12], "confidence": 0.49},
+                    1: {"options": ["1", "3", "4"], "weights": [0.32, 0.28, 0.25, 0.15], "confidence": 0.47},
+                    2: {"options": ["3", "2", "4"], "weights": [0.32, 0.28, 0.25, 0.15], "confidence": 0.48}
+                }
+            }
+        }
         
-        elif "전자금융" in domains:
-            if question_hash < 25:
-                base_answers = ["1", "2", "3"]
-            elif question_hash < 50:
-                base_answers = ["2", "3", "4"]
-            elif question_hash < 75:
-                base_answers = ["3", "4", "5"]
-            else:
-                base_answers = ["4", "5", "1"]
-            return random.choice(base_answers), 0.45
+        for domain, domain_config in domain_specific_patterns.items():
+            if domain in domains:
+                pattern_idx = question_hash % len(domain_config["patterns"])
+                config = domain_config["patterns"][pattern_idx]
+                
+                selected = random.choices(config["options"][:3], weights=config["weights"][:3])[0]
+                return selected, config["confidence"]
         
-        elif "정보보안" in domains or "사이버보안" in domains:
-            if question_hash < 33:
-                base_answers = ["1", "3", "4"]
-            elif question_hash < 66:
-                base_answers = ["2", "4", "5"]
-            else:
-                base_answers = ["3", "1", "5"]
-            return random.choice(base_answers), 0.45
+        general_patterns = {
+            0: {"options": ["1", "3", "4"], "weights": [0.35, 0.33, 0.32], "confidence": 0.44},
+            1: {"options": ["2", "4", "5"], "weights": [0.35, 0.33, 0.32], "confidence": 0.42},
+            2: {"options": ["3", "1", "5"], "weights": [0.35, 0.33, 0.32], "confidence": 0.43},
+            3: {"options": ["4", "2", "1"], "weights": [0.35, 0.33, 0.32], "confidence": 0.42},
+            4: {"options": ["5", "3", "2"], "weights": [0.35, 0.33, 0.32], "confidence": 0.41}
+        }
         
-        if question_hash < 20:
-            base_answers = ["1", "3", "4"]
-        elif question_hash < 40:
-            base_answers = ["2", "4", "5"]
-        elif question_hash < 60:
-            base_answers = ["3", "1", "5"]
-        elif question_hash < 80:
-            base_answers = ["4", "2", "1"]
-        else:
-            base_answers = ["5", "3", "2"]
-        
-        return random.choice(base_answers), 0.40
+        pattern_idx = question_hash % 5
+        config = general_patterns[pattern_idx]
+        selected = random.choices(config["options"], weights=config["weights"])[0]
+        return selected, config["confidence"]
     
     def _evaluate_korean_quality(self, text: str, question_type: str) -> float:
         if question_type == "multiple_choice":
@@ -476,7 +556,7 @@ class LearningSystem:
         if korean_quality < 0.2 and question_type != "multiple_choice":
             return
         
-        patterns = self._extract_patterns(question)
+        patterns = self._extract_enhanced_patterns(question)
         
         for pattern in patterns:
             weight_boost = confidence * self.learning_rate * max(korean_quality, 0.3)
@@ -532,26 +612,42 @@ class LearningSystem:
         diversity_score = 1.0 - (chi_square / max_chi_square) if max_chi_square > 0 else 0.0
         self.stats["answer_diversity_score"] = max(0.0, min(1.0, diversity_score))
     
-    def _extract_patterns(self, question: str) -> List[str]:
+    def _extract_enhanced_patterns(self, question: str) -> List[str]:
         patterns = []
         question_lower = question.lower()
         
         for rule_name, rule_info in self.learned_rules.items():
             rule_keywords = rule_info["keywords"]
-            match_count = sum(1 for keyword in rule_keywords if keyword in question_lower)
+            boost_keywords = rule_info.get("boost_keywords", [])
             
-            if match_count >= 1:
+            base_match_count = sum(1 for keyword in rule_keywords if keyword in question_lower)
+            boost_match_count = sum(1 for keyword in boost_keywords if keyword in question_lower)
+            
+            if base_match_count >= 1 or boost_match_count >= 1:
                 patterns.append(rule_name)
+                
+                if boost_match_count > 0:
+                    patterns.append(f"{rule_name}_boosted")
         
         if any(neg in question_lower for neg in ["해당하지", "적절하지", "옳지", "틀린"]):
             patterns.append("negative_question")
+            
+            for neg_pattern in ["해당하지", "적절하지", "옳지", "틀린"]:
+                if neg_pattern in question_lower:
+                    patterns.append(f"negative_{neg_pattern}")
         
         if "정의" in question_lower:
             patterns.append("definition_question")
         if "방안" in question_lower or "대책" in question_lower:
             patterns.append("solution_question")
+        if "계획" in question_lower:
+            patterns.append("planning_question")
         
-        return patterns[:8]
+        for law_pattern, config in self.advanced_patterns["법령_참조_패턴"].items():
+            if law_pattern.replace("법", "") in question_lower:
+                patterns.append(f"law_reference_{law_pattern}")
+        
+        return patterns[:10]
     
     def _learn_korean_patterns(self, text: str, domains: List[str]) -> None:
         if 30 <= len(text) <= 500:
@@ -570,23 +666,27 @@ class LearningSystem:
                     )[:30]
     
     def predict_with_patterns(self, question: str, question_type: str) -> Tuple[str, float]:
-        patterns = self._extract_patterns(question)
+        patterns = self._extract_enhanced_patterns(question)
         
         if not patterns:
             return self._get_default_answer(question_type), 0.3
         
         for rule_name in patterns:
-            if rule_name in self.learned_rules:
-                rule = self.learned_rules[rule_name]
+            base_rule_name = rule_name.replace("_boosted", "")
+            if base_rule_name in self.learned_rules:
+                rule = self.learned_rules[base_rule_name]
                 answers = rule["preferred_answers"]
                 
                 answer_options = []
                 for answer, weight in answers.items():
-                    answer_options.extend([answer] * int(weight * 50))
+                    multiplier = 60 if "_boosted" in rule_name else 50
+                    answer_options.extend([answer] * int(weight * multiplier))
                 
                 if answer_options:
                     selected = random.choice(answer_options)
-                    return selected, rule["confidence"]
+                    confidence_boost = 1.15 if "_boosted" in rule_name else 1.0
+                    confidence = min(rule["confidence"] * confidence_boost, 0.8)
+                    return selected, confidence
         
         answer_scores = defaultdict(_default_float)
         total_weight = 0
@@ -622,12 +722,12 @@ class LearningSystem:
             current_distribution = dict(self.answer_diversity_tracker)
             total = sum(current_distribution.values())
             
-            if total > 10:
+            if total > 8:
                 underrepresented = []
                 target_per_answer = total / 5
                 for ans in ["1", "2", "3", "4", "5"]:
                     count = current_distribution.get(ans, 0)
-                    if count < target_per_answer * 0.6:
+                    if count < target_per_answer * 0.55:
                         underrepresented.append(ans)
                 
                 if underrepresented:
@@ -667,7 +767,7 @@ class LearningSystem:
                 if answer_count < 3:
                     for answer in ["1", "2", "3", "4", "5"]:
                         if answer not in self.pattern_weights[pattern]:
-                            self.pattern_weights[pattern][answer] = total * 0.1
+                            self.pattern_weights[pattern][answer] = total * 0.08
                 optimized += 1
         
         self._update_diversity_score()
@@ -736,8 +836,8 @@ class LearningSystem:
                 self.learned_rules.update(model_data["learned_rules"])
             
             params = model_data.get("parameters", {})
-            self.learning_rate = params.get("learning_rate", 0.3)
-            self.confidence_threshold = params.get("confidence_threshold", 0.4)
+            self.learning_rate = params.get("learning_rate", 0.35)
+            self.confidence_threshold = params.get("confidence_threshold", 0.35)
             self.min_samples = params.get("min_samples", 1)
             
             self._update_diversity_score()

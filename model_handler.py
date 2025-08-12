@@ -109,7 +109,9 @@ class ModelHandler:
             "successful_generations": 0,
             "korean_quality_scores": [],
             "avg_inference_time": 0.0,
-            "cache_efficiency": 0.0
+            "cache_efficiency": 0.0,
+            "generation_failures": 0,
+            "timeout_failures": 0
         }
         
         if self.verbose:
@@ -152,7 +154,7 @@ class ModelHandler:
         return korean_prefix + prompt + korean_suffix
     
     def generate_response(self, prompt: str, question_type: str,
-                         max_attempts: int = 2) -> InferenceResult:
+                         max_attempts: int = 3) -> InferenceResult:
         
         start_time = time.time()
         
@@ -167,34 +169,33 @@ class ModelHandler:
         
         best_result = None
         best_score = 0
+        generation_errors = 0
         
         for attempt in range(max_attempts):
             try:
                 if question_type == "multiple_choice":
                     gen_config = GenerationConfig(
                         do_sample=True,
-                        temperature=0.5,
+                        temperature=0.4 + (attempt * 0.1),
                         top_p=0.8,
-                        top_k=30,
-                        max_new_tokens=15,
+                        top_k=25,
+                        max_new_tokens=20,
                         repetition_penalty=1.1,
                         pad_token_id=self.tokenizer.pad_token_id,
                         eos_token_id=self.tokenizer.eos_token_id,
-                        early_stopping=True,
                         use_cache=True,
                         bad_words_ids=self.bad_words_ids[:10] if self.bad_words_ids else None
                     )
                 else:
                     gen_config = GenerationConfig(
                         do_sample=True,
-                        temperature=0.7,
+                        temperature=0.6 + (attempt * 0.1),
                         top_p=0.85,
-                        top_k=40,
-                        max_new_tokens=250,
+                        top_k=35,
+                        max_new_tokens=280,
                         repetition_penalty=1.05,
                         pad_token_id=self.tokenizer.pad_token_id,
                         eos_token_id=self.tokenizer.eos_token_id,
-                        early_stopping=True,
                         use_cache=True,
                         bad_words_ids=self.bad_words_ids[:15] if self.bad_words_ids else None
                     )
@@ -208,10 +209,16 @@ class ModelHandler:
                 
                 with torch.no_grad():
                     with torch.cuda.amp.autocast(enabled=True, dtype=torch.bfloat16):
-                        outputs = self.model.generate(
-                            **inputs,
-                            generation_config=gen_config
-                        )
+                        try:
+                            outputs = self.model.generate(
+                                **inputs,
+                                generation_config=gen_config
+                            )
+                        except Exception as gen_error:
+                            generation_errors += 1
+                            if self.verbose:
+                                print(f"생성 오류 (시도 {attempt+1}): {str(gen_error)[:100]}")
+                            continue
                 
                 raw_response = self.tokenizer.decode(
                     outputs[0][inputs['input_ids'].shape[1]:],
@@ -224,9 +231,10 @@ class ModelHandler:
                     extracted_answer = self._extract_mc_answer_enhanced(cleaned_response)
                     
                     if extracted_answer and extracted_answer.isdigit() and 1 <= int(extracted_answer) <= 5:
+                        confidence = 0.90 - (attempt * 0.05)
                         result = InferenceResult(
                             response=extracted_answer,
-                            confidence=0.85,
+                            confidence=confidence,
                             reasoning_quality=0.8,
                             analysis_depth=2,
                             korean_quality=1.0,
@@ -254,17 +262,19 @@ class ModelHandler:
                             best_score = score
                             best_result = result
                     
-                    if korean_quality > 0.7:
+                    if korean_quality > 0.75:
                         break
                         
             except Exception as e:
+                generation_errors += 1
                 if self.verbose:
-                    print(f"생성 오류 (시도 {attempt+1}): {e}")
+                    print(f"전체 생성 오류 (시도 {attempt+1}): {str(e)[:100]}")
                 continue
         
         if best_result is None:
             best_result = self._create_fallback_result(question_type)
             best_result.inference_time = time.time() - start_time
+            self.generation_stats["generation_failures"] += generation_errors
             self._update_generation_stats(best_result, False)
         else:
             self._update_generation_stats(best_result, True)
@@ -282,35 +292,32 @@ class ModelHandler:
         if re.match(r'^[1-5]$', text):
             return text
         
-        high_priority_patterns = [
-            r'정답[:\s]*([1-5])',
-            r'답[:\s]*([1-5])',
-            r'^([1-5])\s*$',
-            r'^([1-5])\s*번',
-            r'선택[:\s]*([1-5])'
+        priority_patterns = [
+            (r'정답[:\s]*([1-5])', 0.9),
+            (r'답[:\s]*([1-5])', 0.85),
+            (r'^([1-5])\s*$', 0.9),
+            (r'^([1-5])\s*번', 0.8),
+            (r'선택[:\s]*([1-5])', 0.8),
+            (r'([1-5])번이', 0.75),
+            (r'([1-5])가\s*정답', 0.75),
+            (r'([1-5])이\s*정답', 0.75),
+            (r'([1-5])\s*이\s*적절', 0.7),
+            (r'([1-5])\s*가\s*적절', 0.7)
         ]
         
-        for pattern in high_priority_patterns:
+        best_match = None
+        best_confidence = 0
+        
+        for pattern, confidence in priority_patterns:
             matches = re.findall(pattern, text, re.IGNORECASE | re.MULTILINE)
-            if matches:
+            if matches and confidence > best_confidence:
                 answer = matches[0]
                 if answer.isdigit() and 1 <= int(answer) <= 5:
-                    return answer
+                    best_match = answer
+                    best_confidence = confidence
         
-        medium_priority_patterns = [
-            r'([1-5])번이',
-            r'([1-5])가\s*정답',
-            r'([1-5])이\s*정답',
-            r'([1-5])\s*이\s*적절',
-            r'([1-5])\s*가\s*적절'
-        ]
-        
-        for pattern in medium_priority_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE | re.MULTILINE)
-            if matches:
-                answer = matches[0]
-                if answer.isdigit() and 1 <= int(answer) <= 5:
-                    return answer
+        if best_match:
+            return best_match
         
         numbers = re.findall(r'[1-5]', text)
         if numbers:
@@ -323,6 +330,7 @@ class ModelHandler:
             return ""
         
         original_text = text
+        original_length = len(text)
         
         text = re.sub(r'[\u0000-\u001f\u007f-\u009f]', '', text)
         
@@ -349,10 +357,10 @@ class ModelHandler:
         text = re.sub(r'\([^가-힣\s\d.,!?]*\)', '', text)
         
         problematic_fragments = [
-            r'[ㄱ-ㅎㅏ-ㅣ]+(?![가-힣])', 
+            r'[ㄱ-ㅎㅏ-ㅣ]{3,}(?![가-힣])', 
             r'[^\w\s가-힣0-9.,!?()·\-\n""'']+',
-            r'[A-Za-z]{8,}',
-            r'\d{6,}'
+            r'[A-Za-z]{10,}',
+            r'\d{8,}'
         ]
         
         for pattern in problematic_fragments:
@@ -360,10 +368,11 @@ class ModelHandler:
         
         text = re.sub(r'\s+', ' ', text)
         text = re.sub(r'[.,!?]{3,}', '.', text)
+        text = re.sub(r'\.{2,}', '.', text)
         
         text = text.strip()
         
-        if len(text) < len(original_text) * 0.3 and len(original_text) > 50:
+        if len(text) < original_length * 0.25 and original_length > 30:
             return ""
         
         return text
@@ -372,14 +381,19 @@ class ModelHandler:
         if not text:
             return 0.0
         
+        penalty_score = 0.0
+        
         if re.search(r'[\u4e00-\u9fff]', text):
-            return 0.1
+            penalty_score += 0.4
         
         if re.search(r'[ㄱ-ㅎㅏ-ㅣ]{3,}', text):
-            return 0.2
+            penalty_score += 0.3
         
         if re.search(r'\bbo+\b', text, flags=re.IGNORECASE):
-            return 0.1
+            penalty_score += 0.3
+        
+        if re.search(r'[①②③④⑤➀➁❶❷❸]', text):
+            penalty_score += 0.2
         
         total_chars = len(re.sub(r'[^\w]', '', text))
         if total_chars == 0:
@@ -392,18 +406,20 @@ class ModelHandler:
         english_ratio = english_chars / total_chars
         
         if korean_ratio < 0.4:
-            return korean_ratio * 0.5
+            return max(0, korean_ratio * 0.4 - penalty_score)
         
-        quality = korean_ratio * 0.8 - english_ratio * 0.15
+        quality = korean_ratio * 0.85 - english_ratio * 0.1 - penalty_score
         
         if 40 <= len(text) <= 350:
             quality += 0.15
-        elif len(text) < 40:
+        elif 25 <= len(text) <= 40:
+            quality += 0.05
+        elif len(text) < 25:
             quality -= 0.1
         
-        professional_terms = ['법', '규정', '관리', '보안', '조치', '정책', '체계', '절차']
+        professional_terms = ['법', '규정', '관리', '보안', '조치', '정책', '체계', '절차', '의무', '권리']
         prof_count = sum(1 for term in professional_terms if term in text)
-        quality += min(prof_count * 0.08, 0.2)
+        quality += min(prof_count * 0.06, 0.18)
         
         if re.search(r'\.{3,}|,{3,}', text):
             quality -= 0.1
@@ -420,8 +436,8 @@ class ModelHandler:
             fallback_answer = str(random.randint(1, 5))
             return InferenceResult(
                 response=fallback_answer,
-                confidence=0.4,
-                reasoning_quality=0.3,
+                confidence=0.3,
+                reasoning_quality=0.2,
                 analysis_depth=1,
                 korean_quality=1.0
             )
@@ -429,15 +445,17 @@ class ModelHandler:
             fallback_answers = [
                 "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 개선을 수행해야 합니다.",
                 "정보보안 정책과 절차를 수립하여 체계적인 보안 관리와 위험 평가를 수행해야 합니다.",
-                "적절한 기술적, 관리적, 물리적 보안조치를 통해 정보자산을 안전하게 보호해야 합니다."
+                "적절한 기술적, 관리적, 물리적 보안조치를 통해 정보자산을 안전하게 보호해야 합니다.",
+                "법령에서 요구하는 안전성 확보조치를 이행하고 정기적인 점검을 통해 개선해야 합니다.",
+                "위험관리 체계를 구축하여 예방적 관리와 사후 대응 방안을 마련해야 합니다."
             ]
             import random
             selected_answer = random.choice(fallback_answers)
             
             return InferenceResult(
                 response=selected_answer,
-                confidence=0.6,
-                reasoning_quality=0.5,
+                confidence=0.5,
+                reasoning_quality=0.4,
                 analysis_depth=1,
                 korean_quality=0.85
             )
@@ -475,16 +493,21 @@ class ModelHandler:
             elif length < 35:
                 confidence -= 0.15
             
-            keywords = ['법', '규정', '보안', '관리', '조치', '정책', '체계', '절차']
+            keywords = ['법', '규정', '보안', '관리', '조치', '정책', '체계', '절차', '의무', '권리']
             keyword_count = sum(1 for k in keywords if k in response)
-            if keyword_count >= 3:
-                confidence += 0.1
+            if keyword_count >= 4:
+                confidence += 0.15
                 reasoning += 0.1
+            elif keyword_count >= 2:
+                confidence += 0.08
+                reasoning += 0.05
             elif keyword_count >= 1:
-                confidence += 0.05
+                confidence += 0.03
             
             sentence_count = len(re.findall(r'[.!?]', response))
-            if sentence_count >= 2:
+            if sentence_count >= 3:
+                reasoning += 0.08
+            elif sentence_count >= 2:
                 reasoning += 0.05
             
             return InferenceResult(
@@ -503,12 +526,12 @@ class ModelHandler:
     def _perform_memory_cleanup(self):
         self.memory_cleanup_counter += 1
         
-        if self.memory_cleanup_counter % 25 == 0:
+        if self.memory_cleanup_counter % 20 == 0:
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         
-        if self.memory_cleanup_counter % 50 == 0:
+        if self.memory_cleanup_counter % 40 == 0:
             if len(self.response_cache) > self.max_cache_size // 2:
                 self._manage_cache()
     
@@ -546,7 +569,8 @@ class ModelHandler:
             "cache_hits": self.cache_hits,
             "cache_size": len(self.response_cache),
             "cache_efficiency": self.generation_stats["cache_efficiency"],
-            "memory_cleanups": self.memory_cleanup_counter
+            "memory_cleanups": self.memory_cleanup_counter,
+            "generation_failures": self.generation_stats["generation_failures"]
         }
     
     def cleanup(self):
