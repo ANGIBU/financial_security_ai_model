@@ -71,7 +71,7 @@ class FinancialAIInference:
             self.learning_system = LearningSystem(debug_mode=self.verbose)
             self._load_existing_learning_data()
         
-        # 패턴 분석기 초기화
+        # 패턴 분석기 초기화 (수정됨)
         if self.enable_patterns:
             self.pattern_analyzer = PatternAnalyzer(debug_mode=self.verbose)
             self._load_existing_pattern_data()
@@ -279,7 +279,7 @@ class FinancialAIInference:
                     self.stats["answer_distribution"][selected] += 1
                     return selected
             
-            # 패턴 분석 활용
+            # 패턴 분석 활용 (수정됨)
             if self.enable_patterns:
                 hint, conf = self.pattern_analyzer.get_prediction(question, structure or {})
                 if conf > 0.45:
@@ -440,7 +440,7 @@ class FinancialAIInference:
     def _stage1_pattern_matching(self, question: str, structure: Dict) -> Tuple[str, float]:
         """1단계: 빠른 패턴 매칭"""
         
-        # 패턴 분석기 우선 사용
+        # 패턴 분석기 우선 사용 (수정됨)
         if self.enable_patterns:
             pattern_answer, pattern_conf = self.pattern_analyzer.get_prediction(question, structure)
             if pattern_conf > 0.5:
@@ -577,7 +577,7 @@ class FinancialAIInference:
     def _single_stage_processing(self, question: str, question_id: str, structure: Dict) -> Tuple[str, float, List[str]]:
         """단일 단계 처리 (기본 모드)"""
         
-        # 패턴 매칭 시도
+        # 패턴 매칭 시도 (수정됨)
         if self.enable_patterns:
             hint_answer, hint_confidence = self.pattern_analyzer.get_prediction(question, structure)
             if hint_confidence > 0.5:
@@ -630,7 +630,7 @@ class FinancialAIInference:
                 self.stats["cache_hits"] += 1
                 return self.answer_cache[cache_key]
             
-            # 질문 구조 분석
+            # 질문 구조 분석 (수정됨)
             if self.enable_patterns:
                 structure = self.data_processor.analyze_question_structure_advanced(question)
             else:
@@ -739,7 +739,7 @@ class FinancialAIInference:
             # 학습 시스템 최적화
             self.learning_system.optimize_patterns()
             
-            # 패턴 분석기 최적화
+            # 패턴 분석기 최적화 (수정됨)
             if self.enable_patterns:
                 self.pattern_analyzer.optimize_patterns()
             
@@ -872,7 +872,7 @@ class FinancialAIInference:
                 if self.verbose:
                     print(f"데이터 저장 오류: {e}")
         
-        # 패턴 데이터 저장
+        # 패턴 데이터 저장 (수정됨)
         if self.enable_patterns:
             try:
                 if self.pattern_analyzer.save_patterns():
