@@ -107,7 +107,7 @@ class FinancialAIInference:
                 return True, 0.7
             return False, 0.0
         
-        if not text or len(text.strip()) < 20:
+        if not text or len(text.strip()) < 25:
             return False, 0.0
         
         if re.search(r'[\u4e00-\u9fff]', text):
@@ -116,7 +116,10 @@ class FinancialAIInference:
         if re.search(r'[①②③④⑤➀➁❶❷❸]', text):
             return False, 0.0
         
-        if re.search(r'bo+', text, flags=re.IGNORECASE):
+        if re.search(r'\bbo+\b', text, flags=re.IGNORECASE):
+            return False, 0.0
+        
+        if re.search(r'[ㄱ-ㅎㅏ-ㅣ]{2,}', text):
             return False, 0.0
         
         korean_chars = len(re.findall(r'[가-힣]', text))
@@ -129,10 +132,10 @@ class FinancialAIInference:
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
-        if korean_ratio < 0.5:
+        if korean_ratio < 0.6:
             return False, korean_ratio
         
-        if english_ratio > 0.2:
+        if english_ratio > 0.15:
             return False, 1 - english_ratio
         
         quality_score = korean_ratio * 0.8
@@ -141,12 +144,12 @@ class FinancialAIInference:
         prof_count = sum(1 for term in professional_terms if term in text)
         quality_score += min(prof_count * 0.05, 0.15)
         
-        if 25 <= len(text) <= 600:
+        if 30 <= len(text) <= 500:
             quality_score += 0.05
         
         final_quality = max(0, min(1, quality_score))
         
-        return final_quality > 0.6, final_quality
+        return final_quality > 0.65, final_quality
     
     def _get_diverse_fallback_answer(self, question: str, question_type: str, 
                                    structure: Dict = None) -> str:
@@ -154,10 +157,13 @@ class FinancialAIInference:
             current_distribution = self.stats["answer_distribution"]
             total_answers = sum(current_distribution.values())
             
-            if total_answers > 20:
-                min_count = min(current_distribution.values())
-                underrepresented = [ans for ans, count in current_distribution.items() 
-                                  if count == min_count]
+            if total_answers > 15:
+                target_per_answer = total_answers / 5
+                underrepresented = []
+                for ans in ["1", "2", "3", "4", "5"]:
+                    count = current_distribution[ans]
+                    if count < target_per_answer * 0.7:
+                        underrepresented.append(ans)
                 
                 if underrepresented:
                     selected = random.choice(underrepresented)
@@ -166,7 +172,7 @@ class FinancialAIInference:
             
             if self.enable_learning:
                 hint, conf = self.learning_system.get_smart_answer_hint(question, structure or {})
-                if conf > 0.3:
+                if conf > 0.35:
                     self.stats["smart_hints_used"] += 1
                     self.stats["answer_distribution"][hint] += 1
                     return hint
@@ -177,24 +183,56 @@ class FinancialAIInference:
                 "domain": self._extract_simple_domain(question)
             }
             
+            question_hash = hash(question) % 100
+            
             if question_features["has_negative"]:
-                options = ["1", "3", "4", "5"]
-                weights = [0.3, 0.25, 0.25, 0.2]
+                if question_hash < 25:
+                    options = ["1", "3", "4", "5"]
+                    weights = [0.3, 0.25, 0.25, 0.2]
+                elif question_hash < 50:
+                    options = ["3", "1", "4", "5"]
+                    weights = [0.3, 0.25, 0.25, 0.2]
+                elif question_hash < 75:
+                    options = ["4", "1", "3", "5"]
+                    weights = [0.3, 0.25, 0.25, 0.2]
+                else:
+                    options = ["5", "1", "3", "4"]
+                    weights = [0.3, 0.25, 0.25, 0.2]
                 selected = random.choices(options, weights=weights)[0]
+                
             elif question_features["domain"] == "개인정보":
-                options = ["1", "2", "3"]
-                weights = [0.4, 0.35, 0.25]
+                if question_hash < 33:
+                    options = ["1", "2", "3"]
+                    weights = [0.4, 0.35, 0.25]
+                elif question_hash < 66:
+                    options = ["2", "3", "1"]
+                    weights = [0.4, 0.35, 0.25]
+                else:
+                    options = ["3", "1", "2"]
+                    weights = [0.4, 0.35, 0.25]
                 selected = random.choices(options, weights=weights)[0]
+                
             elif question_features["domain"] == "전자금융":
-                options = ["2", "1", "3"]
-                weights = [0.4, 0.35, 0.25]
+                if question_hash < 33:
+                    options = ["1", "2", "3"]
+                    weights = [0.35, 0.35, 0.3]
+                elif question_hash < 66:
+                    options = ["2", "1", "4"]
+                    weights = [0.35, 0.35, 0.3]
+                else:
+                    options = ["3", "4", "1"]
+                    weights = [0.35, 0.35, 0.3]
                 selected = random.choices(options, weights=weights)[0]
+                
             elif question_features["length"] < 200:
-                options = ["1", "2", "3", "4"]
-                weights = [0.3, 0.25, 0.25, 0.2]
-                selected = random.choices(options, weights=weights)[0]
+                options = ["1", "2", "3", "4", "5"]
+                base_idx = question_hash % 5
+                reordered = [options[(base_idx + i) % 5] for i in range(5)]
+                weights = [0.25, 0.22, 0.20, 0.17, 0.16]
+                selected = random.choices(reordered, weights=weights)[0]
             else:
-                selected = random.choice(["1", "2", "3", "4", "5"])
+                options = ["1", "2", "3", "4", "5"]
+                selected = options[question_hash % 5]
             
             self.stats["answer_distribution"][selected] += 1
             return selected
@@ -205,22 +243,30 @@ class FinancialAIInference:
             "사이버보안": [
                 "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결과 시스템 리소스 사용 증가가 있습니다.",
                 "악성코드 탐지를 위해 실시간 모니터링과 행위 기반 분석 기술을 활용해야 합니다. 정기적인 보안 점검과 업데이트를 통해 위협에 대응해야 합니다.",
-                "사이버 공격에 대응하기 위해 침입탐지시스템과 방화벽 등 다층적 보안체계를 구축해야 합니다."
+                "사이버 공격에 대응하기 위해 침입탐지시스템과 방화벽 등 다층적 보안체계를 구축해야 합니다.",
+                "피싱과 스미싱 등 사회공학 공격에 대한 사용자 교육과 기술적 차단 조치가 필요합니다.",
+                "지능형 지속 위협에 대응하기 위해 위협 정보 공유와 협력 체계를 구축해야 합니다."
             ],
             "개인정보보호": [
                 "개인정보보호법에 따라 개인정보의 안전한 관리와 정보주체의 권리 보호를 위한 체계적인 조치가 필요합니다.",
                 "개인정보 처리 시 수집, 이용, 제공의 최소화 원칙을 준수하고 목적 달성 후 지체 없이 파기해야 합니다.",
-                "정보주체의 동의를 받아 개인정보를 처리하고 안전성 확보조치를 통해 보호해야 합니다."
+                "정보주체의 동의를 받아 개인정보를 처리하고 안전성 확보조치를 통해 보호해야 합니다.",
+                "개인정보 처리방침을 수립하고 정보주체의 열람, 정정, 삭제 요구권을 보장해야 합니다.",
+                "민감정보와 고유식별정보는 별도의 동의를 받아 처리하며 엄격한 보안조치를 적용해야 합니다."
             ],
             "전자금융": [
                 "전자금융거래법에 따라 전자적 장치를 통한 금융거래의 안전성을 확보하고 이용자를 보호해야 합니다.",
                 "접근매체의 안전한 관리와 거래내역 통지, 오류정정 절차를 구축해야 합니다.",
-                "전자금융거래의 신뢰성 보장을 위해 적절한 보안조치와 이용자 보호 체계가 필요합니다."
+                "전자금융거래의 신뢰성 보장을 위해 적절한 보안조치와 이용자 보호 체계가 필요합니다.",
+                "전자서명과 전자인증서를 통해 거래 당사자의 신원을 확인하고 거래의 무결성을 보장해야 합니다.",
+                "오류 발생 시 신속한 정정 절차와 손해배상 체계를 마련하여 이용자 보호에 만전을 기해야 합니다."
             ],
             "정보보안": [
                 "정보보안 관리체계를 통해 체계적인 보안 관리와 지속적인 위험 평가를 수행해야 합니다.",
                 "정보자산의 기밀성, 무결성, 가용성을 보장하기 위한 종합적인 보안대책이 필요합니다.",
-                "보안정책 수립, 접근통제, 암호화 등 다층적 보안체계를 구축해야 합니다."
+                "보안정책 수립, 접근통제, 암호화 등 다층적 보안체계를 구축해야 합니다.",
+                "보안사고 예방과 대응을 위한 보안관제 체계와 침입탐지 시스템을 운영해야 합니다.",
+                "정기적인 보안교육과 보안점검을 통해 보안 의식을 제고하고 취약점을 개선해야 합니다."
             ]
         }
         
@@ -232,7 +278,12 @@ class FinancialAIInference:
         general_responses = [
             "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 개선을 수행해야 합니다.",
             "정보보안 정책과 절차를 수립하여 체계적인 보안 관리와 위험 평가를 수행해야 합니다.",
-            "적절한 기술적, 관리적, 물리적 보안조치를 통해 정보자산을 안전하게 보호해야 합니다."
+            "적절한 기술적, 관리적, 물리적 보안조치를 통해 정보자산을 안전하게 보호해야 합니다.",
+            "법령에서 요구하는 안전성 확보조치를 이행하고 정기적인 점검을 통해 개선해야 합니다.",
+            "위험관리 체계를 구축하여 예방적 관리와 사후 대응 방안을 마련해야 합니다.",
+            "업무 연속성을 보장하기 위한 재해복구 계획과 백업 체계를 구축해야 합니다.",
+            "이용자 보호를 위한 안전성 확보 의무와 손해배상 체계를 마련해야 합니다.",
+            "정보주체의 권리 보호와 개인정보 안전성 확보를 위한 조치가 필요합니다."
         ]
         
         return random.choice(general_responses)
@@ -262,7 +313,7 @@ class FinancialAIInference:
         
         hint_answer, hint_confidence = self.learning_system.get_smart_answer_hint(question, structure)
         
-        confidence_threshold = 0.55
+        confidence_threshold = 0.50
         
         if hint_confidence > confidence_threshold:
             self.stats["pattern_based_answers"] += 1
@@ -296,7 +347,7 @@ class FinancialAIInference:
             if is_mc:
                 pattern_answer, pattern_conf = self._apply_pattern_based_answer_safe(question, structure)
                 
-                if pattern_answer and pattern_conf > 0.6:
+                if pattern_answer and pattern_conf > 0.55:
                     self.stats["smart_hints_used"] += 1
                     self.stats["high_confidence_answers"] += 1
                     self.stats["answer_distribution"][pattern_answer] += 1
@@ -326,7 +377,7 @@ class FinancialAIInference:
                     if result.confidence > 0.7:
                         self.stats["high_confidence_answers"] += 1
                 else:
-                    if pattern_answer and pattern_conf > 0.4:
+                    if pattern_answer and pattern_conf > 0.35:
                         self.stats["smart_hints_used"] += 1
                         answer = pattern_answer
                         self.stats["answer_distribution"][answer] += 1
@@ -351,7 +402,7 @@ class FinancialAIInference:
                 
                 is_valid, quality = self._validate_korean_quality_strict(answer, structure["question_type"])
                 
-                if not is_valid or quality < 0.6:
+                if not is_valid or quality < 0.65:
                     self.stats["korean_failures"] += 1
                     answer = self._get_diverse_fallback_answer(question, structure["question_type"], structure)
                     self.stats["korean_fixes"] += 1
@@ -361,11 +412,11 @@ class FinancialAIInference:
                     if quality > 0.8:
                         self.stats["high_confidence_answers"] += 1
                 
-                if len(answer) < 30:
+                if len(answer) < 35:
                     answer = self._get_diverse_fallback_answer(question, structure["question_type"], structure)
                     self.stats["fallback_used"] += 1
-                elif len(answer) > 800:
-                    answer = answer[:797] + "..."
+                elif len(answer) > 600:
+                    answer = answer[:597] + "..."
             
             else:
                 self.stats["fallback_used"] += 1
@@ -562,7 +613,7 @@ class FinancialAIInference:
             print(f"  답변 다양성: {diversity_assessment} ({unique_answers}개 번호 사용)")
             
             distribution_balance = np.std(list(answer_distribution.values()))
-            if distribution_balance < len(mc_answers) * 0.1:
+            if distribution_balance < len(mc_answers) * 0.15:
                 print(f"  분포 균형: 양호")
             else:
                 print(f"  분포 균형: 개선 필요")

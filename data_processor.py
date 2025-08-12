@@ -11,6 +11,7 @@
 import re
 import pandas as pd
 import numpy as np
+import random
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 from knowledge_base import FinancialSecurityKnowledgeBase
@@ -38,9 +39,23 @@ class DataProcessor:
         
         self.cache_stats = {"hits": 0, "misses": 0}
         
+        self.diverse_templates = self._build_diverse_templates()
+        
     def _debug_print(self, message: str):
         if self.debug_mode:
             print(f"[DEBUG] {message}")
+    
+    def _build_diverse_templates(self) -> List[str]:
+        return [
+            "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 개선을 수행해야 합니다.",
+            "정보보안 정책과 절차를 수립하여 체계적인 보안 관리와 위험 평가를 수행해야 합니다.",
+            "적절한 기술적, 관리적, 물리적 보안조치를 통해 정보자산을 안전하게 보호해야 합니다.",
+            "법령에서 요구하는 안전성 확보조치를 이행하고 정기적인 점검을 통해 개선해야 합니다.",
+            "위험관리 체계를 구축하여 예방적 관리와 사후 대응 방안을 마련해야 합니다.",
+            "업무 연속성을 보장하기 위한 재해복구 계획과 백업 체계를 구축해야 합니다.",
+            "이용자 보호를 위한 안전성 확보 의무와 손해배상 체계를 마련해야 합니다.",
+            "정보주체의 권리 보호와 개인정보 안전성 확보를 위한 조치가 필요합니다."
+        ]
     
     def _build_safe_korean_patterns(self) -> Dict[str, str]:
         return {
@@ -93,12 +108,16 @@ class DataProcessor:
             "no_chinese_chars": lambda x: not bool(re.search(r'[\u4e00-\u9fff]', x)),
             "minimal_english": lambda x: len(re.findall(r'[A-Za-z]', x)) < len(x) * 0.3,
             "no_japanese": lambda x: not bool(re.search(r'[\u3040-\u309f\u30a0-\u30ff]', x)),
-            "no_symbols": lambda x: not bool(re.search(r'[①②③④⑤➀➁❶❷❸]', x))
+            "no_symbols": lambda x: not bool(re.search(r'[①②③④⑤➀➁❶❷❸]', x)),
+            "no_broken_korean": lambda x: not bool(re.search(r'[ㄱ-ㅎㅏ-ㅣ]{2,}', x)),
+            "no_bo_pattern": lambda x: not bool(re.search(r'\bbo+\b', x, flags=re.IGNORECASE))
         }
     
     def _clean_korean_text(self, text: str) -> str:
         if not text:
             return ""
+        
+        original_length = len(text)
         
         text = re.sub(r'[\u0000-\u001f\u007f-\u009f]', '', text)
         
@@ -111,15 +130,24 @@ class DataProcessor:
         text = re.sub(r'[а-яё]+', '', text, flags=re.IGNORECASE)
         
         text = re.sub(r'[①②③④⑤➀➁❶❷❸❹❺]', '', text)
-        text = re.sub(r'bo+', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'\([^가-힣\s]*\)', '', text)
-        text = re.sub(r'[^\w\s가-힣0-9.,!?()·\-\n]', ' ', text)
+        text = re.sub(r'\bbo+\b', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\b[bB][oO]+\b', '', text)
+        
+        text = re.sub(r'[ㄱ-ㅎㅏ-ㅣ]{2,}', '', text)
+        
+        text = re.sub(r'\([^가-힣\s\d.,!?]*\)', '', text)
+        text = re.sub(r'[^\w\s가-힣0-9.,!?()·\-\n""'']+', ' ', text)
         
         text = re.sub(r'\s+', ' ', text)
         text = re.sub(r'\.{2,}', '.', text)
         text = re.sub(r',{2,}', ',', text)
         
-        return text.strip()
+        cleaned_text = text.strip()
+        
+        if len(cleaned_text) < original_length * 0.4 and original_length > 30:
+            return ""
+        
+        return cleaned_text
     
     def analyze_question_structure(self, question: str) -> Dict:
         q_hash = hash(question[:200])
@@ -338,6 +366,9 @@ class DataProcessor:
         
         cleaned_response = self._clean_korean_text(response)
         
+        if not cleaned_response:
+            return ""
+        
         if re.match(r'^[1-5]$', cleaned_response.strip()):
             self._debug_print(f"직접 매칭 성공: {cleaned_response.strip()}")
             return cleaned_response.strip()
@@ -418,7 +449,7 @@ class DataProcessor:
     def _extract_subjective_answer_optimized(self, response: str, structure: Dict) -> ProcessedAnswer:
         is_valid, korean_quality = self._validate_korean_text_enhanced(response, "subjective")
         
-        if not is_valid or korean_quality < 0.4:
+        if not is_valid or korean_quality < 0.5:
             fallback = self._generate_domain_specific_fallback(structure)
             return ProcessedAnswer(
                 final_answer=fallback,
@@ -428,7 +459,7 @@ class DataProcessor:
                 korean_quality=0.85
             )
         
-        if len(response) < 25:
+        if len(response) < 30:
             fallback = self._generate_domain_specific_fallback(structure)
             return ProcessedAnswer(
                 final_answer=fallback,
@@ -437,8 +468,8 @@ class DataProcessor:
                 validation_passed=True,
                 korean_quality=0.85
             )
-        elif len(response) > 1000:
-            response = response[:997] + "..."
+        elif len(response) > 800:
+            response = response[:797] + "..."
         
         return ProcessedAnswer(
             final_answer=response.strip(),
@@ -454,7 +485,7 @@ class DataProcessor:
                 return True, 1.0
             return False, 0.0
         
-        if not text or len(text.strip()) < 15:
+        if not text or len(text.strip()) < 20:
             return False, 0.0
         
         validation_score = 0.0
@@ -466,7 +497,7 @@ class DataProcessor:
             else:
                 penalties += 1
         
-        if penalties > 3:
+        if penalties > 4:
             return False, validation_score / len(self.validation_rules)
         
         total_chars = len(re.sub(r'[^\w]', '', text))
@@ -476,48 +507,70 @@ class DataProcessor:
         korean_chars = len(re.findall(r'[가-힣]', text))
         korean_ratio = korean_chars / total_chars
         
-        if korean_ratio < 0.4:
+        if korean_ratio < 0.5:
             return False, korean_ratio
         
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
-        if english_ratio > 0.3:
-            return False, korean_ratio * (1 - english_ratio * 0.4)
+        if english_ratio > 0.25:
+            return False, korean_ratio * (1 - english_ratio * 0.5)
         
         quality_score = korean_ratio * 0.8 + validation_score / len(self.validation_rules) * 0.2
         
-        return quality_score > 0.5, quality_score
+        return quality_score > 0.6, quality_score
     
     def _generate_domain_specific_fallback(self, structure: Dict) -> str:
         domain_hints = structure.get("domain_hints", [])
         
         if "사이버보안" in domain_hints:
-            return "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 원격 접근 트로이 목마는 공격자가 감염된 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결, 시스템 리소스 사용 증가, 알 수 없는 프로세스 실행 등이 있습니다."
+            templates = [
+                "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 원격 접근 트로이 목마는 공격자가 감염된 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결, 시스템 리소스 사용 증가, 알 수 없는 프로세스 실행 등이 있습니다.",
+                "악성코드 탐지를 위해 실시간 모니터링과 행위 기반 분석 기술을 활용해야 합니다. 정기적인 보안 점검과 업데이트를 통해 위협에 대응해야 합니다.",
+                "사이버 공격에 대응하기 위해 침입탐지시스템과 방화벽 등 다층적 보안체계를 구축해야 합니다."
+            ]
+            return random.choice(templates)
         elif "개인정보보호" in domain_hints:
-            return "개인정보보호법에 따라 개인정보의 안전한 관리와 정보주체의 권리 보호를 위한 체계적인 조치가 필요합니다."
+            templates = [
+                "개인정보보호법에 따라 개인정보의 안전한 관리와 정보주체의 권리 보호를 위한 체계적인 조치가 필요합니다.",
+                "개인정보 처리 시 수집, 이용, 제공의 최소화 원칙을 준수하고 목적 달성 후 지체 없이 파기해야 합니다.",
+                "정보주체의 동의를 받아 개인정보를 처리하고 안전성 확보조치를 통해 보호해야 합니다."
+            ]
+            return random.choice(templates)
         elif "전자금융" in domain_hints:
-            return "전자금융거래법에 따라 전자적 장치를 통한 금융거래의 안전성을 확보하고 이용자를 보호해야 합니다."
+            templates = [
+                "전자금융거래법에 따라 전자적 장치를 통한 금융거래의 안전성을 확보하고 이용자를 보호해야 합니다.",
+                "접근매체의 안전한 관리와 거래내역 통지, 오류정정 절차를 구축해야 합니다.",
+                "전자금융거래의 신뢰성 보장을 위해 적절한 보안조치와 이용자 보호 체계가 필요합니다."
+            ]
+            return random.choice(templates)
         elif "정보보안" in domain_hints:
-            return "정보보안 관리체계를 통해 체계적인 보안 관리와 지속적인 위험 평가를 수행해야 합니다."
-        elif "재해복구" in domain_hints:
-            return "재해복구계획은 재해 발생 시 핵심 업무를 신속하게 복구하기 위한 체계적인 계획입니다."
-        elif "위험관리" in domain_hints:
-            return "위험관리는 조직의 목표 달성에 영향을 미칠 수 있는 위험을 체계적으로 식별, 분석, 평가하고 적절한 대응방안을 수립하여 관리하는 과정입니다."
+            templates = [
+                "정보보안 관리체계를 통해 체계적인 보안 관리와 지속적인 위험 평가를 수행해야 합니다.",
+                "정보자산의 기밀성, 무결성, 가용성을 보장하기 위한 종합적인 보안대책이 필요합니다.",
+                "보안정책 수립, 접근통제, 암호화 등 다층적 보안체계를 구축해야 합니다."
+            ]
+            return random.choice(templates)
         else:
-            return "관련 법령과 규정에 따라 적절한 보안 조치를 수립하고 지속적인 관리와 개선을 수행해야 합니다."
+            return random.choice(self.diverse_templates)
     
     def post_process_answer(self, raw_response: str, question: str, question_type: str) -> str:
         self._debug_print(f"후처리 시작 - 질문 유형: {question_type}")
         
         cleaned_response = self._clean_korean_text(raw_response)
         
+        if not cleaned_response:
+            if question_type == "multiple_choice":
+                return str(random.randint(1, 5))
+            else:
+                return random.choice(self.diverse_templates)
+        
         if question_type == "multiple_choice":
             extracted = self.extract_mc_answer_fast(cleaned_response)
-            return extracted if extracted else ""
+            return extracted if extracted else str(random.randint(1, 5))
         else:
             processed = self.extract_answer_intelligently(cleaned_response, question)
-            return processed.final_answer if processed.validation_passed else ""
+            return processed.final_answer if processed.validation_passed else random.choice(self.diverse_templates)
     
     def get_cache_stats(self) -> Dict:
         total_requests = self.cache_stats["hits"] + self.cache_stats["misses"]
