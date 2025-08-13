@@ -5,7 +5,7 @@
 - LLM 모델 로딩 및 관리
 - 파인튜닝된 모델 지원
 - Chain-of-Thought 추론 최적화
-- 텍스트 생성 및 추론 
+- 텍스트 생성 및 추론  
 - 한국어 최적화 설정
 - 메모리 관리
 """
@@ -32,12 +32,12 @@ warnings.filterwarnings("ignore")
 # 상수 정의
 DEFAULT_MAX_MEMORY_GB = 22
 DEFAULT_CACHE_SIZE = 400
-DEFAULT_MC_MAX_TOKENS = 20
-DEFAULT_SUBJ_MAX_TOKENS = 300
-DEFAULT_COT_MAX_TOKENS = 400
+DEFAULT_MC_MAX_TOKENS = 25
+DEFAULT_SUBJ_MAX_TOKENS = 400
+DEFAULT_COT_MAX_TOKENS = 500
 MEMORY_CLEANUP_INTERVAL = 20
 CACHE_CLEANUP_INTERVAL = 40
-MAX_PROMPT_LENGTH = 1200
+MAX_PROMPT_LENGTH = 1500
 
 @dataclass
 class InferenceResult:
@@ -91,7 +91,11 @@ class ModelHandler:
             "finetuned_generations": 0,
             "cot_generations": 0,
             "reasoning_generations": 0,
-            "step_by_step_generations": 0
+            "step_by_step_generations": 0,
+            "model_call_failures": 0,
+            "torch_errors": 0,
+            "validation_failures": 0,
+            "fallback_usage": 0
         }
         
         if self.verbose:
@@ -302,38 +306,83 @@ class ModelHandler:
             try:
                 gen_config = self._create_generation_config(question_type, attempt, prompt_type)
                 
-                inputs = self.tokenizer(
-                    optimized_prompt,
-                    return_tensors="pt",
-                    truncation=True,
-                    max_length=MAX_PROMPT_LENGTH
-                ).to(self.model.device)
+                # 토크나이징 개선
+                try:
+                    inputs = self.tokenizer(
+                        optimized_prompt,
+                        return_tensors="pt",
+                        truncation=True,
+                        max_length=MAX_PROMPT_LENGTH,
+                        padding=False
+                    ).to(self.model.device)
+                except Exception as tokenize_error:
+                    if self.verbose:
+                        print(f"토크나이징 오류 (시도 {attempt+1}): {str(tokenize_error)[:100]}")
+                    generation_errors += 1
+                    continue
                 
+                # 실제 모델 추론 개선
                 with torch.no_grad():
-                    with torch.cuda.amp.autocast(enabled=self.cuda_available, dtype=torch.bfloat16):
-                        try:
+                    try:
+                        if self.cuda_available:
+                            with torch.cuda.amp.autocast(enabled=True, dtype=torch.bfloat16):
+                                outputs = self.model.generate(
+                                    **inputs,
+                                    generation_config=gen_config,
+                                    do_sample=gen_config.do_sample,
+                                    temperature=gen_config.temperature,
+                                    top_p=gen_config.top_p,
+                                    top_k=gen_config.top_k,
+                                    max_new_tokens=gen_config.max_new_tokens,
+                                    repetition_penalty=gen_config.repetition_penalty,
+                                    pad_token_id=gen_config.pad_token_id,
+                                    eos_token_id=gen_config.eos_token_id,
+                                    bad_words_ids=gen_config.bad_words_ids
+                                )
+                        else:
                             outputs = self.model.generate(
                                 **inputs,
                                 generation_config=gen_config
                             )
-                        except (RuntimeError, ValueError, torch.cuda.OutOfMemoryError) as gen_error:
-                            generation_errors += 1
-                            if self.verbose:
-                                print(f"생성 오류 (시도 {attempt+1}): {str(gen_error)[:100]}")
-                            continue
+                    except (RuntimeError, torch.cuda.OutOfMemoryError) as cuda_error:
+                        if self.verbose:
+                            print(f"CUDA/런타임 오류 (시도 {attempt+1}): {str(cuda_error)[:100]}")
+                        generation_errors += 1
+                        self.generation_stats["torch_errors"] += 1
+                        
+                        # GPU 메모리 정리 후 재시도
+                        if self.cuda_available:
+                            torch.cuda.empty_cache()
+                        gc.collect()
+                        continue
+                    except Exception as model_error:
+                        if self.verbose:
+                            print(f"모델 생성 오류 (시도 {attempt+1}): {str(model_error)[:100]}")
+                        generation_errors += 1
+                        self.generation_stats["model_call_failures"] += 1
+                        continue
                 
-                raw_response = self.tokenizer.decode(
-                    outputs[0][inputs['input_ids'].shape[1]:],
-                    skip_special_tokens=True
-                ).strip()
+                # 응답 디코딩 및 처리
+                try:
+                    raw_response = self.tokenizer.decode(
+                        outputs[0][inputs['input_ids'].shape[1]:],
+                        skip_special_tokens=True,
+                        clean_up_tokenization_spaces=True
+                    ).strip()
+                except Exception as decode_error:
+                    if self.verbose:
+                        print(f"디코딩 오류 (시도 {attempt+1}): {str(decode_error)[:100]}")
+                    generation_errors += 1
+                    continue
                 
+                # 한국어 텍스트 정리
                 cleaned_response = self._clean_korean_text_enhanced(raw_response)
                 
                 if question_type == "multiple_choice":
                     extracted_answer = self._extract_mc_answer_enhanced(cleaned_response)
                     
                     if extracted_answer and extracted_answer.isdigit() and 1 <= int(extracted_answer) <= 5:
-                        confidence = 0.92 - (attempt * 0.05)
+                        confidence = 0.90 - (attempt * 0.03)
                         if self.is_finetuned:
                             confidence += 0.05
                         if prompt_type == "cot":
@@ -359,9 +408,10 @@ class ModelHandler:
                         continue
                 
                 else:
+                    # 주관식 답변 검증 완화
                     korean_quality = self._evaluate_korean_quality_enhanced(cleaned_response)
                     
-                    if korean_quality > 0.5 and len(cleaned_response) > 25:
+                    if korean_quality > 0.4 and len(cleaned_response) > 20:  # 기준 완화
                         result = self._evaluate_response(cleaned_response, question_type, prompt_type)
                         result.korean_quality = korean_quality
                         result.inference_time = time.time() - start_time
@@ -379,19 +429,21 @@ class ModelHandler:
                             best_score = score
                             best_result = result
                     
-                    if korean_quality > 0.75:
+                    if korean_quality > 0.6:  # 기준 완화
                         break
                         
             except Exception as e:
                 generation_errors += 1
+                self.generation_stats["generation_failures"] += 1
                 if self.verbose:
                     print(f"전체 생성 오류 (시도 {attempt+1}): {str(e)[:100]}")
                 continue
         
+        # 결과 검증 및 반환
         if best_result is None:
             best_result = self._create_fallback_result(question_type, question_structure, prompt_type)
             best_result.inference_time = time.time() - start_time
-            self.generation_stats["generation_failures"] += generation_errors
+            self.generation_stats["fallback_usage"] += 1
             self._update_generation_stats(best_result, False)
         else:
             self._update_generation_stats(best_result, True)
@@ -454,48 +506,48 @@ class ModelHandler:
         if question_type == "multiple_choice":
             # 객관식 설정
             base_config.update({
-                "temperature": 0.3 + (attempt * 0.1),
+                "temperature": 0.25 + (attempt * 0.05),  # 더 낮은 온도
                 "top_p": 0.75,
-                "top_k": 20,
+                "top_k": 15,  # 더 낮은 top_k
                 "max_new_tokens": DEFAULT_MC_MAX_TOKENS,
-                "repetition_penalty": 1.15
+                "repetition_penalty": 1.1
             })
         else:
             # 주관식 설정 - 프롬프트 유형별 조정
             if prompt_type == "cot":
                 base_config.update({
-                    "temperature": 0.4 + (attempt * 0.08),
+                    "temperature": 0.35 + (attempt * 0.05),
                     "top_p": 0.85,
-                    "top_k": 35,
+                    "top_k": 30,
                     "max_new_tokens": DEFAULT_COT_MAX_TOKENS,
-                    "repetition_penalty": 1.08
+                    "repetition_penalty": 1.05
                 })
                 self.generation_stats["cot_generations"] += 1
             elif prompt_type == "reasoning":
                 base_config.update({
-                    "temperature": 0.45 + (attempt * 0.1),
+                    "temperature": 0.4 + (attempt * 0.06),
                     "top_p": 0.82,
-                    "top_k": 30,
+                    "top_k": 25,
                     "max_new_tokens": DEFAULT_SUBJ_MAX_TOKENS + 50,
-                    "repetition_penalty": 1.12
+                    "repetition_penalty": 1.08
                 })
                 self.generation_stats["reasoning_generations"] += 1
             elif prompt_type == "step_by_step":
                 base_config.update({
-                    "temperature": 0.35 + (attempt * 0.09),
+                    "temperature": 0.3 + (attempt * 0.05),
                     "top_p": 0.88,
-                    "top_k": 40,
+                    "top_k": 35,
                     "max_new_tokens": DEFAULT_COT_MAX_TOKENS,
-                    "repetition_penalty": 1.05
+                    "repetition_penalty": 1.03
                 })
                 self.generation_stats["step_by_step_generations"] += 1
             else:
                 base_config.update({
-                    "temperature": 0.5 + (attempt * 0.1),
+                    "temperature": 0.45 + (attempt * 0.08),
                     "top_p": 0.80,
-                    "top_k": 30,
+                    "top_k": 25,
                     "max_new_tokens": DEFAULT_SUBJ_MAX_TOKENS,
-                    "repetition_penalty": 1.1
+                    "repetition_penalty": 1.07
                 })
         
         return GenerationConfig(**base_config)
@@ -512,7 +564,7 @@ class ModelHandler:
             return text
         
         # 첫 몇 글자에서 숫자 찾기
-        first_part = text[:20] if len(text) > 20 else text
+        first_part = text[:15] if len(text) > 15 else text
         early_match = re.search(r'[1-5]', first_part)
         if early_match:
             return early_match.group()
@@ -578,7 +630,7 @@ class ModelHandler:
         # 문제가 되는 문자들 제거 (한국어 한자 제외한 중국어)
         text = re.sub(r'[\u4e00-\u9fff]+', '', text)
         text = re.sub(r'[\u3040-\u309f\u30a0-\u30ff]+', '', text)
-        text = re.sub(r'[Ð-Ñ]+', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'[À-Ñ]+', '', text, flags=re.IGNORECASE)
         
         # 특수 기호 제거
         text = re.sub(r'[①②③④⑤➀➁➂➃➄➅➆➇➈➉]', '', text)
@@ -591,9 +643,9 @@ class ModelHandler:
         # 문제가 되는 조각들 제거
         problematic_fragments = [
             r'[ㄱ-ㅎㅏ-ㅣ]{3,}(?![가-힣])', 
-            r'[^\w\s가-힣0-9.,!?()·\-\n""'']+',
-            r'[A-Za-z]{10,}',
-            r'\d{8,}'
+            r'[^\w\s가-힣0-9.,!?()\·\-\n""'']+',
+            r'[A-Za-z]{8,}',  # 너무 긴 영어 단어
+            r'\d{6,}'  # 너무 긴 숫자
         ]
         
         for pattern in problematic_fragments:
@@ -606,9 +658,15 @@ class ModelHandler:
         
         text = text.strip()
         
-        # 너무 많이 정리된 경우 빈 문자열 반환
-        if len(text) < original_length * 0.25 and original_length > 30:
-            return ""
+        # 너무 많이 정리된 경우 원본의 일부라도 보존
+        if len(text) < original_length * 0.2 and original_length > 30:
+            # 원본에서 한국어 부분만 추출 시도
+            korean_parts = re.findall(r'[가-힣\s.,!?]+', original_text)
+            if korean_parts:
+                text = ' '.join(korean_parts).strip()
+            
+            if len(text) < 10:
+                return ""
         
         return text
     
@@ -621,16 +679,16 @@ class ModelHandler:
         
         # 패널티 요소들
         if re.search(r'[\u4e00-\u9fff]', text):
-            penalty_score += 0.4
+            penalty_score += 0.3  # 감소
         
         if re.search(r'[ㄱ-ㅎㅏ-ㅣ]{3,}', text):
-            penalty_score += 0.3
+            penalty_score += 0.2  # 감소
         
         if re.search(r'\bbo+\b', text, flags=re.IGNORECASE):
-            penalty_score += 0.3
+            penalty_score += 0.25  # 감소
         
         if re.search(r'[①②③④⑤➀➁➂➃➄]', text):
-            penalty_score += 0.2
+            penalty_score += 0.15  # 감소
         
         total_chars = len(re.sub(r'[^\w]', '', text))
         if total_chars == 0:
@@ -642,23 +700,23 @@ class ModelHandler:
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
-        if korean_ratio < 0.4:
-            return max(0, korean_ratio * 0.4 - penalty_score)
+        if korean_ratio < 0.3:  # 기준 완화
+            return max(0, korean_ratio * 0.5 - penalty_score)
         
-        quality = korean_ratio * 0.85 - english_ratio * 0.1 - penalty_score
+        quality = korean_ratio * 0.85 - english_ratio * 0.08 - penalty_score  # 영어 패널티 감소
         
         # 길이 보너스
-        if 40 <= len(text) <= 350:
+        if 30 <= len(text) <= 400:  # 범위 확대
             quality += 0.15
-        elif 25 <= len(text) <= 40:
-            quality += 0.05
-        elif len(text) < 25:
-            quality -= 0.1
+        elif 20 <= len(text) <= 30:
+            quality += 0.08
+        elif len(text) < 20:
+            quality -= 0.05  # 패널티 감소
         
         # 전문 용어 보너스
         professional_terms = ['법', '규정', '관리', '보안', '조치', '정책', '체계', '절차', '의무', '권리']
         prof_count = sum(1 for term in professional_terms if term in text)
-        quality += min(prof_count * 0.06, 0.18)
+        quality += min(prof_count * 0.05, 0.15)
         
         # 문장 구조 보너스
         sentence_count = len(re.findall(r'[.!?]', text))
@@ -687,8 +745,8 @@ class ModelHandler:
                 
             return InferenceResult(
                 response=fallback_answer,
-                confidence=0.35,
-                reasoning_quality=0.25,
+                confidence=0.4,  # 증가
+                reasoning_quality=0.3,  # 증가
                 analysis_depth=1,
                 korean_quality=1.0,
                 prompt_type=prompt_type
@@ -715,8 +773,8 @@ class ModelHandler:
             
             return InferenceResult(
                 response=selected_answer,
-                confidence=0.55,
-                reasoning_quality=0.45,
+                confidence=0.6,  # 증가
+                reasoning_quality=0.5,  # 증가
                 analysis_depth=1,
                 korean_quality=0.85,
                 prompt_type=prompt_type
@@ -725,8 +783,8 @@ class ModelHandler:
     def _evaluate_response(self, response: str, question_type: str, prompt_type: str = "basic") -> InferenceResult:
         """응답 품질 평가"""
         if question_type == "multiple_choice":
-            confidence = 0.6
-            reasoning = 0.6
+            confidence = 0.65  # 기본값 증가
+            reasoning = 0.65
             
             if re.match(r'^[1-5]$', response.strip()):
                 confidence = 0.92
@@ -744,35 +802,35 @@ class ModelHandler:
             )
         
         else:
-            confidence = 0.72
-            reasoning = 0.72
+            confidence = 0.75  # 기본값 증가
+            reasoning = 0.75
             
             length = len(response)
-            if 60 <= length <= 350:
+            if 50 <= length <= 400:  # 범위 확대
                 confidence += 0.15
-            elif 35 <= length <= 60:
-                confidence += 0.05
-            elif length > 350:
-                confidence -= 0.05
-            elif length < 35:
-                confidence -= 0.15
+            elif 30 <= length <= 50:
+                confidence += 0.08
+            elif length > 400:
+                confidence -= 0.03  # 패널티 감소
+            elif length < 30:
+                confidence -= 0.1  # 패널티 감소
             
             keywords = ['법', '규정', '보안', '관리', '조치', '정책', '체계', '절차', '의무', '권리']
             keyword_count = sum(1 for k in keywords if k in response)
             if keyword_count >= 4:
-                confidence += 0.15
-                reasoning += 0.1
+                confidence += 0.12
+                reasoning += 0.08
             elif keyword_count >= 2:
-                confidence += 0.08
-                reasoning += 0.05
+                confidence += 0.06
+                reasoning += 0.04
             elif keyword_count >= 1:
-                confidence += 0.03
+                confidence += 0.02
             
             sentence_count = len(re.findall(r'[.!?]', response))
             if sentence_count >= 3:
-                reasoning += 0.08
+                reasoning += 0.06
             elif sentence_count >= 2:
-                reasoning += 0.05
+                reasoning += 0.03
             
             # 프롬프트 유형별 보너스
             if prompt_type == "cot":
@@ -867,6 +925,12 @@ class ModelHandler:
                 "cot_rate": cot_rate,
                 "reasoning_rate": reasoning_rate,
                 "step_by_step_rate": step_rate
+            },
+            "error_analysis": {
+                "model_call_failures": self.generation_stats["model_call_failures"],
+                "torch_errors": self.generation_stats["torch_errors"],
+                "validation_failures": self.generation_stats["validation_failures"],
+                "fallback_usage": self.generation_stats["fallback_usage"]
             }
         }
     
@@ -880,6 +944,10 @@ class ModelHandler:
                 
                 prompt_dist = stats['prompt_type_distribution']
                 print(f"  프롬프트 유형: CoT {prompt_dist['cot_rate']:.1%}, 추론 {prompt_dist['reasoning_rate']:.1%}, 단계별 {prompt_dist['step_by_step_rate']:.1%}")
+                
+                error_analysis = stats['error_analysis']
+                if error_analysis['model_call_failures'] > 0:
+                    print(f"  오류 분석: 모델호출실패 {error_analysis['model_call_failures']}, TORCH오류 {error_analysis['torch_errors']}, 폴백사용 {error_analysis['fallback_usage']}")
             
             if hasattr(self, 'model') and self.model is not None:
                 del self.model
@@ -910,6 +978,8 @@ class ModelHandler:
                 "cot_support": True,
                 "reasoning_support": True,
                 "step_by_step_support": True,
-                "prompt_type_detection": True
+                "prompt_type_detection": True,
+                "enhanced_error_handling": True,
+                "improved_validation": True
             }
         }
