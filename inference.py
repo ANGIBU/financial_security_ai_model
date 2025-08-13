@@ -3,6 +3,7 @@
 """
 메인 추론 시스템
 - 금융보안 객관식/주관식 문제 추론
+- 파인튜닝된 모델 지원
 - 학습 시스템 통합 관리
 - 한국어 답변 생성 및 검증
 - 오프라인 환경 대응
@@ -37,10 +38,11 @@ from learning_system import LearningSystem
 
 class FinancialAIInference:
     
-    def __init__(self, enable_learning: bool = True, verbose: bool = False):
+    def __init__(self, enable_learning: bool = True, verbose: bool = False, use_finetuned: bool = False):
         self.start_time = time.time()
         self.enable_learning = enable_learning
         self.verbose = verbose
+        self.use_finetuned = use_finetuned
         
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -48,12 +50,21 @@ class FinancialAIInference:
         
         print("시스템 초기화 중...")
         
+        finetuned_path = None
+        if use_finetuned:
+            finetuned_path = "./finetuned_model"
+            if not os.path.exists(finetuned_path):
+                print(f"파인튜닝 모델을 찾을 수 없습니다: {finetuned_path}")
+                print("기본 모델을 사용합니다")
+                finetuned_path = None
+        
         self.model_handler = ModelHandler(
             model_name="upstage/SOLAR-10.7B-Instruct-v1.0",
             device="cuda" if torch.cuda.is_available() else "cpu",
             load_in_4bit=True,
             max_memory_gb=22,
-            verbose=self.verbose
+            verbose=self.verbose,
+            finetuned_path=finetuned_path
         )
         
         self.data_processor = DataProcessor()
@@ -81,7 +92,8 @@ class FinancialAIInference:
             "cache_hits": 0,
             "answer_distribution": {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0},
             "quality_scores": [],
-            "processing_times": []
+            "processing_times": [],
+            "finetuned_usage": 0
         }
         
         self.answer_cache = {}
@@ -92,7 +104,8 @@ class FinancialAIInference:
         
         self.enhanced_fallback_templates = self._build_enhanced_fallback_templates()
         
-        print("초기화 완료")
+        model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
+        print(f"초기화 완료 - {model_type} 사용")
     
     def _build_enhanced_fallback_templates(self) -> Dict[str, List[str]]:
         return {
@@ -376,6 +389,9 @@ class FinancialAIInference:
                     max_attempts=max_attempts
                 )
                 
+                if self.model_handler.is_finetuned:
+                    self.stats["finetuned_usage"] += 1
+                
                 extracted = self.data_processor.extract_mc_answer_fast(result.response)
                 
                 if extracted and extracted.isdigit() and 1 <= int(extracted) <= 5:
@@ -407,6 +423,9 @@ class FinancialAIInference:
                     question_type=structure["question_type"],
                     max_attempts=max_attempts
                 )
+                
+                if self.model_handler.is_finetuned:
+                    self.stats["finetuned_usage"] += 1
                 
                 answer = self.data_processor._clean_korean_text(result.response)
                 
@@ -503,6 +522,9 @@ class FinancialAIInference:
         if self.enable_learning:
             print(f"학습 모드: 활성화")
         
+        model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
+        print(f"사용 모델: {model_type}")
+        
         answers = [""] * len(test_df)
         
         print("추론 시작...")
@@ -549,7 +571,11 @@ class FinancialAIInference:
             pattern_rate = self.stats["pattern_based_answers"] / self.stats["total"] * 100
             fallback_rate = self.stats["fallback_used"] / self.stats["total"] * 100
             
-            print(f"  중간 통계: 모델성공 {success_rate:.1f}%, 패턴활용 {pattern_rate:.1f}%, 폴백 {fallback_rate:.1f}%")
+            if self.model_handler.is_finetuned:
+                finetuned_rate = self.stats["finetuned_usage"] / self.stats["total"] * 100
+                print(f"  중간 통계: 모델성공 {success_rate:.1f}%, 패턴활용 {pattern_rate:.1f}%, 폴백 {fallback_rate:.1f}%, 파인튜닝 {finetuned_rate:.1f}%")
+            else:
+                print(f"  중간 통계: 모델성공 {success_rate:.1f}%, 패턴활용 {pattern_rate:.1f}%, 폴백 {fallback_rate:.1f}%")
             
             distribution = self.stats["answer_distribution"]
             total_mc = sum(distribution.values())
@@ -597,6 +623,13 @@ class FinancialAIInference:
         print("="*60)
         print(f"총 문항: {len(answers)}개")
         print(f"평균 처리시간: {avg_processing_time:.2f}초/문항")
+        
+        model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
+        print(f"사용 모델: {model_type}")
+        
+        if self.model_handler.is_finetuned:
+            finetuned_rate = self.stats["finetuned_usage"] / max(self.stats["total"], 1) * 100
+            print(f"파인튜닝 모델 사용률: {finetuned_rate:.1f}%")
         
         print(f"\n처리 통계:")
         print(f"  모델 생성 성공: {self.stats['model_generation_success']}/{self.stats['total']} ({self.stats['model_generation_success']/max(self.stats['total'],1)*100:.1f}%)")
@@ -660,7 +693,8 @@ class FinancialAIInference:
                 "fallback_used": self.stats["fallback_used"],
                 "errors": self.stats["errors"],
                 "cache_hits": self.stats["cache_hits"],
-                "avg_processing_time": avg_processing_time
+                "avg_processing_time": avg_processing_time,
+                "finetuned_usage": self.stats["finetuned_usage"]
             },
             "korean_quality": {
                 "failures": self.stats["korean_failures"],
@@ -673,6 +707,10 @@ class FinancialAIInference:
                 "patterns": len(self.learning_system.pattern_weights) if self.enable_learning else 0,
                 "diversity_score": getattr(self.learning_system.stats, 'answer_diversity_score', 0) if self.enable_learning else 0,
                 "accuracy": self.learning_system.get_current_accuracy() if self.enable_learning else 0
+            },
+            "model_info": {
+                "is_finetuned": self.model_handler.is_finetuned,
+                "finetuned_path": self.model_handler.finetuned_path
             }
         }
     
@@ -683,6 +721,9 @@ class FinancialAIInference:
             print(f"  총 처리 시간: {total_time:.1f}초")
             if self.stats["total"] > 0:
                 print(f"  평균 처리 속도: {total_time/self.stats['total']:.2f}초/문항")
+            
+            model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
+            print(f"  사용 모델: {model_type}")
             
             self.model_handler.cleanup()
             self.data_processor.cleanup()
@@ -722,14 +763,22 @@ def main():
     
     enable_learning = True
     verbose = False
+    use_finetuned = os.path.exists("./finetuned_model")
+    
+    if use_finetuned:
+        print("파인튜닝된 모델이 발견되었습니다")
     
     engine = None
     try:
-        engine = FinancialAIInference(enable_learning=enable_learning, verbose=verbose)
+        engine = FinancialAIInference(
+            enable_learning=enable_learning, 
+            verbose=verbose,
+            use_finetuned=use_finetuned
+        )
         results = engine.execute_inference(test_file, submission_file)
         
         if results["success"]:
-            print("\n최종 성과 요약:")
+            print("\n성과 요약:")
             processing_stats = results["processing_stats"]
             korean_quality = results["korean_quality"]
             
@@ -737,6 +786,10 @@ def main():
             print(f"한국어 품질: {korean_quality['avg_score']:.2f}")
             print(f"패턴 매칭률: {processing_stats['pattern_based']/results['total_questions']*100:.1f}%")
             print(f"학습 성과: {results['learning_stats']['learned_samples']}개 샘플")
+            
+            if results["model_info"]["is_finetuned"]:
+                finetuned_rate = processing_stats['finetuned_usage'] / results['total_questions'] * 100
+                print(f"파인튜닝 활용률: {finetuned_rate:.1f}%")
         
     except KeyboardInterrupt:
         print("\n추론 중단")

@@ -3,6 +3,7 @@
 """
 모델 핸들러
 - LLM 모델 로딩 및 관리
+- 파인튜닝된 모델 지원
 - 텍스트 생성 및 추론
 - 한국어 최적화 설정
 - 메모리 관리
@@ -12,6 +13,7 @@ import torch
 import re
 import time
 import gc
+import os
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 from transformers import (
@@ -20,6 +22,7 @@ from transformers import (
     GenerationConfig,
     BitsAndBytesConfig
 )
+from peft import PeftModel
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -35,14 +38,19 @@ class InferenceResult:
 class ModelHandler:
     
     def __init__(self, model_name: str, device: str = "cuda", 
-                 load_in_4bit: bool = True, max_memory_gb: int = 22, verbose: bool = False):
+                 load_in_4bit: bool = True, max_memory_gb: int = 22, 
+                 verbose: bool = False, finetuned_path: str = None):
         self.model_name = model_name
         self.device = device
         self.max_memory_gb = max_memory_gb
         self.verbose = verbose
+        self.finetuned_path = finetuned_path
+        self.is_finetuned = False
         
         if self.verbose:
             print(f"모델 로딩: {model_name}")
+            if finetuned_path:
+                print(f"파인튜닝 모델: {finetuned_path}")
         
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_name,
@@ -86,6 +94,17 @@ class ModelHandler:
             **model_kwargs
         )
         
+        if finetuned_path and os.path.exists(finetuned_path):
+            try:
+                self.model = PeftModel.from_pretrained(self.model, finetuned_path)
+                self.is_finetuned = True
+                if self.verbose:
+                    print("파인튜닝된 모델 로드 완료")
+            except Exception as e:
+                if self.verbose:
+                    print(f"파인튜닝 모델 로드 실패: {e}")
+                    print("기본 모델 사용")
+        
         self.model.eval()
         
         if hasattr(torch, 'compile') and torch.__version__ >= "2.0.0":
@@ -111,11 +130,13 @@ class ModelHandler:
             "avg_inference_time": 0.0,
             "cache_efficiency": 0.0,
             "generation_failures": 0,
-            "timeout_failures": 0
+            "timeout_failures": 0,
+            "finetuned_generations": 0
         }
         
         if self.verbose:
-            print("모델 로딩 완료")
+            model_type = "파인튜닝된 모델" if self.is_finetuned else "기본 모델"
+            print(f"{model_type} 로딩 완료")
     
     def _prepare_korean_optimization(self):
         self.bad_words_ids = []
@@ -144,12 +165,20 @@ class ModelHandler:
                 continue
     
     def _create_korean_optimized_prompt(self, prompt: str, question_type: str) -> str:
-        if question_type == "multiple_choice":
-            korean_prefix = "다음 금융보안 문제의 정답 번호를 정확히 선택하세요.\n\n"
-            korean_suffix = "\n\n정답은 1, 2, 3, 4, 5 중 하나의 번호입니다.\n정답:"
+        if self.is_finetuned:
+            if question_type == "multiple_choice":
+                korean_prefix = "다음 금융보안 문제의 정답 번호를 정확히 선택하세요.\n\n"
+                korean_suffix = "\n\n정답은 1, 2, 3, 4, 5 중 하나입니다.\n\n답변:"
+            else:
+                korean_prefix = "다음 금융보안 질문에 한국어로 전문적인 답변을 작성하세요.\n\n"
+                korean_suffix = "\n\n답변:"
         else:
-            korean_prefix = "다음 금융보안 질문에 한국어로 전문적인 답변을 작성하세요.\n\n"
-            korean_suffix = "\n\n한국어로 답변:"
+            if question_type == "multiple_choice":
+                korean_prefix = "다음 금융보안 문제의 정답 번호를 정확히 선택하세요.\n\n"
+                korean_suffix = "\n\n정답은 1, 2, 3, 4, 5 중 하나의 번호입니다.\n정답:"
+            else:
+                korean_prefix = "다음 금융보안 질문에 한국어로 전문적인 답변을 작성하세요.\n\n"
+                korean_suffix = "\n\n한국어로 답변:"
         
         return korean_prefix + prompt + korean_suffix
     
@@ -232,6 +261,8 @@ class ModelHandler:
                     
                     if extracted_answer and extracted_answer.isdigit() and 1 <= int(extracted_answer) <= 5:
                         confidence = 0.90 - (attempt * 0.05)
+                        if self.is_finetuned:
+                            confidence += 0.05
                         result = InferenceResult(
                             response=extracted_answer,
                             confidence=confidence,
@@ -257,6 +288,9 @@ class ModelHandler:
                         result.korean_quality = korean_quality
                         result.inference_time = time.time() - start_time
                         
+                        if self.is_finetuned:
+                            result.confidence += 0.05
+                        
                         score = korean_quality * result.confidence
                         if score > best_score:
                             best_score = score
@@ -278,6 +312,9 @@ class ModelHandler:
             self._update_generation_stats(best_result, False)
         else:
             self._update_generation_stats(best_result, True)
+        
+        if self.is_finetuned:
+            self.generation_stats["finetuned_generations"] += 1
         
         self._perform_memory_cleanup()
         
@@ -560,8 +597,14 @@ class ModelHandler:
         if self.generation_stats["total_generations"] > 0:
             success_rate = self.generation_stats["successful_generations"] / self.generation_stats["total_generations"]
         
+        finetuned_rate = 0.0
+        if self.generation_stats["total_generations"] > 0:
+            finetuned_rate = self.generation_stats["finetuned_generations"] / self.generation_stats["total_generations"]
+        
         return {
             "model_name": self.model_name,
+            "is_finetuned": self.is_finetuned,
+            "finetuned_path": self.finetuned_path,
             "total_generations": self.generation_stats["total_generations"],
             "success_rate": success_rate,
             "avg_korean_quality": avg_korean_quality,
@@ -570,13 +613,15 @@ class ModelHandler:
             "cache_size": len(self.response_cache),
             "cache_efficiency": self.generation_stats["cache_efficiency"],
             "memory_cleanups": self.memory_cleanup_counter,
-            "generation_failures": self.generation_stats["generation_failures"]
+            "generation_failures": self.generation_stats["generation_failures"],
+            "finetuned_usage_rate": finetuned_rate
         }
     
     def cleanup(self):
         if self.verbose:
             stats = self.get_performance_stats()
-            print(f"모델 통계: 생성 성공률 {stats['success_rate']:.1%}, 한국어 품질 {stats['avg_korean_quality']:.2f}")
+            model_type = "파인튜닝된" if self.is_finetuned else "기본"
+            print(f"{model_type} 모델 통계: 생성 성공률 {stats['success_rate']:.1%}, 한국어 품질 {stats['avg_korean_quality']:.2f}")
         
         if hasattr(self, 'model'):
             del self.model
@@ -592,6 +637,8 @@ class ModelHandler:
     def get_model_info(self) -> Dict:
         return {
             "model_name": self.model_name,
+            "is_finetuned": self.is_finetuned,
+            "finetuned_path": self.finetuned_path,
             "device": self.device,
             "cache_hits": self.cache_hits,
             "cache_size": len(self.response_cache)

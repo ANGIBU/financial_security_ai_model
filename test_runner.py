@@ -3,6 +3,7 @@
 """
 테스트 실행기
 - 50문항 테스트 실행
+- 파인튜닝된 모델 지원
 - 빠른 성능 검증
 - 간단한 결과 분석
 """
@@ -30,8 +31,9 @@ from learning_system import LearningSystem
 
 class TestRunner:
     
-    def __init__(self, test_size: int = 50):
+    def __init__(self, test_size: int = 50, use_finetuned: bool = False):
         self.test_size = test_size
+        self.use_finetuned = use_finetuned
         self.start_time = time.time()
         
         print(f"테스트 실행기 초기화 중... (대상: {test_size}문항)")
@@ -40,12 +42,22 @@ class TestRunner:
             torch.cuda.empty_cache()
             print(f"GPU: {torch.cuda.get_device_name(0)}")
         
+        finetuned_path = None
+        if use_finetuned:
+            finetuned_path = "./finetuned_model"
+            if not os.path.exists(finetuned_path):
+                print(f"파인튜닝 모델을 찾을 수 없습니다: {finetuned_path}")
+                print("기본 모델을 사용합니다")
+                finetuned_path = None
+                self.use_finetuned = False
+        
         self.model_handler = ModelHandler(
             model_name="upstage/SOLAR-10.7B-Instruct-v1.0",
             device="cuda" if torch.cuda.is_available() else "cpu",
             load_in_4bit=True,
             max_memory_gb=22,
-            verbose=False
+            verbose=False,
+            finetuned_path=finetuned_path
         )
         
         self.data_processor = DataProcessor(debug_mode=False)
@@ -69,12 +81,14 @@ class TestRunner:
             "processing_times": [],
             "answer_distribution": {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0},
             "high_confidence_count": 0,
-            "smart_hints_used": 0
+            "smart_hints_used": 0,
+            "finetuned_usage": 0
         }
         
         self.enhanced_fallback_templates = self._build_enhanced_templates()
         
-        print("초기화 완료\n")
+        model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
+        print(f"초기화 완료 - {model_type} 사용\n")
     
     def _build_enhanced_templates(self) -> Dict[str, List[str]]:
         return {
@@ -199,6 +213,9 @@ class TestRunner:
                         max_attempts=2
                     )
                     
+                    if self.model_handler.is_finetuned:
+                        self.stats["finetuned_usage"] += 1
+                    
                     extracted = self.data_processor.extract_mc_answer_fast(result.response)
                     
                     if extracted and extracted.isdigit() and 1 <= int(extracted) <= 5:
@@ -222,6 +239,9 @@ class TestRunner:
                     question_type="subjective",
                     max_attempts=2
                 )
+                
+                if self.model_handler.is_finetuned:
+                    self.stats["finetuned_usage"] += 1
                 
                 answer = self.data_processor._clean_korean_text(result.response)
                 
@@ -369,6 +389,8 @@ class TestRunner:
     def run_test(self, test_file: str = "./test.csv", submission_file: str = "./sample_submission.csv"):
         print("="*50)
         print(f"테스트 실행 시작 ({self.test_size}문항)")
+        if self.use_finetuned:
+            print("파인튜닝된 모델 사용")
         print("="*50)
         
         test_df, submission_df = self.load_test_data(test_file, submission_file)
@@ -413,6 +435,9 @@ class TestRunner:
         print(f"처리 시간: {total_time:.1f}초")
         print(f"문항당 평균: {avg_time:.2f}초")
         
+        model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
+        print(f"사용 모델: {model_type}")
+        
         print(f"\n처리 통계:")
         success_rate = self.stats["model_success"] / self.stats["total"] * 100
         pattern_rate = self.stats["pattern_success"] / self.stats["total"] * 100
@@ -423,6 +448,10 @@ class TestRunner:
         print(f"  스마트 힌트 사용: {self.stats['smart_hints_used']}회")
         print(f"  고신뢰도 답변: {self.stats['high_confidence_count']}회")
         print(f"  폴백 사용: {self.stats['fallback_used']}/{self.stats['total']} ({fallback_rate:.1f}%)")
+        
+        if self.model_handler.is_finetuned:
+            finetuned_rate = self.stats["finetuned_usage"] / self.stats["total"] * 100
+            print(f"  파인튜닝 활용: {self.stats['finetuned_usage']}/{self.stats['total']} ({finetuned_rate:.1f}%)")
         
         if self.stats["subj_count"] > 0:
             avg_korean_quality = self.stats["korean_quality_sum"] / self.stats["subj_count"]
@@ -467,6 +496,7 @@ class TestRunner:
 
 def main():
     test_size = 50
+    use_finetuned = False
     
     if len(sys.argv) > 1:
         try:
@@ -476,11 +506,20 @@ def main():
             print("잘못된 문항 수, 기본값 50 사용")
             test_size = 50
     
+    if len(sys.argv) > 2:
+        if sys.argv[2].lower() in ['true', '1', 'yes', 'finetuned']:
+            use_finetuned = True
+    
+    if os.path.exists("./finetuned_model") and not use_finetuned:
+        response = input("파인튜닝된 모델이 발견되었습니다. 사용하시겠습니까? (y/n): ")
+        if response.lower() in ['y', 'yes']:
+            use_finetuned = True
+    
     print(f"테스트 실행기 시작 (Python {sys.version.split()[0]})")
     
     runner = None
     try:
-        runner = TestRunner(test_size=test_size)
+        runner = TestRunner(test_size=test_size, use_finetuned=use_finetuned)
         runner.run_test()
         
     except KeyboardInterrupt:
