@@ -11,6 +11,7 @@
 import re
 import hashlib
 import time
+import numpy as np
 from typing import Dict, List, Tuple, Optional
 from collections import defaultdict, Counter
 from dataclasses import dataclass
