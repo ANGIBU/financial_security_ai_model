@@ -3,6 +3,8 @@
 """
 메인 추론 시스템
 - 금융보안 객관식/주관식 문제 추론
+- reasoning_engine 기반 논리적 추론
+- Chain-of-Thought 다단계 추론 프로세스
 - 파인튜닝된 모델 지원
 - 학습 시스템 통합 관리
 - 한국어 답변 생성 및 검증
@@ -38,6 +40,7 @@ from model_handler import ModelHandler
 from data_processor import DataProcessor
 from prompt_engineering import PromptEngineer
 from learning_system import LearningSystem
+from reasoning_engine import ReasoningEngine
 
 # 상수 정의
 DEFAULT_MODEL_NAME = "upstage/SOLAR-10.7B-Instruct-v1.0"
@@ -49,6 +52,7 @@ DEFAULT_PATTERN_INTERVAL = 30
 MEMORY_CLEANUP_THRESHOLD = 0.85
 QUALITY_THRESHOLD = 0.65
 CONFIDENCE_THRESHOLD = 0.5
+REASONING_THRESHOLD = 0.7
 MAX_ANSWER_LENGTH = 550
 MIN_ANSWER_LENGTH = 35
 MIN_KOREAN_RATIO = 0.65
@@ -88,6 +92,17 @@ class FinancialAIInference:
         self.data_processor = DataProcessor()
         self.prompt_engineer = PromptEngineer()
         
+        # reasoning_engine 초기화
+        try:
+            self.reasoning_engine = ReasoningEngine(
+                knowledge_base=self.prompt_engineer.knowledge_base,
+                debug_mode=self.verbose
+            )
+            print("추론 엔진 초기화 완료")
+        except Exception as e:
+            print(f"추론 엔진 초기화 실패: {e}")
+            self.reasoning_engine = None
+        
         if self.enable_learning:
             self.learning_system = LearningSystem(debug_mode=self.verbose)
             self._load_existing_learning_data()
@@ -95,13 +110,15 @@ class FinancialAIInference:
         self.stats = self._initialize_stats()
         self.answer_cache = {}
         self.pattern_analysis_cache = {}
+        self.reasoning_cache = {}
         self.max_cache_size = DEFAULT_CACHE_SIZE
         self.memory_cleanup_counter = 0
         
         self.enhanced_fallback_templates = self._build_enhanced_fallback_templates()
         
         model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
-        print(f"초기화 완료 - {model_type} 사용")
+        reasoning_status = "활성화" if self.reasoning_engine else "비활성화"
+        print(f"초기화 완료 - {model_type} 사용, 추론 엔진 {reasoning_status}")
     
     def _setup_gpu_memory(self) -> None:
         """GPU 메모리 설정"""
@@ -142,7 +159,12 @@ class FinancialAIInference:
             "answer_distribution": {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0},
             "quality_scores": [],
             "processing_times": [],
-            "finetuned_usage": 0
+            "finetuned_usage": 0,
+            "reasoning_engine_usage": 0,
+            "cot_prompts_used": 0,
+            "reasoning_successful": 0,
+            "reasoning_failed": 0,
+            "hybrid_approach_used": 0
         }
     
     def _build_enhanced_fallback_templates(self) -> Dict[str, List[str]]:
@@ -175,13 +197,6 @@ class FinancialAIInference:
                 "보안정책 수립, 접근통제, 암호화 등 다층적 보안체계를 구축해야 합니다. 물리적, 기술적, 관리적 보안조치를 종합적으로 적용해야 합니다.",
                 "보안사고 예방과 대응을 위한 보안관제 체계와 침입탐지 시스템을 운영해야 합니다. 보안사고 발생 시 즉시 대응할 수 있는 체계가 필요합니다.",
                 "정기적인 보안교육과 보안점검을 통해 보안 의식을 제고하고 취약점을 개선해야 합니다. 보안컨설팅과 모의해킹을 통한 보안점검이 필요합니다."
-            ],
-            "일반": [
-                "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 개선을 수행해야 합니다. 정기적인 점검과 평가를 통해 관리수준을 향상시켜야 합니다.",
-                "정보보안 정책과 절차를 수립하여 체계적인 보안 관리와 위험 평가를 수행해야 합니다. 경영진의 의지와 조직 전체의 참여가 중요합니다.",
-                "적절한 기술적, 관리적, 물리적 보안조치를 통해 정보자산을 안전하게 보호해야 합니다. 보안관리 조직을 구성하고 책임과 권한을 명확히 해야 합니다.",
-                "법령에서 요구하는 안전성 확보조치를 이행하고 정기적인 점검을 통해 개선해야 합니다. 자체 점검과 외부 점검을 병행하여 객관성을 확보해야 합니다.",
-                "위험관리 체계를 구축하여 예방적 관리와 사후 대응 방안을 마련해야 합니다. 위험 식별, 분석, 평가, 대응의 4단계 프로세스를 수행해야 합니다."
             ]
         }
     
@@ -287,7 +302,7 @@ class FinancialAIInference:
         
         # 주관식 폴백
         domain = self._extract_simple_domain(question)
-        return random.choice(self.enhanced_fallback_templates.get(domain, self.enhanced_fallback_templates["일반"]))
+        return random.choice(self.enhanced_fallback_templates.get(domain, self.enhanced_fallback_templates.get("정보보안", ["체계적인 관리 방안을 수립하고 지속적인 개선을 수행해야 합니다."])))
     
     def _analyze_question_features(self, question: str, structure: Optional[Dict]) -> Dict:
         """질문 특징 분석"""
@@ -349,7 +364,59 @@ class FinancialAIInference:
         if domain_scores:
             return max(domain_scores, key=domain_scores.get)
         else:
-            return "일반"
+            return "정보보안"
+    
+    def _apply_reasoning_engine(self, question: str, structure: Dict, analysis: Dict) -> Tuple[Optional[str], float]:
+        """추론 엔진 적용"""
+        if not self.reasoning_engine:
+            return None, 0.0
+        
+        try:
+            cache_key = hashlib.md5(question[:150].encode('utf-8')).hexdigest()[:12]
+            
+            if cache_key in self.reasoning_cache:
+                self.stats["cache_hits"] += 1
+                return self.reasoning_cache[cache_key]
+            
+            # 추론 체인 생성
+            reasoning_chain = self.reasoning_engine.create_reasoning_chain(
+                question=question,
+                question_type=structure["question_type"],
+                domain_analysis=analysis
+            )
+            
+            # 검증된 추론인지 확인
+            if reasoning_chain.verification_result.get("is_consistent", False):
+                confidence = reasoning_chain.overall_confidence
+                
+                if confidence >= REASONING_THRESHOLD:
+                    self.stats["reasoning_successful"] += 1
+                    result = (reasoning_chain.final_answer, confidence)
+                    
+                    # 캐시 저장
+                    self._manage_reasoning_cache()
+                    self.reasoning_cache[cache_key] = result
+                    
+                    return result
+                else:
+                    self.stats["reasoning_failed"] += 1
+                    return None, 0.0
+            else:
+                self.stats["reasoning_failed"] += 1
+                return None, 0.0
+                
+        except Exception as e:
+            if self.verbose:
+                print(f"추론 엔진 오류: {e}")
+            self.stats["reasoning_failed"] += 1
+            return None, 0.0
+    
+    def _manage_reasoning_cache(self) -> None:
+        """추론 캐시 관리"""
+        if len(self.reasoning_cache) >= self.max_cache_size // 2:
+            oldest_keys = list(self.reasoning_cache.keys())[:self.max_cache_size // 4]
+            for key in oldest_keys:
+                del self.reasoning_cache[key]
     
     def _apply_pattern_based_answer_safe(self, question: str, structure: Dict) -> Tuple[Optional[str], float]:
         """안전한 패턴 기반 답변 적용"""
@@ -427,14 +494,26 @@ class FinancialAIInference:
             return self._get_diverse_fallback_answer(question, fallback_type)
     
     def _process_question_by_type(self, question: str, is_mc: bool, structure: Dict, analysis: Dict) -> str:
-        """유형별 질문 처리"""
+        """유형별 질문 처리 (추론 엔진 통합)"""
         if is_mc:
-            return self._process_multiple_choice(question, structure)
+            return self._process_multiple_choice_with_reasoning(question, structure, analysis)
         else:
-            return self._process_subjective(question, structure, analysis)
+            return self._process_subjective_with_reasoning(question, structure, analysis)
     
-    def _process_multiple_choice(self, question: str, structure: Dict) -> str:
-        """객관식 처리"""
+    def _process_multiple_choice_with_reasoning(self, question: str, structure: Dict, analysis: Dict) -> str:
+        """추론 엔진을 활용한 객관식 처리"""
+        
+        # 1단계: 추론 엔진 적용
+        reasoning_answer, reasoning_conf = self._apply_reasoning_engine(question, structure, analysis)
+        
+        if reasoning_answer and reasoning_conf > REASONING_THRESHOLD:
+            if reasoning_answer.isdigit() and 1 <= int(reasoning_answer) <= 5:
+                self.stats["reasoning_engine_usage"] += 1
+                self.stats["high_confidence_answers"] += 1
+                self.stats["answer_distribution"][reasoning_answer] += 1
+                return reasoning_answer
+        
+        # 2단계: 패턴 기반 힌트 적용
         pattern_answer, pattern_conf = self._apply_pattern_based_answer_safe(question, structure)
         
         if pattern_answer and pattern_conf > 0.60:
@@ -443,14 +522,22 @@ class FinancialAIInference:
             self.stats["answer_distribution"][pattern_answer] += 1
             return pattern_answer
         
-        prompt = self.prompt_engineer.create_korean_reinforced_prompt(
-            question, structure["question_type"]
-        )
+        # 3단계: Chain-of-Thought 프롬프트 활용
+        if self.reasoning_engine or pattern_conf > 0.4:
+            cot_prompt = self.prompt_engineer.create_cot_prompt(
+                question, structure["question_type"], analysis
+            )
+            self.stats["cot_prompts_used"] += 1
+        else:
+            cot_prompt = self.prompt_engineer.create_korean_reinforced_prompt(
+                question, structure["question_type"]
+            )
         
         result = self.model_handler.generate_response(
-            prompt=prompt,
+            prompt=cot_prompt,
             question_type=structure["question_type"],
-            max_attempts=3
+            max_attempts=3,
+            question_structure=structure
         )
         
         if self.model_handler.is_finetuned:
@@ -467,7 +554,12 @@ class FinancialAIInference:
             if result.confidence > 0.7:
                 self.stats["high_confidence_answers"] += 1
         else:
-            if pattern_answer and pattern_conf > 0.40:
+            # 4단계: 하이브리드 접근법
+            if reasoning_answer and reasoning_conf > 0.4:
+                self.stats["hybrid_approach_used"] += 1
+                answer = reasoning_answer
+                self.stats["answer_distribution"][answer] += 1
+            elif pattern_answer and pattern_conf > 0.35:
                 self.stats["smart_hints_used"] += 1
                 answer = pattern_answer
                 self.stats["answer_distribution"][answer] += 1
@@ -477,16 +569,35 @@ class FinancialAIInference:
         
         return answer
     
-    def _process_subjective(self, question: str, structure: Dict, analysis: Dict) -> str:
-        """주관식 처리"""
-        prompt = self.prompt_engineer.create_korean_reinforced_prompt(
-            question, structure["question_type"]
-        )
+    def _process_subjective_with_reasoning(self, question: str, structure: Dict, analysis: Dict) -> str:
+        """추론 엔진을 활용한 주관식 처리"""
+        
+        # 1단계: 추론 엔진 적용
+        reasoning_answer, reasoning_conf = self._apply_reasoning_engine(question, structure, analysis)
+        
+        if reasoning_answer and reasoning_conf > REASONING_THRESHOLD:
+            is_valid, quality = self._validate_korean_quality_strict(reasoning_answer, structure["question_type"])
+            if is_valid and quality > QUALITY_THRESHOLD:
+                self.stats["reasoning_engine_usage"] += 1
+                self.stats["high_confidence_answers"] += 1
+                return reasoning_answer
+        
+        # 2단계: CoT 프롬프트로 모델 생성
+        if reasoning_answer or self.reasoning_engine:
+            prompt = self.prompt_engineer.create_cot_prompt(
+                question, structure["question_type"], analysis
+            )
+            self.stats["cot_prompts_used"] += 1
+        else:
+            prompt = self.prompt_engineer.create_korean_reinforced_prompt(
+                question, structure["question_type"]
+            )
         
         result = self.model_handler.generate_response(
             prompt=prompt,
             question_type=structure["question_type"],
-            max_attempts=3
+            max_attempts=3,
+            question_structure=structure
         )
         
         if self.model_handler.is_finetuned:
@@ -499,6 +610,16 @@ class FinancialAIInference:
         
         if not is_valid or quality < QUALITY_THRESHOLD:
             self.stats["korean_failures"] += 1
+            
+            # 3단계: 추론 엔진 답변으로 대체 시도
+            if reasoning_answer and reasoning_conf > 0.5:
+                reason_valid, reason_quality = self._validate_korean_quality_strict(reasoning_answer, structure["question_type"])
+                if reason_valid and reason_quality >= quality:
+                    self.stats["hybrid_approach_used"] += 1
+                    self.stats["korean_fixes"] += 1
+                    return reasoning_answer
+            
+            # 4단계: 폴백 사용
             answer = self._get_diverse_fallback_answer(question, structure["question_type"], structure)
             self.stats["korean_fixes"] += 1
             self.stats["fallback_used"] += 1
@@ -565,7 +686,8 @@ class FinancialAIInference:
             print(f"학습 모드: 활성화")
         
         model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
-        print(f"사용 모델: {model_type}")
+        reasoning_status = "활성화" if self.reasoning_engine else "비활성화"
+        print(f"사용 모델: {model_type}, 추론 엔진: {reasoning_status}")
         
         answers = self._process_all_questions(questions_data)
         
@@ -647,14 +769,16 @@ class FinancialAIInference:
         """중간 통계 출력"""
         if self.stats["total"] > 0:
             success_rate = self.stats["model_generation_success"] / self.stats["total"] * 100
+            reasoning_rate = self.stats["reasoning_engine_usage"] / self.stats["total"] * 100
             pattern_rate = self.stats["pattern_based_answers"] / self.stats["total"] * 100
             fallback_rate = self.stats["fallback_used"] / self.stats["total"] * 100
+            cot_rate = self.stats["cot_prompts_used"] / self.stats["total"] * 100
             
             if self.model_handler.is_finetuned:
                 finetuned_rate = self.stats["finetuned_usage"] / self.stats["total"] * 100
-                print(f"  중간 통계: 모델성공 {success_rate:.1f}%, 패턴활용 {pattern_rate:.1f}%, 폴백 {fallback_rate:.1f}%, 파인튜닝 {finetuned_rate:.1f}%")
+                print(f"  중간 통계: 모델성공 {success_rate:.1f}%, 추론엔진 {reasoning_rate:.1f}%, 패턴활용 {pattern_rate:.1f}%, CoT {cot_rate:.1f}%, 폴백 {fallback_rate:.1f}%, 파인튜닝 {finetuned_rate:.1f}%")
             else:
-                print(f"  중간 통계: 모델성공 {success_rate:.1f}%, 패턴활용 {pattern_rate:.1f}%, 폴백 {fallback_rate:.1f}%")
+                print(f"  중간 통계: 모델성공 {success_rate:.1f}%, 추론엔진 {reasoning_rate:.1f}%, 패턴활용 {pattern_rate:.1f}%, CoT {cot_rate:.1f}%, 폴백 {fallback_rate:.1f}%")
             
             distribution = self.stats["answer_distribution"]
             total_mc = sum(distribution.values())
@@ -714,13 +838,15 @@ class FinancialAIInference:
         print(f"평균 처리시간: {avg_processing_time:.2f}초/문항")
         
         model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
-        print(f"사용 모델: {model_type}")
+        reasoning_status = "활성화" if self.reasoning_engine else "비활성화"
+        print(f"사용 모델: {model_type}, 추론 엔진: {reasoning_status}")
         
         if self.model_handler.is_finetuned:
             finetuned_rate = self.stats["finetuned_usage"] / max(self.stats["total"], 1) * 100
             print(f"파인튜닝 모델 사용률: {finetuned_rate:.1f}%")
         
         self._print_processing_stats()
+        self._print_reasoning_stats()
         self._print_korean_quality_report(avg_korean_quality, len(answers))
         self._print_learning_stats()
         self._print_mc_distribution(mc_answers, answer_distribution)
@@ -737,6 +863,21 @@ class FinancialAIInference:
         print(f"  폴백 사용: {self.stats['fallback_used']}회 ({self.stats['fallback_used']/max(self.stats['total'],1)*100:.1f}%)")
         print(f"  처리 오류: {self.stats['errors']}회")
         print(f"  캐시 적중: {self.stats['cache_hits']}회")
+    
+    def _print_reasoning_stats(self) -> None:
+        """추론 통계 출력"""
+        if self.reasoning_engine:
+            print(f"\n추론 엔진 통계:")
+            print(f"  추론 엔진 사용: {self.stats['reasoning_engine_usage']}회 ({self.stats['reasoning_engine_usage']/max(self.stats['total'],1)*100:.1f}%)")
+            print(f"  CoT 프롬프트 사용: {self.stats['cot_prompts_used']}회 ({self.stats['cot_prompts_used']/max(self.stats['total'],1)*100:.1f}%)")
+            print(f"  추론 성공: {self.stats['reasoning_successful']}회")
+            print(f"  추론 실패: {self.stats['reasoning_failed']}회")
+            print(f"  하이브리드 접근: {self.stats['hybrid_approach_used']}회")
+            
+            reasoning_success_rate = 0
+            if (self.stats['reasoning_successful'] + self.stats['reasoning_failed']) > 0:
+                reasoning_success_rate = self.stats['reasoning_successful'] / (self.stats['reasoning_successful'] + self.stats['reasoning_failed']) * 100
+            print(f"  추론 성공률: {reasoning_success_rate:.1f}%")
     
     def _print_korean_quality_report(self, avg_korean_quality: float, total_answers: int) -> None:
         """한국어 품질 리포트 출력"""
@@ -805,6 +946,13 @@ class FinancialAIInference:
                 "avg_processing_time": avg_processing_time,
                 "finetuned_usage": self.stats["finetuned_usage"]
             },
+            "reasoning_stats": {
+                "reasoning_engine_usage": self.stats["reasoning_engine_usage"],
+                "cot_prompts_used": self.stats["cot_prompts_used"],
+                "reasoning_successful": self.stats["reasoning_successful"],
+                "reasoning_failed": self.stats["reasoning_failed"],
+                "hybrid_approach_used": self.stats["hybrid_approach_used"]
+            },
             "korean_quality": {
                 "failures": self.stats["korean_failures"],
                 "fixes": self.stats["korean_fixes"],
@@ -819,7 +967,8 @@ class FinancialAIInference:
             },
             "model_info": {
                 "is_finetuned": self.model_handler.is_finetuned,
-                "finetuned_path": self.model_handler.finetuned_path
+                "finetuned_path": self.model_handler.finetuned_path,
+                "reasoning_engine_available": self.reasoning_engine is not None
             }
         }
     
@@ -833,17 +982,22 @@ class FinancialAIInference:
                 print(f"  평균 처리 속도: {total_time/self.stats['total']:.2f}초/문항")
             
             model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
-            print(f"  사용 모델: {model_type}")
+            reasoning_status = "활성화" if self.reasoning_engine else "비활성화"
+            print(f"  사용 모델: {model_type}, 추론 엔진: {reasoning_status}")
             
             self.model_handler.cleanup()
             self.data_processor.cleanup()
             self.prompt_engineer.cleanup()
+            
+            if self.reasoning_engine:
+                self.reasoning_engine.cleanup()
             
             if self.enable_learning:
                 self.learning_system.cleanup()
             
             self.answer_cache.clear()
             self.pattern_analysis_cache.clear()
+            self.reasoning_cache.clear()
             
             if self.cuda_available:
                 torch.cuda.empty_cache()
@@ -894,11 +1048,13 @@ def main():
         if results["success"]:
             print("\n성과 요약:")
             processing_stats = results["processing_stats"]
+            reasoning_stats = results["reasoning_stats"]
             korean_quality = results["korean_quality"]
             
             print(f"모델 성공률: {processing_stats['model_success']/results['total_questions']*100:.1f}%")
             print(f"한국어 품질: {korean_quality['avg_score']:.2f}")
-            print(f"패턴 매칭률: {processing_stats['pattern_based']/results['total_questions']*100:.1f}%")
+            print(f"추론 엔진 활용률: {reasoning_stats['reasoning_engine_usage']/results['total_questions']*100:.1f}%")
+            print(f"CoT 프롬프트 사용률: {reasoning_stats['cot_prompts_used']/results['total_questions']*100:.1f}%")
             print(f"학습 성과: {results['learning_stats']['learned_samples']}개 샘플")
             
             if results["model_info"]["is_finetuned"]:

@@ -4,7 +4,8 @@
 모델 핸들러
 - LLM 모델 로딩 및 관리
 - 파인튜닝된 모델 지원
-- 텍스트 생성 및 추론
+- Chain-of-Thought 추론 최적화
+- 텍스트 생성 및 추론 
 - 한국어 최적화 설정
 - 메모리 관리
 """
@@ -31,8 +32,9 @@ warnings.filterwarnings("ignore")
 # 상수 정의
 DEFAULT_MAX_MEMORY_GB = 22
 DEFAULT_CACHE_SIZE = 400
-DEFAULT_MC_MAX_TOKENS = 15
-DEFAULT_SUBJ_MAX_TOKENS = 250
+DEFAULT_MC_MAX_TOKENS = 20
+DEFAULT_SUBJ_MAX_TOKENS = 300
+DEFAULT_COT_MAX_TOKENS = 400
 MEMORY_CLEANUP_INTERVAL = 20
 CACHE_CLEANUP_INTERVAL = 40
 MAX_PROMPT_LENGTH = 1200
@@ -45,6 +47,8 @@ class InferenceResult:
     analysis_depth: int
     inference_time: float = 0.0
     korean_quality: float = 0.0
+    reasoning_steps: int = 0
+    prompt_type: str = "basic"
 
 class ModelHandler:
     
@@ -84,7 +88,10 @@ class ModelHandler:
             "cache_efficiency": 0.0,
             "generation_failures": 0,
             "timeout_failures": 0,
-            "finetuned_generations": 0
+            "finetuned_generations": 0,
+            "cot_generations": 0,
+            "reasoning_generations": 0,
+            "step_by_step_generations": 0
         }
         
         if self.verbose:
@@ -284,13 +291,16 @@ class ModelHandler:
         # 개선된 프롬프트 생성
         optimized_prompt = self._create_korean_optimized_prompt(prompt, question_type, question_structure)
         
+        # 프롬프트 유형 감지
+        prompt_type = self._detect_prompt_type(optimized_prompt)
+        
         best_result = None
         best_score = 0
         generation_errors = 0
         
         for attempt in range(max_attempts):
             try:
-                gen_config = self._create_generation_config(question_type, attempt)
+                gen_config = self._create_generation_config(question_type, attempt, prompt_type)
                 
                 inputs = self.tokenizer(
                     optimized_prompt,
@@ -326,13 +336,18 @@ class ModelHandler:
                         confidence = 0.92 - (attempt * 0.05)
                         if self.is_finetuned:
                             confidence += 0.05
+                        if prompt_type == "cot":
+                            confidence += 0.03
+                        
                         result = InferenceResult(
                             response=extracted_answer,
                             confidence=confidence,
                             reasoning_quality=0.85,
                             analysis_depth=2,
                             korean_quality=1.0,
-                            inference_time=time.time() - start_time
+                            inference_time=time.time() - start_time,
+                            reasoning_steps=self._count_reasoning_steps(optimized_prompt),
+                            prompt_type=prompt_type
                         )
                         
                         self._manage_cache()
@@ -347,12 +362,17 @@ class ModelHandler:
                     korean_quality = self._evaluate_korean_quality_enhanced(cleaned_response)
                     
                     if korean_quality > 0.5 and len(cleaned_response) > 25:
-                        result = self._evaluate_response(cleaned_response, question_type)
+                        result = self._evaluate_response(cleaned_response, question_type, prompt_type)
                         result.korean_quality = korean_quality
                         result.inference_time = time.time() - start_time
+                        result.reasoning_steps = self._count_reasoning_steps(optimized_prompt)
+                        result.prompt_type = prompt_type
                         
                         if self.is_finetuned:
                             result.confidence += 0.05
+                        if prompt_type == "cot":
+                            result.confidence += 0.03
+                            result.reasoning_quality += 0.05
                         
                         score = korean_quality * result.confidence
                         if score > best_score:
@@ -369,7 +389,7 @@ class ModelHandler:
                 continue
         
         if best_result is None:
-            best_result = self._create_fallback_result(question_type, question_structure)
+            best_result = self._create_fallback_result(question_type, question_structure, prompt_type)
             best_result.inference_time = time.time() - start_time
             self.generation_stats["generation_failures"] += generation_errors
             self._update_generation_stats(best_result, False)
@@ -383,34 +403,102 @@ class ModelHandler:
         
         return best_result
     
-    def _create_generation_config(self, question_type: str, attempt: int) -> GenerationConfig:
-        """생성 설정 생성"""
+    def _detect_prompt_type(self, prompt: str) -> str:
+        """프롬프트 유형 감지"""
+        prompt_lower = prompt.lower()
+        
+        # CoT 패턴 감지
+        cot_patterns = ["단계", "step", "분석", "검토", "추론", "과정"]
+        if any(pattern in prompt_lower for pattern in cot_patterns):
+            return "cot"
+        
+        # 추론 패턴 감지
+        reasoning_patterns = ["논리적", "근거", "이유", "why", "because", "따라서"]
+        if any(pattern in prompt_lower for pattern in reasoning_patterns):
+            return "reasoning"
+        
+        # 다단계 패턴 감지
+        step_patterns = ["1단계", "2단계", "3단계", "first", "second", "third"]
+        if any(pattern in prompt_lower for pattern in step_patterns):
+            return "step_by_step"
+        
+        return "basic"
+    
+    def _count_reasoning_steps(self, prompt: str) -> int:
+        """추론 단계 수 계산"""
+        step_patterns = [
+            r'\d+단계',
+            r'step\s*\d+',
+            r'(\d+)\.',
+            r'첫째|둘째|셋째|넷째',
+            r'first|second|third|fourth'
+        ]
+        
+        total_steps = 0
+        for pattern in step_patterns:
+            matches = re.findall(pattern, prompt.lower())
+            total_steps += len(matches)
+        
+        return min(total_steps, 10)  # 최대 10단계로 제한
+    
+    def _create_generation_config(self, question_type: str, attempt: int, prompt_type: str = "basic") -> GenerationConfig:
+        """생성 설정 생성 (프롬프트 유형별 최적화)"""
+        base_config = {
+            "do_sample": True,
+            "pad_token_id": self.tokenizer.pad_token_id,
+            "eos_token_id": self.tokenizer.eos_token_id,
+            "use_cache": True,
+            "bad_words_ids": self.bad_words_ids[:10] if self.bad_words_ids else None
+        }
+        
         if question_type == "multiple_choice":
-            return GenerationConfig(
-                do_sample=True,
-                temperature=0.3 + (attempt * 0.1),
-                top_p=0.75,
-                top_k=20,
-                max_new_tokens=DEFAULT_MC_MAX_TOKENS,
-                repetition_penalty=1.15,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-                use_cache=True,
-                bad_words_ids=self.bad_words_ids[:10] if self.bad_words_ids else None
-            )
+            # 객관식 설정
+            base_config.update({
+                "temperature": 0.3 + (attempt * 0.1),
+                "top_p": 0.75,
+                "top_k": 20,
+                "max_new_tokens": DEFAULT_MC_MAX_TOKENS,
+                "repetition_penalty": 1.15
+            })
         else:
-            return GenerationConfig(
-                do_sample=True,
-                temperature=0.5 + (attempt * 0.1),
-                top_p=0.80,
-                top_k=30,
-                max_new_tokens=DEFAULT_SUBJ_MAX_TOKENS,
-                repetition_penalty=1.1,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-                use_cache=True,
-                bad_words_ids=self.bad_words_ids[:15] if self.bad_words_ids else None
-            )
+            # 주관식 설정 - 프롬프트 유형별 조정
+            if prompt_type == "cot":
+                base_config.update({
+                    "temperature": 0.4 + (attempt * 0.08),
+                    "top_p": 0.85,
+                    "top_k": 35,
+                    "max_new_tokens": DEFAULT_COT_MAX_TOKENS,
+                    "repetition_penalty": 1.08
+                })
+                self.generation_stats["cot_generations"] += 1
+            elif prompt_type == "reasoning":
+                base_config.update({
+                    "temperature": 0.45 + (attempt * 0.1),
+                    "top_p": 0.82,
+                    "top_k": 30,
+                    "max_new_tokens": DEFAULT_SUBJ_MAX_TOKENS + 50,
+                    "repetition_penalty": 1.12
+                })
+                self.generation_stats["reasoning_generations"] += 1
+            elif prompt_type == "step_by_step":
+                base_config.update({
+                    "temperature": 0.35 + (attempt * 0.09),
+                    "top_p": 0.88,
+                    "top_k": 40,
+                    "max_new_tokens": DEFAULT_COT_MAX_TOKENS,
+                    "repetition_penalty": 1.05
+                })
+                self.generation_stats["step_by_step_generations"] += 1
+            else:
+                base_config.update({
+                    "temperature": 0.5 + (attempt * 0.1),
+                    "top_p": 0.80,
+                    "top_k": 30,
+                    "max_new_tokens": DEFAULT_SUBJ_MAX_TOKENS,
+                    "repetition_penalty": 1.1
+                })
+        
+        return GenerationConfig(**base_config)
     
     def _extract_mc_answer_enhanced(self, text: str) -> str:
         """개선된 객관식 답변 추출"""
@@ -490,7 +578,7 @@ class ModelHandler:
         # 문제가 되는 문자들 제거 (한국어 한자 제외한 중국어)
         text = re.sub(r'[\u4e00-\u9fff]+', '', text)
         text = re.sub(r'[\u3040-\u309f\u30a0-\u30ff]+', '', text)
-        text = re.sub(r'[А-я]+', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'[Ð-Ñ]+', '', text, flags=re.IGNORECASE)
         
         # 특수 기호 제거
         text = re.sub(r'[①②③④⑤➀➁➂➃➄➅➆➇➈➉]', '', text)
@@ -580,7 +668,8 @@ class ModelHandler:
         return max(0, min(1, quality))
     
     def _create_fallback_result(self, question_type: str, 
-                               question_structure: Optional[Dict] = None) -> InferenceResult:
+                               question_structure: Optional[Dict] = None,
+                               prompt_type: str = "basic") -> InferenceResult:
         """향상된 폴백 결과 생성"""
         if question_type == "multiple_choice":
             # 선택지 분석 활용
@@ -601,7 +690,8 @@ class ModelHandler:
                 confidence=0.35,
                 reasoning_quality=0.25,
                 analysis_depth=1,
-                korean_quality=1.0
+                korean_quality=1.0,
+                prompt_type=prompt_type
             )
         else:
             # 도메인별 폴백
@@ -628,10 +718,11 @@ class ModelHandler:
                 confidence=0.55,
                 reasoning_quality=0.45,
                 analysis_depth=1,
-                korean_quality=0.85
+                korean_quality=0.85,
+                prompt_type=prompt_type
             )
     
-    def _evaluate_response(self, response: str, question_type: str) -> InferenceResult:
+    def _evaluate_response(self, response: str, question_type: str, prompt_type: str = "basic") -> InferenceResult:
         """응답 품질 평가"""
         if question_type == "multiple_choice":
             confidence = 0.6
@@ -648,7 +739,8 @@ class ModelHandler:
                 response=response,
                 confidence=confidence,
                 reasoning_quality=reasoning,
-                analysis_depth=2
+                analysis_depth=2,
+                prompt_type=prompt_type
             )
         
         else:
@@ -682,11 +774,20 @@ class ModelHandler:
             elif sentence_count >= 2:
                 reasoning += 0.05
             
+            # 프롬프트 유형별 보너스
+            if prompt_type == "cot":
+                reasoning += 0.05
+                confidence += 0.03
+            elif prompt_type == "reasoning":
+                reasoning += 0.08
+                confidence += 0.02
+            
             return InferenceResult(
                 response=response,
                 confidence=min(confidence, 1.0),
                 reasoning_quality=min(reasoning, 1.0),
-                analysis_depth=3
+                analysis_depth=3,
+                prompt_type=prompt_type
             )
     
     def _manage_cache(self) -> None:
@@ -740,6 +841,14 @@ class ModelHandler:
         if self.generation_stats["total_generations"] > 0:
             finetuned_rate = self.generation_stats["finetuned_generations"] / self.generation_stats["total_generations"]
         
+        cot_rate = 0.0
+        reasoning_rate = 0.0
+        step_rate = 0.0
+        if self.generation_stats["total_generations"] > 0:
+            cot_rate = self.generation_stats["cot_generations"] / self.generation_stats["total_generations"]
+            reasoning_rate = self.generation_stats["reasoning_generations"] / self.generation_stats["total_generations"]
+            step_rate = self.generation_stats["step_by_step_generations"] / self.generation_stats["total_generations"]
+        
         return {
             "model_name": self.model_name,
             "is_finetuned": self.is_finetuned,
@@ -753,7 +862,12 @@ class ModelHandler:
             "cache_efficiency": self.generation_stats["cache_efficiency"],
             "memory_cleanups": self.memory_cleanup_counter,
             "generation_failures": self.generation_stats["generation_failures"],
-            "finetuned_usage_rate": finetuned_rate
+            "finetuned_usage_rate": finetuned_rate,
+            "prompt_type_distribution": {
+                "cot_rate": cot_rate,
+                "reasoning_rate": reasoning_rate,
+                "step_by_step_rate": step_rate
+            }
         }
     
     def cleanup(self) -> None:
@@ -763,6 +877,9 @@ class ModelHandler:
                 stats = self.get_performance_stats()
                 model_type = "파인튜닝된" if self.is_finetuned else "기본"
                 print(f"{model_type} 모델 통계: 생성 성공률 {stats['success_rate']:.1%}, 한국어 품질 {stats['avg_korean_quality']:.2f}")
+                
+                prompt_dist = stats['prompt_type_distribution']
+                print(f"  프롬프트 유형: CoT {prompt_dist['cot_rate']:.1%}, 추론 {prompt_dist['reasoning_rate']:.1%}, 단계별 {prompt_dist['step_by_step_rate']:.1%}")
             
             if hasattr(self, 'model') and self.model is not None:
                 del self.model
@@ -787,5 +904,12 @@ class ModelHandler:
             "finetuned_path": self.finetuned_path,
             "device": self.device,
             "cache_hits": self.cache_hits,
-            "cache_size": len(self.response_cache)
+            "cache_size": len(self.response_cache),
+            "optimization_features": {
+                "korean_optimization": True,
+                "cot_support": True,
+                "reasoning_support": True,
+                "step_by_step_support": True,
+                "prompt_type_detection": True
+            }
         }
