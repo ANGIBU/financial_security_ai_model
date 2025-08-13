@@ -6,6 +6,9 @@
 - 한국어 텍스트 정리
 - 답변 추출 및 검증
 - 도메인 힌트 추출
+- 추론 결과 후처리 및 일관성 검증
+- 추론 체인 분석 기능
+- reasoning_engine 결과 처리
 """
 
 import re
@@ -18,7 +21,6 @@ from dataclasses import dataclass
 from collections import defaultdict
 from knowledge_base import FinancialSecurityKnowledgeBase
 
-# 상수 정의
 DEFAULT_CACHE_SIZE = 600
 MIN_VALID_LENGTH = 15
 MAX_VALID_LENGTH = 1500
@@ -27,6 +29,8 @@ MAX_ENGLISH_RATIO = 0.25
 PROFESSIONAL_TERMS_BONUS = 0.04
 MAX_PROFESSIONAL_BONUS = 0.15
 QUALITY_THRESHOLD = 0.65
+REASONING_CONSISTENCY_THRESHOLD = 0.7
+REASONING_CONFIDENCE_THRESHOLD = 0.6
 
 @dataclass
 class ProcessedAnswer:
@@ -35,6 +39,16 @@ class ProcessedAnswer:
     extraction_method: str
     validation_passed: bool
     korean_quality: float
+    reasoning_analysis: Optional[Dict] = None
+
+@dataclass
+class ReasoningAnalysis:
+    logical_consistency: float
+    evidence_quality: float
+    reasoning_depth: int
+    conclusion_validity: float
+    error_indicators: List[str]
+    quality_metrics: Dict[str, float]
 
 class DataProcessor:
     
@@ -43,22 +57,57 @@ class DataProcessor:
         self.knowledge_base = FinancialSecurityKnowledgeBase()
         
         self.structure_cache = {}
+        self.reasoning_analysis_cache = {}
         self.max_cache_size = DEFAULT_CACHE_SIZE
         
         self.korean_cleanup_patterns = self._build_safe_korean_patterns()
         self.answer_extraction_patterns = self._build_extraction_patterns()
         self.validation_rules = self._build_validation_rules()
+        self.reasoning_patterns = self._build_reasoning_patterns()
         
         self.cache_stats = {"hits": 0, "misses": 0}
         
         self.diverse_templates = self._build_diverse_templates()
         
-        # 선택지 분석을 위한 패턴
         self.choice_analysis_patterns = self._build_choice_patterns()
+        
+        # 추론 결과 분석기
+        self.reasoning_analyzer = ReasoningResultAnalyzer()
+        
+        # 성능 최적화 통계
+        self.performance_stats = {
+            "reasoning_analysis_count": 0,
+            "reasoning_consistency_checks": 0,
+            "reasoning_quality_improvements": 0,
+            "cache_optimizations": 0,
+            "error_recoveries": 0
+        }
         
     def _debug_print(self, message: str) -> None:
         if self.debug_mode:
             print(f"[DEBUG] {message}")
+    
+    def _build_reasoning_patterns(self) -> Dict:
+        """추론 패턴 구축"""
+        return {
+            "logical_indicators": [
+                r"따라서", r"그러므로", r"결론적으로", r"이에 따라",
+                r"이를 통해", r"결과적으로", r"종합하면"
+            ],
+            "evidence_patterns": [
+                r"법령에\s*따[라르]면", r"규정에\s*의하면", r"조항에서",
+                r"근거[는로]", r"바탕으로", r"기준으로"
+            ],
+            "step_patterns": [
+                r"1단계", r"2단계", r"3단계", r"4단계",
+                r"첫째", r"둘째", r"셋째", r"넷째",
+                r"먼저", r"다음으로", r"마지막으로"
+            ],
+            "consistency_markers": [
+                r"일관되게", r"체계적으로", r"논리적으로",
+                r"순차적으로", r"단계별로"
+            ]
+        }
     
     def _build_choice_patterns(self) -> Dict:
         """선택지 분석을 위한 패턴"""
@@ -169,7 +218,7 @@ class DataProcessor:
         text = re.sub(r'[\u4e00-\u9fff]+', '', text)
         text = re.sub(r'[\u3040-\u309f]+', '', text)
         text = re.sub(r'[\u30a0-\u30ff]+', '', text)
-        text = re.sub(r'[А-я]+', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'[Ð-Ñ]+', '', text, flags=re.IGNORECASE)
         
         # 특수 기호 제거
         text = re.sub(r'[①②③④⑤➀➁➂➃➄➅➆➇➈➉]', '', text)
@@ -223,7 +272,8 @@ class DataProcessor:
             "korean_ratio": 0.0,
             "technical_terms": [],
             "legal_references": [],
-            "choice_analysis": {}
+            "choice_analysis": {},
+            "reasoning_indicators": self._detect_reasoning_indicators(cleaned_question)
         }
         
         question_parts = []
@@ -288,7 +338,7 @@ class DataProcessor:
         structure["is_definitional"] = "정의" in full_text or "의미" in full_text
         structure["is_procedural"] = any(word in full_text for word in ["절차", "순서", "단계", "과정"])
         
-        # 모두/전부 옵션 체크
+        # 모든/전부 옵션 체크
         if len(choices) > 0:
             last_choice = choices[-1]
             if any(word in last_choice["text"] for word in ["모두", "전부", "위의 모든"]):
@@ -301,6 +351,35 @@ class DataProcessor:
         self.structure_cache[q_hash] = structure
         
         return structure
+    
+    def _detect_reasoning_indicators(self, question: str) -> Dict:
+        """추론 지표 감지"""
+        indicators = {
+            "logical_connectors": 0,
+            "evidence_requests": 0,
+            "step_requirements": 0,
+            "analysis_depth": 0
+        }
+        
+        question_lower = question.lower()
+        
+        # 논리적 연결자
+        logical_words = ["따라서", "그러므로", "결론적으로", "이에 따라", "왜", "어떻게"]
+        indicators["logical_connectors"] = sum(1 for word in logical_words if word in question_lower)
+        
+        # 증거 요청
+        evidence_words = ["근거", "이유", "법령", "조항", "규정"]
+        indicators["evidence_requests"] = sum(1 for word in evidence_words if word in question_lower)
+        
+        # 단계 요구사항
+        step_words = ["단계", "절차", "과정", "순서"]
+        indicators["step_requirements"] = sum(1 for word in step_words if word in question_lower)
+        
+        # 분석 깊이
+        analysis_words = ["분석", "검토", "평가", "비교", "대조"]
+        indicators["analysis_depth"] = sum(1 for word in analysis_words if word in question_lower)
+        
+        return indicators
     
     def _determine_question_type(self, structure: Dict, full_text: str, choices: List[Dict]) -> Dict:
         """문제 유형 결정"""
@@ -438,6 +517,11 @@ class DataProcessor:
         if structure["korean_ratio"] < 0.8:
             score += 0.05
         
+        # 추론 지표
+        reasoning_indicators = structure.get("reasoning_indicators", {})
+        reasoning_score = sum(reasoning_indicators.values()) / 10.0
+        score += min(reasoning_score, 0.2)
+        
         return min(score, 1.0)
     
     def _manage_cache_size(self) -> None:
@@ -446,6 +530,8 @@ class DataProcessor:
             keys_to_remove = list(self.structure_cache.keys())[:self.max_cache_size // 3]
             for key in keys_to_remove:
                 del self.structure_cache[key]
+            
+            self.performance_stats["cache_optimizations"] += 1
     
     def _detect_negative_question(self, question_text: str) -> bool:
         """부정형 질문 감지"""
@@ -742,6 +828,146 @@ class DataProcessor:
             processed = self.extract_answer_intelligently(cleaned_response, question)
             return processed.final_answer if processed.validation_passed else random.choice(self.diverse_templates)
     
+    def analyze_reasoning_result(self, reasoning_chain, question_structure: Dict) -> ReasoningAnalysis:
+        """추론 결과 분석"""
+        try:
+            cache_key = f"reasoning_{reasoning_chain.chain_id}"
+            
+            if cache_key in self.reasoning_analysis_cache:
+                return self.reasoning_analysis_cache[cache_key]
+            
+            self.performance_stats["reasoning_analysis_count"] += 1
+            
+            analysis = self.reasoning_analyzer.analyze_chain(reasoning_chain, question_structure)
+            
+            # 캐시 저장
+            if len(self.reasoning_analysis_cache) < self.max_cache_size // 2:
+                self.reasoning_analysis_cache[cache_key] = analysis
+            
+            return analysis
+            
+        except Exception:
+            return ReasoningAnalysis(
+                logical_consistency=0.0,
+                evidence_quality=0.0,
+                reasoning_depth=0,
+                conclusion_validity=0.0,
+                error_indicators=["분석 실패"],
+                quality_metrics={}
+            )
+    
+    def verify_reasoning_consistency(self, reasoning_chain, expected_answer: Optional[str] = None) -> Dict:
+        """추론 일관성 검증"""
+        try:
+            self.performance_stats["reasoning_consistency_checks"] += 1
+            
+            verification = {
+                "is_consistent": True,
+                "consistency_score": 1.0,
+                "issues": [],
+                "improvements": []
+            }
+            
+            if not reasoning_chain or not reasoning_chain.steps:
+                verification["is_consistent"] = False
+                verification["consistency_score"] = 0.0
+                verification["issues"].append("추론 단계 없음")
+                return verification
+            
+            # 단계별 일관성 검사
+            for i, step in enumerate(reasoning_chain.steps):
+                if step.confidence < 0.3:
+                    verification["issues"].append(f"단계 {i+1} 낮은 신뢰도")
+                    verification["consistency_score"] -= 0.1
+                
+                if not step.premise or not step.conclusion:
+                    verification["issues"].append(f"단계 {i+1} 불완전한 논리")
+                    verification["consistency_score"] -= 0.15
+            
+            # 전체 신뢰도 검사
+            if reasoning_chain.overall_confidence < REASONING_CONFIDENCE_THRESHOLD:
+                verification["issues"].append("전체 신뢰도 낮음")
+                verification["consistency_score"] -= 0.2
+            
+            # Self-Consistency 결과 반영
+            if not reasoning_chain.verification_result.get("is_consistent", False):
+                verification["issues"].append("Self-Consistency 실패")
+                verification["consistency_score"] -= 0.3
+            
+            # 예상 답변과 비교 (제공된 경우)
+            if expected_answer and reasoning_chain.final_answer != expected_answer:
+                verification["issues"].append("예상 답변과 불일치")
+                verification["consistency_score"] -= 0.2
+            
+            # 최종 일관성 판단
+            verification["consistency_score"] = max(0.0, verification["consistency_score"])
+            verification["is_consistent"] = (
+                verification["consistency_score"] >= REASONING_CONSISTENCY_THRESHOLD and
+                len(verification["issues"]) <= 2
+            )
+            
+            # 개선 제안
+            if len(reasoning_chain.steps) < 3:
+                verification["improvements"].append("추론 단계 확장")
+            
+            if not any("논리_추론" in step.reasoning_type for step in reasoning_chain.steps):
+                verification["improvements"].append("논리적 추론 단계 추가")
+            
+            return verification
+            
+        except Exception:
+            return {
+                "is_consistent": False,
+                "consistency_score": 0.0,
+                "issues": ["검증 오류"],
+                "improvements": []
+            }
+    
+    def enhance_reasoning_result(self, reasoning_chain, question_structure: Dict) -> str:
+        """추론 결과 향상"""
+        try:
+            analysis = self.analyze_reasoning_result(reasoning_chain, question_structure)
+            
+            # 품질이 충분히 높으면 그대로 반환
+            if (analysis.logical_consistency > 0.8 and 
+                analysis.conclusion_validity > 0.8 and
+                len(analysis.error_indicators) == 0):
+                return reasoning_chain.final_answer
+            
+            # 개선 가능한 경우 시도
+            enhanced_answer = reasoning_chain.final_answer
+            
+            # 객관식의 경우 검증
+            if question_structure["question_type"] == "multiple_choice":
+                if not (enhanced_answer.isdigit() and 1 <= int(enhanced_answer) <= 5):
+                    # 추론 단계에서 번호 추출 시도
+                    for step in reversed(reasoning_chain.steps):
+                        numbers = re.findall(r'[1-5]', step.conclusion)
+                        if numbers:
+                            enhanced_answer = numbers[-1]
+                            self.performance_stats["reasoning_quality_improvements"] += 1
+                            break
+            
+            # 주관식의 경우 품질 향상
+            else:
+                is_valid, quality = self._validate_korean_text_enhanced(enhanced_answer, "subjective")
+                
+                if not is_valid or quality < QUALITY_THRESHOLD:
+                    # 추론 단계에서 더 나은 결론 찾기
+                    for step in reversed(reasoning_chain.steps):
+                        if len(step.conclusion) >= 30:
+                            step_valid, step_quality = self._validate_korean_text_enhanced(step.conclusion, "subjective")
+                            if step_valid and step_quality > quality:
+                                enhanced_answer = step.conclusion
+                                self.performance_stats["reasoning_quality_improvements"] += 1
+                                break
+            
+            return enhanced_answer
+            
+        except Exception:
+            self.performance_stats["error_recoveries"] += 1
+            return reasoning_chain.final_answer if reasoning_chain and reasoning_chain.final_answer else ""
+    
     def get_cache_stats(self) -> Dict:
         """캐시 통계 반환"""
         total_requests = self.cache_stats["hits"] + self.cache_stats["misses"]
@@ -750,18 +976,273 @@ class DataProcessor:
         return {
             "cache_hit_rate": hit_rate,
             "cache_size": len(self.structure_cache),
+            "reasoning_cache_size": len(self.reasoning_analysis_cache),
             "max_cache_size": self.max_cache_size,
             "total_patterns": len(self.korean_cleanup_patterns),
-            "validation_rules": len(self.validation_rules)
+            "validation_rules": len(self.validation_rules),
+            "performance_stats": self.performance_stats.copy()
+        }
+    
+    def get_reasoning_insights(self) -> Dict:
+        """추론 분석 인사이트 반환"""
+        return {
+            "total_reasoning_analyses": self.performance_stats["reasoning_analysis_count"],
+            "consistency_checks": self.performance_stats["reasoning_consistency_checks"],
+            "quality_improvements": self.performance_stats["reasoning_quality_improvements"],
+            "cache_optimizations": self.performance_stats["cache_optimizations"],
+            "error_recoveries": self.performance_stats["error_recoveries"],
+            "reasoning_cache_efficiency": len(self.reasoning_analysis_cache) / max(self.performance_stats["reasoning_analysis_count"], 1)
         }
     
     def cleanup(self) -> None:
         """정리"""
         try:
             self.structure_cache.clear()
+            self.reasoning_analysis_cache.clear()
+            
             if self.debug_mode:
                 stats = self.get_cache_stats()
+                insights = self.get_reasoning_insights()
                 print(f"데이터 처리기 정리 완료 - 캐시 적중률: {stats['cache_hit_rate']:.2%}")
+                print(f"추론 분석: {insights['total_reasoning_analyses']}회, 품질 개선: {insights['quality_improvements']}회")
         except Exception as e:
             if self.debug_mode:
                 print(f"정리 중 오류: {e}")
+
+
+class ReasoningResultAnalyzer:
+    """추론 결과 분석기"""
+    
+    def __init__(self):
+        self.quality_weights = {
+            "logical_consistency": 0.3,
+            "evidence_quality": 0.25,
+            "reasoning_depth": 0.2,
+            "conclusion_validity": 0.15,
+            "coherence": 0.1
+        }
+    
+    def analyze_chain(self, reasoning_chain, question_structure: Dict) -> ReasoningAnalysis:
+        """추론 체인 분석"""
+        try:
+            if not reasoning_chain or not reasoning_chain.steps:
+                return ReasoningAnalysis(
+                    logical_consistency=0.0,
+                    evidence_quality=0.0,
+                    reasoning_depth=0,
+                    conclusion_validity=0.0,
+                    error_indicators=["추론 체인 없음"],
+                    quality_metrics={}
+                )
+            
+            # 논리적 일관성 평가
+            logical_score = self._evaluate_logical_consistency(reasoning_chain)
+            
+            # 증거 품질 평가
+            evidence_score = self._evaluate_evidence_quality(reasoning_chain)
+            
+            # 추론 깊이 평가
+            depth_score = len(reasoning_chain.steps)
+            
+            # 결론 타당성 평가
+            conclusion_score = self._evaluate_conclusion_validity(reasoning_chain, question_structure)
+            
+            # 오류 지표 식별
+            error_indicators = self._identify_error_indicators(reasoning_chain)
+            
+            # 품질 메트릭 계산
+            quality_metrics = {
+                "overall_quality": (
+                    logical_score * self.quality_weights["logical_consistency"] +
+                    evidence_score * self.quality_weights["evidence_quality"] +
+                    min(depth_score / 5.0, 1.0) * self.quality_weights["reasoning_depth"] +
+                    conclusion_score * self.quality_weights["conclusion_validity"]
+                ),
+                "step_consistency": self._evaluate_step_consistency(reasoning_chain),
+                "confidence_stability": self._evaluate_confidence_stability(reasoning_chain)
+            }
+            
+            return ReasoningAnalysis(
+                logical_consistency=logical_score,
+                evidence_quality=evidence_score,
+                reasoning_depth=depth_score,
+                conclusion_validity=conclusion_score,
+                error_indicators=error_indicators,
+                quality_metrics=quality_metrics
+            )
+            
+        except Exception:
+            return ReasoningAnalysis(
+                logical_consistency=0.0,
+                evidence_quality=0.0,
+                reasoning_depth=0,
+                conclusion_validity=0.0,
+                error_indicators=["분석 오류"],
+                quality_metrics={}
+            )
+    
+    def _evaluate_logical_consistency(self, reasoning_chain) -> float:
+        """논리적 일관성 평가"""
+        try:
+            # Self-Consistency 결과 활용
+            consistency_score = reasoning_chain.verification_result.get("consistency_score", 0.0)
+            is_consistent = reasoning_chain.verification_result.get("is_consistent", False)
+            
+            base_score = consistency_score
+            
+            if is_consistent:
+                base_score += 0.2
+            
+            # 신뢰도 편차 검사
+            variance = reasoning_chain.verification_result.get("confidence_variance", 0.0)
+            if variance < 0.3:
+                base_score += 0.1
+            
+            # 추론 타입 일관성
+            reasoning_types = [step.reasoning_type for step in reasoning_chain.steps]
+            if len(set(reasoning_types)) >= 2:  # 다양한 추론 타입 사용
+                base_score += 0.1
+            
+            return min(1.0, base_score)
+            
+        except Exception:
+            return 0.0
+    
+    def _evaluate_evidence_quality(self, reasoning_chain) -> float:
+        """증거 품질 평가"""
+        try:
+            total_evidence = 0
+            quality_evidence = 0
+            
+            for step in reasoning_chain.steps:
+                if step.supporting_evidence:
+                    total_evidence += len(step.supporting_evidence)
+                    
+                    # 고품질 증거 카운트
+                    for evidence in step.supporting_evidence:
+                        if any(keyword in evidence for keyword in ["법", "조항", "규정", "기준"]):
+                            quality_evidence += 1
+            
+            if total_evidence == 0:
+                return 0.0
+            
+            # 증거 품질 비율
+            quality_ratio = quality_evidence / total_evidence
+            
+            # 단계당 평균 증거 수
+            avg_evidence = total_evidence / len(reasoning_chain.steps)
+            
+            return min(1.0, quality_ratio * 0.6 + min(avg_evidence / 2.0, 0.4))
+            
+        except Exception:
+            return 0.0
+    
+    def _evaluate_conclusion_validity(self, reasoning_chain, question_structure: Dict) -> float:
+        """결론 타당성 평가"""
+        try:
+            final_answer = reasoning_chain.final_answer
+            if not final_answer:
+                return 0.0
+            
+            # 형식 검증
+            if question_structure["question_type"] == "multiple_choice":
+                if final_answer.isdigit() and 1 <= int(final_answer) <= 5:
+                    format_score = 1.0
+                else:
+                    format_score = 0.0
+            else:
+                # 주관식 품질 검증
+                korean_chars = len([c for c in final_answer if '가' <= c <= '힣'])
+                total_chars = len([c for c in final_answer if c.isalnum()])
+                
+                if total_chars > 0:
+                    korean_ratio = korean_chars / total_chars
+                    length_score = min(len(final_answer) / 100.0, 1.0)
+                    format_score = korean_ratio * 0.7 + length_score * 0.3
+                else:
+                    format_score = 0.0
+            
+            # 전체 신뢰도
+            confidence_score = reasoning_chain.overall_confidence
+            
+            return (format_score + confidence_score) / 2.0
+            
+        except Exception:
+            return 0.0
+    
+    def _evaluate_step_consistency(self, reasoning_chain) -> float:
+        """단계별 일관성 평가"""
+        try:
+            if len(reasoning_chain.steps) < 2:
+                return 0.5
+            
+            consistency_score = 0.0
+            
+            for i in range(1, len(reasoning_chain.steps)):
+                prev_step = reasoning_chain.steps[i-1]
+                curr_step = reasoning_chain.steps[i]
+                
+                # 신뢰도 연속성
+                confidence_diff = abs(prev_step.confidence - curr_step.confidence)
+                if confidence_diff < 0.4:
+                    consistency_score += 1.0
+                elif confidence_diff < 0.6:
+                    consistency_score += 0.5
+            
+            return consistency_score / (len(reasoning_chain.steps) - 1)
+            
+        except Exception:
+            return 0.0
+    
+    def _evaluate_confidence_stability(self, reasoning_chain) -> float:
+        """신뢰도 안정성 평가"""
+        try:
+            confidences = [step.confidence for step in reasoning_chain.steps]
+            
+            if len(confidences) < 2:
+                return 0.5
+            
+            # 표준편차가 낮을수록 안정적
+            std_dev = np.std(confidences)
+            stability = max(0.0, 1.0 - std_dev * 2)
+            
+            return stability
+            
+        except Exception:
+            return 0.0
+    
+    def _identify_error_indicators(self, reasoning_chain) -> List[str]:
+        """오류 지표 식별"""
+        errors = []
+        
+        try:
+            # 단계 수 부족
+            if len(reasoning_chain.steps) < 2:
+                errors.append("추론 단계 부족")
+            
+            # 낮은 전체 신뢰도
+            if reasoning_chain.overall_confidence < 0.4:
+                errors.append("낮은 전체 신뢰도")
+            
+            # 불일치 검증 결과
+            if not reasoning_chain.verification_result.get("is_consistent", False):
+                errors.append("일관성 검증 실패")
+            
+            # 빈 결론
+            if not reasoning_chain.final_answer:
+                errors.append("빈 최종 답변")
+            
+            # 단계별 낮은 신뢰도
+            low_confidence_steps = sum(1 for step in reasoning_chain.steps if step.confidence < 0.3)
+            if low_confidence_steps > len(reasoning_chain.steps) * 0.5:
+                errors.append("다수 단계 낮은 신뢰도")
+            
+            # 증거 부족
+            steps_without_evidence = sum(1 for step in reasoning_chain.steps if not step.supporting_evidence)
+            if steps_without_evidence > len(reasoning_chain.steps) * 0.7:
+                errors.append("증거 부족")
+            
+        except Exception:
+            errors.append("오류 분석 실패")
+        
+        return errors

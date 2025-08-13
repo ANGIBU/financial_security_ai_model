@@ -6,6 +6,9 @@
 - 파인튜닝된 모델 지원
 - 빠른 성능 검증
 - 간단한 결과 분석
+- 논리적 추론 성능 측정
+- CoT 추론 과정 검증
+- 추론 품질 평가 메트릭
 """
 
 import gc
@@ -22,11 +25,9 @@ import pandas as pd
 import torch
 import warnings
 
-# 경고 필터링 설정
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# 현재 디렉토리를 Python 경로에 추가
 current_dir = Path(__file__).parent.absolute()
 sys.path.append(str(current_dir))
 
@@ -34,8 +35,8 @@ from model_handler import ModelHandler
 from data_processor import DataProcessor
 from prompt_engineering import PromptEngineer
 from learning_system import LearningSystem
+from reasoning_engine import ReasoningEngine
 
-# 상수 정의
 DEFAULT_TEST_SIZE = 50
 MAX_TEST_SIZE = 500
 MIN_TEST_SIZE = 1
@@ -43,10 +44,14 @@ DEFAULT_GPU_MEMORY_FRACTION = 0.9
 MEMORY_CLEANUP_INTERVAL = 10
 PROGRESS_REPORT_INTERVAL = 10
 QUALITY_THRESHOLD = 0.65
+REASONING_QUALITY_THRESHOLD = 0.7
 MIN_ANSWER_LENGTH = 30
 MAX_ANSWER_LENGTH = 550
 MIN_KOREAN_RATIO = 0.6
 MAX_ENGLISH_RATIO = 0.15
+
+PROGRESS_INTERVAL = 50
+INTERIM_STATS_INTERVAL = 50
 
 class TestRunner:
     
@@ -59,7 +64,6 @@ class TestRunner:
         
         print(f"테스트 실행기 초기화 중... (대상: {self.test_size}문항)")
         
-        # GPU 메모리 초기화
         if self.cuda_available:
             try:
                 torch.cuda.empty_cache()
@@ -71,11 +75,9 @@ class TestRunner:
         else:
             print("CPU 모드로 실행")
         
-        # 파인튜닝 모델 경로 검증
         finetuned_path = self._validate_finetuned_path() if use_finetuned else None
         
         try:
-            # 모델 핸들러 초기화
             self.model_handler = ModelHandler(
                 model_name="upstage/SOLAR-10.7B-Instruct-v1.0",
                 device="cuda" if self.cuda_available else "cpu",
@@ -85,28 +87,36 @@ class TestRunner:
                 finetuned_path=finetuned_path
             )
             
-            # 처리 시스템 초기화
             self.data_processor = DataProcessor(debug_mode=False)
             self.prompt_engineer = PromptEngineer()
             self.learning_system = LearningSystem(debug_mode=False)
             
-            # 기존 학습 데이터 로드 시도
+            # 추론 엔진 초기화
+            try:
+                self.reasoning_engine = ReasoningEngine(
+                    knowledge_base=self.prompt_engineer.knowledge_base,
+                    debug_mode=False
+                )
+                print("추론 엔진 초기화 완료")
+            except Exception as e:
+                print(f"추론 엔진 초기화 실패: {e}")
+                self.reasoning_engine = None
+            
             self._load_existing_learning_data()
             
         except Exception as e:
             raise RuntimeError(f"테스트 실행기 초기화 실패: {e}")
         
-        # 통계 초기화
         self.stats = self._initialize_stats()
-        
-        # 향상된 폴백 템플릿
         self.enhanced_fallback_templates = self._build_enhanced_templates()
-        
-        # 메모리 관리 카운터
         self.memory_cleanup_counter = 0
         
+        # 추론 성능 분석 시스템
+        self.reasoning_analyzer = ReasoningPerformanceAnalyzer()
+        
         model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
-        print(f"초기화 완료 - {model_type} 사용\n")
+        reasoning_status = "활성화" if self.reasoning_engine else "비활성화"
+        print(f"초기화 완료 - {model_type} 사용, 추론 엔진 {reasoning_status}\n")
     
     def _validate_finetuned_path(self) -> Optional[str]:
         """파인튜닝 모델 경로 검증"""
@@ -118,7 +128,6 @@ class TestRunner:
             self.use_finetuned = False
             return None
         
-        # 필수 파일 확인
         required_files = ["adapter_config.json", "adapter_model.bin"]
         missing_files = []
         
@@ -163,7 +172,23 @@ class TestRunner:
             "finetuned_usage": 0,
             "memory_cleanups": 0,
             "cache_hits": 0,
-            "generation_errors": 0
+            "generation_errors": 0,
+            "reasoning_engine_usage": 0,
+            "reasoning_successful": 0,
+            "reasoning_failed": 0,
+            "cot_prompts_used": 0,
+            "reasoning_quality_scores": [],
+            "consistency_scores": [],
+            "reasoning_depth_scores": [],
+            "logical_errors": 0,
+            "chain_verification_passed": 0,
+            "chain_verification_failed": 0,
+            "reasoning_time_per_question": [],
+            "step_count_distribution": {},
+            "advanced_reasoning_features": 0,
+            "hybrid_approach_success": 0,
+            "reasoning_vs_pattern_comparison": {"reasoning_better": 0, "pattern_better": 0, "equal": 0},
+            "error_recovery_success": 0
         }
     
     def _build_enhanced_templates(self) -> Dict[str, List[str]]:
@@ -211,7 +236,6 @@ class TestRunner:
     def load_test_data(self, test_file: str, submission_file: str) -> Optional[Tuple[pd.DataFrame, pd.DataFrame]]:
         """테스트 데이터 로드"""
         try:
-            # 파일 존재 확인
             if not os.path.exists(test_file):
                 print(f"오류: {test_file} 파일을 찾을 수 없습니다")
                 return None
@@ -220,16 +244,13 @@ class TestRunner:
                 print(f"오류: {submission_file} 파일을 찾을 수 없습니다")
                 return None
             
-            # 데이터 로드
             test_df = pd.read_csv(test_file, encoding='utf-8')
             submission_df = pd.read_csv(submission_file, encoding='utf-8')
             
-            # 데이터 크기 확인
             if len(test_df) < self.test_size:
                 print(f"경고: 전체 {len(test_df)}문항, 요청 {self.test_size}문항")
                 self.test_size = len(test_df)
             
-            # 샘플 추출
             test_sample = test_df.head(self.test_size).copy()
             submission_sample = submission_df.head(self.test_size).copy()
             
@@ -266,7 +287,6 @@ class TestRunner:
         
         except Exception as e:
             print(f"질문 분석 중 오류: {e}")
-            # 기본값 반환
             mc_count = self.test_size // 2
             subj_count = self.test_size - mc_count
         
@@ -279,18 +299,76 @@ class TestRunner:
         }
     
     def process_single_question(self, question: str, question_id: str, idx: int) -> str:
-        """단일 질문 처리"""
+        """단일 질문 처리 (추론 성능 분석 포함)"""
         start_time = time.time()
+        reasoning_start_time = time.time()
         
         try:
-            # 질문 구조 분석
             structure = self.data_processor.analyze_question_structure(question)
+            analysis = self.prompt_engineer.knowledge_base.analyze_question(question)
             is_mc = structure["question_type"] == "multiple_choice"
             
+            # 추론 엔진 활용 시도
+            reasoning_result = None
+            reasoning_quality = 0.0
+            reasoning_used = False
+            
+            if self.reasoning_engine:
+                try:
+                    reasoning_chain = self.reasoning_engine.create_reasoning_chain(
+                        question=question,
+                        question_type=structure["question_type"],
+                        domain_analysis=analysis
+                    )
+                    
+                    reasoning_time = time.time() - reasoning_start_time
+                    self.stats["reasoning_time_per_question"].append(reasoning_time)
+                    
+                    # 추론 품질 분석
+                    reasoning_analysis = self.reasoning_analyzer.analyze_reasoning_chain(reasoning_chain)
+                    reasoning_quality = reasoning_analysis["quality_score"]
+                    
+                    self.stats["reasoning_quality_scores"].append(reasoning_quality)
+                    self.stats["consistency_scores"].append(reasoning_chain.verification_result.get("consistency_score", 0.0))
+                    self.stats["reasoning_depth_scores"].append(len(reasoning_chain.steps))
+                    
+                    # 단계 수 분포 기록
+                    step_count = len(reasoning_chain.steps)
+                    self.stats["step_count_distribution"][step_count] = self.stats["step_count_distribution"].get(step_count, 0) + 1
+                    
+                    # 추론 체인 검증
+                    chain_valid = self._verify_reasoning_chain(reasoning_chain, structure)
+                    if chain_valid:
+                        self.stats["chain_verification_passed"] += 1
+                        reasoning_result = reasoning_chain.final_answer
+                        reasoning_used = True
+                        self.stats["reasoning_engine_usage"] += 1
+                        
+                        if reasoning_chain.verification_result.get("is_consistent", False):
+                            self.stats["reasoning_successful"] += 1
+                        else:
+                            self.stats["reasoning_failed"] += 1
+                    else:
+                        self.stats["chain_verification_failed"] += 1
+                        self.stats["reasoning_failed"] += 1
+                        
+                    # 고급 추론 기능 사용 여부 체크
+                    if reasoning_analysis["uses_advanced_features"]:
+                        self.stats["advanced_reasoning_features"] += 1
+                        
+                except Exception as e:
+                    self.stats["reasoning_failed"] += 1
+                    self.stats["logical_errors"] += 1
+            
+            # 기존 처리 방식
             if is_mc:
-                answer = self._process_multiple_choice(question, structure)
+                answer = self._process_multiple_choice_with_reasoning(
+                    question, structure, analysis, reasoning_result, reasoning_quality, reasoning_used
+                )
             else:
-                answer = self._process_subjective(question, structure)
+                answer = self._process_subjective_with_reasoning(
+                    question, structure, analysis, reasoning_result, reasoning_quality, reasoning_used
+                )
             
             # 통계 업데이트
             self.stats["total"] += 1
@@ -302,7 +380,6 @@ class TestRunner:
                 progress = self.stats["total"] / self.test_size * 100
                 print(f"  진행: {self.stats['total']}/{self.test_size} ({progress:.0f}%)")
             
-            # 메모리 관리
             self._manage_memory()
             
             return answer
@@ -312,7 +389,6 @@ class TestRunner:
             self.stats["generation_errors"] += 1
             self.stats["fallback_used"] += 1
             
-            # 오류 시 폴백 처리
             if 'is_mc' in locals() and is_mc:
                 fallback_answer = str(random.randint(1, 5))
                 self.stats["answer_distribution"][fallback_answer] += 1
@@ -320,9 +396,60 @@ class TestRunner:
             else:
                 return random.choice(self.enhanced_fallback_templates["일반"])
     
-    def _process_multiple_choice(self, question: str, structure: Dict) -> str:
-        """객관식 질문 처리"""
+    def _verify_reasoning_chain(self, reasoning_chain, structure: Dict) -> bool:
+        """추론 체인 검증"""
+        try:
+            # 기본 검증
+            if not reasoning_chain or not reasoning_chain.steps:
+                return False
+            
+            # 단계 수 검증
+            if len(reasoning_chain.steps) < 2:
+                return False
+            
+            # 신뢰도 검증
+            if reasoning_chain.overall_confidence < 0.3:
+                return False
+            
+            # 일관성 검증
+            if not reasoning_chain.verification_result.get("is_consistent", False):
+                return False
+            
+            # 객관식의 경우 답변 형식 검증
+            if structure["question_type"] == "multiple_choice":
+                if not (reasoning_chain.final_answer.isdigit() and 1 <= int(reasoning_chain.final_answer) <= 5):
+                    return False
+            
+            # 주관식의 경우 한국어 품질 검증
+            else:
+                if len(reasoning_chain.final_answer) < 20:
+                    return False
+                    
+                korean_chars = len([c for c in reasoning_chain.final_answer if 'ㄱ' <= c <= 'ㅣ' or '가' <= c <= '힣'])
+                total_chars = len([c for c in reasoning_chain.final_answer if c.isalnum()])
+                
+                if total_chars > 0:
+                    korean_ratio = korean_chars / total_chars
+                    if korean_ratio < 0.5:
+                        return False
+            
+            return True
+            
+        except Exception:
+            return False
+    
+    def _process_multiple_choice_with_reasoning(self, question: str, structure: Dict, analysis: Dict, 
+                                              reasoning_result: Optional[str], reasoning_quality: float, 
+                                              reasoning_used: bool) -> str:
+        """추론 엔진을 활용한 객관식 처리"""
         self.stats["mc_count"] += 1
+        
+        # 추론 결과 우선 사용
+        if reasoning_used and reasoning_result and reasoning_quality > REASONING_QUALITY_THRESHOLD:
+            if reasoning_result.isdigit() and 1 <= int(reasoning_result) <= 5:
+                self.stats["high_confidence_count"] += 1
+                self.stats["answer_distribution"][reasoning_result] += 1
+                return reasoning_result
         
         # 답변 분포 균형화
         answer = self._apply_distribution_balancing()
@@ -335,16 +462,38 @@ class TestRunner:
         hint_answer, hint_confidence = self.learning_system.get_smart_answer_hint(question, structure)
         
         if hint_confidence > 0.50:
+            # 추론 결과와 패턴 결과 비교
+            if reasoning_used and reasoning_result != hint_answer:
+                if reasoning_quality > hint_confidence:
+                    self.stats["reasoning_vs_pattern_comparison"]["reasoning_better"] += 1
+                    selected_answer = reasoning_result if reasoning_result.isdigit() and 1 <= int(reasoning_result) <= 5 else hint_answer
+                elif reasoning_quality < hint_confidence:
+                    self.stats["reasoning_vs_pattern_comparison"]["pattern_better"] += 1
+                    selected_answer = hint_answer
+                else:
+                    self.stats["reasoning_vs_pattern_comparison"]["equal"] += 1
+                    selected_answer = hint_answer  # 동점일 때는 패턴 우선
+                    
+                if selected_answer == reasoning_result:
+                    self.stats["hybrid_approach_success"] += 1
+            else:
+                selected_answer = hint_answer
+            
             self.stats["pattern_success"] += 1
             self.stats["smart_hints_used"] += 1
             if hint_confidence > 0.65:
                 self.stats["high_confidence_count"] += 1
-            self.stats["answer_distribution"][hint_answer] += 1
-            return hint_answer
+            self.stats["answer_distribution"][selected_answer] += 1
+            return selected_answer
         
         # 모델 생성 시도
         try:
-            prompt = self.prompt_engineer.create_korean_reinforced_prompt(question, "multiple_choice")
+            # CoT 프롬프트 사용 (추론 엔진 사용 시)
+            if reasoning_used or self.reasoning_engine:
+                prompt = self.prompt_engineer.create_cot_prompt(question, "multiple_choice", analysis)
+                self.stats["cot_prompts_used"] += 1
+            else:
+                prompt = self.prompt_engineer.create_korean_reinforced_prompt(question, "multiple_choice")
             
             result = self.model_handler.generate_response(
                 prompt=prompt,
@@ -367,6 +516,11 @@ class TestRunner:
                 
         except Exception as e:
             self.stats["generation_errors"] += 1
+            # 오류 복구 시도
+            if reasoning_used and reasoning_result:
+                self.stats["error_recovery_success"] += 1
+                self.stats["answer_distribution"][reasoning_result] += 1
+                return reasoning_result
         
         # 폴백 처리
         self.stats["fallback_used"] += 1
@@ -374,13 +528,27 @@ class TestRunner:
         self.stats["answer_distribution"][fallback_answer] += 1
         return fallback_answer
     
-    def _process_subjective(self, question: str, structure: Dict) -> str:
-        """주관식 질문 처리"""
+    def _process_subjective_with_reasoning(self, question: str, structure: Dict, analysis: Dict,
+                                         reasoning_result: Optional[str], reasoning_quality: float,
+                                         reasoning_used: bool) -> str:
+        """추론 엔진을 활용한 주관식 처리"""
         self.stats["subj_count"] += 1
         
+        # 추론 결과 우선 사용
+        if reasoning_used and reasoning_result and reasoning_quality > REASONING_QUALITY_THRESHOLD:
+            is_valid, quality = self._validate_korean_quality_enhanced(reasoning_result)
+            if is_valid and quality > QUALITY_THRESHOLD:
+                self.stats["high_confidence_count"] += 1
+                self.stats["korean_quality_sum"] += quality
+                return reasoning_result
+        
         try:
-            # 프롬프트 생성 및 모델 응답
-            prompt = self.prompt_engineer.create_korean_reinforced_prompt(question, "subjective")
+            # CoT 프롬프트 사용 (추론 엔진 사용 시)
+            if reasoning_used or self.reasoning_engine:
+                prompt = self.prompt_engineer.create_cot_prompt(question, "subjective", analysis)
+                self.stats["cot_prompts_used"] += 1
+            else:
+                prompt = self.prompt_engineer.create_korean_reinforced_prompt(question, "subjective")
             
             result = self.model_handler.generate_response(
                 prompt=prompt,
@@ -392,7 +560,6 @@ class TestRunner:
             if self.model_handler.is_finetuned:
                 self.stats["finetuned_usage"] += 1
             
-            # 응답 정리
             answer = self.data_processor._clean_korean_text(result.response)
             
             # 한국어 품질 검증
@@ -401,6 +568,15 @@ class TestRunner:
             
             # 품질 확인 및 길이 조정
             if not is_valid or quality < QUALITY_THRESHOLD or len(answer) < MIN_ANSWER_LENGTH:
+                # 추론 결과로 대체 시도
+                if reasoning_used and reasoning_result:
+                    reason_valid, reason_quality = self._validate_korean_quality_enhanced(reasoning_result)
+                    if reason_valid and reason_quality >= quality and len(reasoning_result) >= MIN_ANSWER_LENGTH:
+                        self.stats["hybrid_approach_success"] += 1
+                        self.stats["error_recovery_success"] += 1
+                        self.stats["korean_quality_sum"] += (reason_quality - quality)  # 품질 차이만큼 보정
+                        return reasoning_result
+                
                 self.stats["fallback_used"] += 1
                 return self._get_enhanced_fallback_subj(question)
             
@@ -416,6 +592,15 @@ class TestRunner:
             
         except Exception as e:
             self.stats["generation_errors"] += 1
+            
+            # 오류 복구 시도
+            if reasoning_used and reasoning_result:
+                reason_valid, reason_quality = self._validate_korean_quality_enhanced(reasoning_result)
+                if reason_valid and reason_quality > 0.5:
+                    self.stats["error_recovery_success"] += 1
+                    self.stats["korean_quality_sum"] += reason_quality
+                    return reasoning_result
+            
             self.stats["fallback_used"] += 1
             return self._get_enhanced_fallback_subj(question)
     
@@ -578,6 +763,8 @@ class TestRunner:
         print(f"테스트 실행 시작 ({self.test_size}문항)")
         if self.use_finetuned:
             print("파인튜닝된 모델 사용")
+        if self.reasoning_engine:
+            print("논리적 추론 엔진 활성화")
         print("="*50)
         
         # 데이터 로드
@@ -657,6 +844,9 @@ class TestRunner:
         # 처리 통계
         self._print_processing_stats()
         
+        # 추론 성능 통계
+        self._print_reasoning_performance_stats()
+        
         # 한국어 품질 통계
         self._print_korean_quality_stats()
         
@@ -681,6 +871,76 @@ class TestRunner:
         print(f"  고신뢰도 답변: {self.stats['high_confidence_count']}회")
         print(f"  폴백 사용: {self.stats['fallback_used']}/{self.stats['total']} ({fallback_rate:.1f}%)")
         print(f"  생성 오류: {self.stats['generation_errors']}회")
+    
+    def _print_reasoning_performance_stats(self) -> None:
+        """추론 성능 통계 출력"""
+        if self.reasoning_engine:
+            print(f"\n추론 엔진 성능:")
+            reasoning_rate = self.stats["reasoning_engine_usage"] / max(self.stats["total"], 1) * 100
+            cot_rate = self.stats["cot_prompts_used"] / max(self.stats["total"], 1) * 100
+            
+            print(f"  추론 엔진 사용: {self.stats['reasoning_engine_usage']}/{self.stats['total']} ({reasoning_rate:.1f}%)")
+            print(f"  CoT 프롬프트 사용: {self.stats['cot_prompts_used']}/{self.stats['total']} ({cot_rate:.1f}%)")
+            print(f"  추론 성공: {self.stats['reasoning_successful']}회")
+            print(f"  추론 실패: {self.stats['reasoning_failed']}회")
+            
+            # 추론 품질 점수
+            if self.stats["reasoning_quality_scores"]:
+                avg_reasoning_quality = np.mean(self.stats["reasoning_quality_scores"])
+                print(f"  평균 추론 품질: {avg_reasoning_quality:.2f}")
+            
+            # 일관성 점수
+            if self.stats["consistency_scores"]:
+                avg_consistency = np.mean(self.stats["consistency_scores"])
+                print(f"  평균 일관성 점수: {avg_consistency:.2f}")
+            
+            # 추론 깊이 분석
+            if self.stats["reasoning_depth_scores"]:
+                avg_depth = np.mean(self.stats["reasoning_depth_scores"])
+                print(f"  평균 추론 단계 수: {avg_depth:.1f}")
+            
+            # 체인 검증 통계
+            total_chains = self.stats["chain_verification_passed"] + self.stats["chain_verification_failed"]
+            if total_chains > 0:
+                verification_rate = self.stats["chain_verification_passed"] / total_chains * 100
+                print(f"  체인 검증 통과율: {verification_rate:.1f}%")
+            
+            # 논리적 오류
+            print(f"  논리적 오류: {self.stats['logical_errors']}회")
+            
+            # 고급 기능 사용
+            if self.stats["advanced_reasoning_features"] > 0:
+                advanced_rate = self.stats["advanced_reasoning_features"] / max(self.stats["total"], 1) * 100
+                print(f"  고급 추론 기능 사용: {advanced_rate:.1f}%")
+            
+            # 하이브리드 접근법 성공률
+            if self.stats["hybrid_approach_success"] > 0:
+                hybrid_rate = self.stats["hybrid_approach_success"] / max(self.stats["total"], 1) * 100
+                print(f"  하이브리드 접근 성공: {hybrid_rate:.1f}%")
+            
+            # 추론 vs 패턴 비교
+            comparison = self.stats["reasoning_vs_pattern_comparison"]
+            total_comparisons = sum(comparison.values())
+            if total_comparisons > 0:
+                reasoning_better_rate = comparison["reasoning_better"] / total_comparisons * 100
+                print(f"  추론 우위 사례: {reasoning_better_rate:.1f}%")
+            
+            # 오류 복구 성공률
+            if self.stats["error_recovery_success"] > 0:
+                recovery_rate = self.stats["error_recovery_success"] / max(self.stats["generation_errors"], 1) * 100
+                print(f"  오류 복구 성공률: {recovery_rate:.1f}%")
+            
+            # 평균 추론 시간
+            if self.stats["reasoning_time_per_question"]:
+                avg_reasoning_time = np.mean(self.stats["reasoning_time_per_question"])
+                print(f"  평균 추론 시간: {avg_reasoning_time:.3f}초")
+            
+            # 단계 수 분포
+            if self.stats["step_count_distribution"]:
+                print(f"  추론 단계 분포:")
+                for steps, count in sorted(self.stats["step_count_distribution"].items()):
+                    percentage = count / max(self.stats["total"], 1) * 100
+                    print(f"    {steps}단계: {count}회 ({percentage:.1f}%)")
     
     def _print_korean_quality_stats(self) -> None:
         """한국어 품질 통계 출력"""
@@ -746,6 +1006,8 @@ class TestRunner:
                 self.prompt_engineer.cleanup()
             if hasattr(self, 'learning_system'):
                 self.learning_system.cleanup()
+            if hasattr(self, 'reasoning_engine'):
+                self.reasoning_engine.cleanup()
             
             # 메모리 정리
             if self.cuda_available:
@@ -756,6 +1018,300 @@ class TestRunner:
             
         except Exception as e:
             print(f"정리 중 오류: {e}")
+
+
+class ReasoningPerformanceAnalyzer:
+    """추론 성능 분석기"""
+    
+    def __init__(self):
+        self.quality_metrics = {
+            "logical_consistency": 0.3,
+            "evidence_quality": 0.25,
+            "reasoning_depth": 0.2,
+            "conclusion_validity": 0.15,
+            "step_coherence": 0.1
+        }
+    
+    def analyze_reasoning_chain(self, reasoning_chain) -> Dict:
+        """추론 체인 분석"""
+        try:
+            analysis = {
+                "quality_score": 0.0,
+                "uses_advanced_features": False,
+                "logical_errors": [],
+                "strengths": [],
+                "weaknesses": []
+            }
+            
+            if not reasoning_chain or not reasoning_chain.steps:
+                return analysis
+            
+            # 논리적 일관성 평가
+            logical_score = self._evaluate_logical_consistency(reasoning_chain)
+            
+            # 증거 품질 평가
+            evidence_score = self._evaluate_evidence_quality(reasoning_chain)
+            
+            # 추론 깊이 평가
+            depth_score = self._evaluate_reasoning_depth(reasoning_chain)
+            
+            # 결론 타당성 평가
+            conclusion_score = self._evaluate_conclusion_validity(reasoning_chain)
+            
+            # 단계 연결성 평가
+            coherence_score = self._evaluate_step_coherence(reasoning_chain)
+            
+            # 종합 점수 계산
+            analysis["quality_score"] = (
+                logical_score * self.quality_metrics["logical_consistency"] +
+                evidence_score * self.quality_metrics["evidence_quality"] +
+                depth_score * self.quality_metrics["reasoning_depth"] +
+                conclusion_score * self.quality_metrics["conclusion_validity"] +
+                coherence_score * self.quality_metrics["step_coherence"]
+            )
+            
+            # 고급 기능 사용 여부
+            analysis["uses_advanced_features"] = self._check_advanced_features(reasoning_chain)
+            
+            # 강점과 약점 식별
+            analysis["strengths"] = self._identify_strengths(reasoning_chain, {
+                "logical": logical_score,
+                "evidence": evidence_score,
+                "depth": depth_score,
+                "conclusion": conclusion_score,
+                "coherence": coherence_score
+            })
+            
+            analysis["weaknesses"] = self._identify_weaknesses(reasoning_chain, {
+                "logical": logical_score,
+                "evidence": evidence_score,
+                "depth": depth_score,
+                "conclusion": conclusion_score,
+                "coherence": coherence_score
+            })
+            
+            return analysis
+            
+        except Exception:
+            return {
+                "quality_score": 0.0,
+                "uses_advanced_features": False,
+                "logical_errors": ["분석 오류"],
+                "strengths": [],
+                "weaknesses": ["분석 실패"]
+            }
+    
+    def _evaluate_logical_consistency(self, reasoning_chain) -> float:
+        """논리적 일관성 평가"""
+        try:
+            consistency_score = reasoning_chain.verification_result.get("consistency_score", 0.0)
+            is_consistent = reasoning_chain.verification_result.get("is_consistent", False)
+            
+            base_score = consistency_score
+            if is_consistent:
+                base_score += 0.2
+            
+            # 신뢰도 편차 검사
+            variance = reasoning_chain.verification_result.get("confidence_variance", 0.0)
+            if variance < 0.2:
+                base_score += 0.1
+            
+            return min(1.0, base_score)
+            
+        except Exception:
+            return 0.0
+    
+    def _evaluate_evidence_quality(self, reasoning_chain) -> float:
+        """증거 품질 평가"""
+        try:
+            score = 0.0
+            
+            for step in reasoning_chain.steps:
+                # 증거 존재 여부
+                if step.supporting_evidence:
+                    score += 0.2
+                    
+                    # 증거 다양성
+                    if len(step.supporting_evidence) > 1:
+                        score += 0.1
+                
+                # 추론 타입별 가점
+                if step.reasoning_type in ["논리_추론", "개념_적용"]:
+                    score += 0.1
+            
+            return min(1.0, score / len(reasoning_chain.steps))
+            
+        except Exception:
+            return 0.0
+    
+    def _evaluate_reasoning_depth(self, reasoning_chain) -> float:
+        """추론 깊이 평가"""
+        try:
+            step_count = len(reasoning_chain.steps)
+            
+            # 기본 단계 수 점수
+            depth_score = min(step_count / 5.0, 0.6)
+            
+            # 추론 타입 다양성
+            reasoning_types = set(step.reasoning_type for step in reasoning_chain.steps)
+            type_diversity = len(reasoning_types) / 4.0  # 최대 4가지 타입 가정
+            depth_score += type_diversity * 0.3
+            
+            # 복잡성 보너스
+            complex_steps = sum(1 for step in reasoning_chain.steps 
+                              if step.reasoning_type in ["논리_추론", "결론_도출"])
+            if complex_steps >= 2:
+                depth_score += 0.1
+            
+            return min(1.0, depth_score)
+            
+        except Exception:
+            return 0.0
+    
+    def _evaluate_conclusion_validity(self, reasoning_chain) -> float:
+        """결론 타당성 평가"""
+        try:
+            # 전체 신뢰도
+            confidence_score = reasoning_chain.overall_confidence
+            
+            # 최종 답변 형식 점수
+            format_score = 0.0
+            if reasoning_chain.final_answer:
+                if len(reasoning_chain.final_answer) > 0:
+                    format_score = 0.5
+                    
+                    # 한국어 품질 (주관식의 경우)
+                    if not reasoning_chain.final_answer.isdigit():
+                        korean_chars = len([c for c in reasoning_chain.final_answer if '가' <= c <= '힣'])
+                        total_chars = len([c for c in reasoning_chain.final_answer if c.isalnum()])
+                        if total_chars > 0:
+                            korean_ratio = korean_chars / total_chars
+                            if korean_ratio > 0.7:
+                                format_score = 1.0
+                            elif korean_ratio > 0.5:
+                                format_score = 0.8
+            
+            return (confidence_score + format_score) / 2.0
+            
+        except Exception:
+            return 0.0
+    
+    def _evaluate_step_coherence(self, reasoning_chain) -> float:
+        """단계 연결성 평가"""
+        try:
+            if len(reasoning_chain.steps) < 2:
+                return 0.5
+            
+            coherence_score = 0.0
+            
+            # 순차적 연결성 검사
+            for i in range(1, len(reasoning_chain.steps)):
+                prev_step = reasoning_chain.steps[i-1]
+                curr_step = reasoning_chain.steps[i]
+                
+                # 신뢰도 일관성
+                confidence_diff = abs(prev_step.confidence - curr_step.confidence)
+                if confidence_diff < 0.3:
+                    coherence_score += 0.2
+                
+                # 추론 타입 연계성
+                if self._check_reasoning_flow(prev_step.reasoning_type, curr_step.reasoning_type):
+                    coherence_score += 0.2
+            
+            return min(1.0, coherence_score / (len(reasoning_chain.steps) - 1))
+            
+        except Exception:
+            return 0.0
+    
+    def _check_reasoning_flow(self, prev_type: str, curr_type: str) -> bool:
+        """추론 흐름 유효성 검사"""
+        valid_flows = {
+            "문제_분석": ["개념_적용", "논리_추론"],
+            "개념_적용": ["논리_추론", "결론_도출"],
+            "논리_추론": ["결론_도출", "논리_추론"],
+            "결론_도출": []
+        }
+        
+        return curr_type in valid_flows.get(prev_type, [])
+    
+    def _check_advanced_features(self, reasoning_chain) -> bool:
+        """고급 기능 사용 여부 확인"""
+        try:
+            # 다단계 추론
+            if len(reasoning_chain.steps) >= 4:
+                return True
+            
+            # 다양한 추론 타입 사용
+            reasoning_types = set(step.reasoning_type for step in reasoning_chain.steps)
+            if len(reasoning_types) >= 3:
+                return True
+            
+            # 높은 신뢰도의 일관성
+            if (reasoning_chain.overall_confidence > 0.8 and 
+                reasoning_chain.verification_result.get("is_consistent", False)):
+                return True
+            
+            return False
+            
+        except Exception:
+            return False
+    
+    def _identify_strengths(self, reasoning_chain, scores: Dict) -> List[str]:
+        """강점 식별"""
+        strengths = []
+        
+        try:
+            if scores["logical"] > 0.8:
+                strengths.append("높은 논리적 일관성")
+            
+            if scores["evidence"] > 0.7:
+                strengths.append("풍부한 증거 제시")
+            
+            if scores["depth"] > 0.7:
+                strengths.append("충분한 추론 깊이")
+            
+            if scores["conclusion"] > 0.8:
+                strengths.append("타당한 결론 도출")
+            
+            if scores["coherence"] > 0.7:
+                strengths.append("단계별 연결성 우수")
+            
+            if len(reasoning_chain.steps) >= 4:
+                strengths.append("다단계 분석")
+            
+        except Exception:
+            pass
+        
+        return strengths
+    
+    def _identify_weaknesses(self, reasoning_chain, scores: Dict) -> List[str]:
+        """약점 식별"""
+        weaknesses = []
+        
+        try:
+            if scores["logical"] < 0.5:
+                weaknesses.append("논리적 일관성 부족")
+            
+            if scores["evidence"] < 0.4:
+                weaknesses.append("증거 부족")
+            
+            if scores["depth"] < 0.4:
+                weaknesses.append("추론 깊이 부족")
+            
+            if scores["conclusion"] < 0.5:
+                weaknesses.append("결론 타당성 부족")
+            
+            if scores["coherence"] < 0.5:
+                weaknesses.append("단계별 연결성 부족")
+            
+            if len(reasoning_chain.steps) < 2:
+                weaknesses.append("추론 단계 부족")
+            
+        except Exception:
+            pass
+        
+        return weaknesses
+
 
 def main():
     """메인 함수"""
@@ -800,6 +1356,7 @@ def main():
     finally:
         if runner:
             runner.cleanup()
+
 
 if __name__ == "__main__":
     main()
