@@ -684,7 +684,7 @@ class DataProcessor:
         english_ratio = english_chars / total_chars
         
         if english_ratio > MAX_ENGLISH_RATIO:
-            return False, korean_ratio * (1 - english_ratio * 0.5))
+            return False, korean_ratio * (1 - english_ratio * 0.5)
         
         quality_score = korean_ratio * 0.8 + validation_score / len(self.validation_rules) * 0.2
         
