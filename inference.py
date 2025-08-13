@@ -164,7 +164,16 @@ class FinancialAIInference:
             "cot_prompts_used": 0,
             "reasoning_successful": 0,
             "reasoning_failed": 0,
-            "hybrid_approach_used": 0
+            "hybrid_approach_used": 0,
+            "reasoning_priority_answers": 0,
+            "model_override_reasoning": 0,
+            "cot_successful": 0,
+            "cot_failed": 0,
+            "reasoning_time": [],
+            "cot_generation_time": [],
+            "reasoning_chain_lengths": [],
+            "verification_passed": 0,
+            "verification_failed": 0
         }
     
     def _build_enhanced_fallback_templates(self) -> Dict[str, List[str]]:
@@ -174,29 +183,25 @@ class FinancialAIInference:
                 "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결과 시스템 리소스 사용 증가가 있습니다.",
                 "악성코드 탐지를 위해 실시간 모니터링과 행위 기반 분석 기술을 활용해야 합니다. 정기적인 보안 점검과 업데이트를 통해 위협에 대응해야 합니다.",
                 "사이버 공격에 대응하기 위해 침입탐지시스템과 방화벽 등 다층적 보안체계를 구축해야 합니다. 보안관제센터를 통한 24시간 모니터링이 필요합니다.",
-                "피싱과 스미싱 등 사회공학 공격에 대한 사용자 교육과 기술적 차단 조치가 필요합니다. 정기적인 보안교육을 통해 보안 의식을 제고해야 합니다.",
-                "지능형 지속 위협에 대응하기 위해 위협 정보 공유와 협력 체계를 구축해야 합니다. 국내외 보안기관과의 협력을 통해 대응역량을 강화해야 합니다."
+                "피싱과 스미싱 등 사회공학 공격에 대한 사용자 교육과 기술적 차단 조치가 필요합니다. 정기적인 보안교육을 통해 보안 의식을 제고해야 합니다."
             ],
             "개인정보보호": [
                 "개인정보보호법에 따라 개인정보의 안전한 관리와 정보주체의 권리 보호를 위한 체계적인 조치가 필요합니다. 개인정보 처리방침을 수립하고 공개해야 합니다.",
                 "개인정보 처리 시 수집, 이용, 제공의 최소화 원칙을 준수하고 목적 달성 후 지체 없이 파기해야 합니다. 정보주체의 동의를 받아 처리해야 합니다.",
                 "정보주체의 열람, 정정, 삭제 요구권을 보장하고 안전성 확보조치를 통해 개인정보를 보호해야 합니다. 개인정보보호책임자를 지정해야 합니다.",
-                "민감정보와 고유식별정보는 별도의 동의를 받아 처리하며 엄격한 보안조치를 적용해야 합니다. 개인정보 영향평가를 실시해야 합니다.",
-                "개인정보 유출 시 즉시 신고하고 정보주체에게 통지해야 합니다. 손해배상 책임과 과징금 부과에 대비한 관리체계가 필요합니다."
+                "민감정보와 고유식별정보는 별도의 동의를 받아 처리하며 엄격한 보안조치를 적용해야 합니다. 개인정보 영향평가를 실시해야 합니다."
             ],
             "전자금융": [
                 "전자금융거래법에 따라 전자적 장치를 통한 금융거래의 안전성을 확보하고 이용자를 보호해야 합니다. 접근매체의 안전한 관리가 중요합니다.",
                 "접근매체의 안전한 관리와 거래내역 통지, 오류정정 절차를 구축해야 합니다. 전자서명과 전자인증서를 통한 본인인증이 필요합니다.",
                 "전자금융거래의 신뢰성 보장을 위해 적절한 보안조치와 이용자 보호 체계가 필요합니다. 거래 무결성과 기밀성을 보장해야 합니다.",
-                "오류 발생 시 신속한 정정 절차와 손해배상 체계를 마련하여 이용자 보호에 만전을 기해야 합니다. 분쟁처리 절차를 마련해야 합니다.",
-                "전자금융업 허가를 받고 관련 법령을 준수하며 금융감독원의 감독을 받아야 합니다. 이용자 자금보호를 위한 조치가 필요합니다."
+                "오류 발생 시 신속한 정정 절차와 손해배상 체계를 마련하여 이용자 보호에 만전을 기해야 합니다. 분쟁처리 절차를 마련해야 합니다."
             ],
             "정보보안": [
                 "정보보안 관리체계를 통해 체계적인 보안 관리와 지속적인 위험 평가를 수행해야 합니다. ISMS 인증 취득을 통해 보안관리 수준을 향상시켜야 합니다.",
                 "정보자산의 기밀성, 무결성, 가용성을 보장하기 위한 종합적인 보안대책이 필요합니다. 정보자산 분류와 중요도에 따른 차등보호가 필요합니다.",
                 "보안정책 수립, 접근통제, 암호화 등 다층적 보안체계를 구축해야 합니다. 물리적, 기술적, 관리적 보안조치를 종합적으로 적용해야 합니다.",
-                "보안사고 예방과 대응을 위한 보안관제 체계와 침입탐지 시스템을 운영해야 합니다. 보안사고 발생 시 즉시 대응할 수 있는 체계가 필요합니다.",
-                "정기적인 보안교육과 보안점검을 통해 보안 의식을 제고하고 취약점을 개선해야 합니다. 보안컨설팅과 모의해킹을 통한 보안점검이 필요합니다."
+                "보안사고 예방과 대응을 위한 보안관제 체계와 침입탐지 시스템을 운영해야 합니다. 보안사고 발생 시 즉시 대응할 수 있는 체계가 필요합니다."
             ]
         }
     
@@ -367,11 +372,13 @@ class FinancialAIInference:
             return "정보보안"
     
     def _apply_reasoning_engine(self, question: str, structure: Dict, analysis: Dict) -> Tuple[Optional[str], float]:
-        """추론 엔진 적용"""
+        """추론 엔진 적용 - 완전히 개선된 버전"""
         if not self.reasoning_engine:
             return None, 0.0
         
         try:
+            reasoning_start_time = time.time()
+            
             cache_key = hashlib.md5(question[:150].encode('utf-8')).hexdigest()[:12]
             
             if cache_key in self.reasoning_cache:
@@ -385,24 +392,37 @@ class FinancialAIInference:
                 domain_analysis=analysis
             )
             
+            reasoning_time = time.time() - reasoning_start_time
+            self.stats["reasoning_time"].append(reasoning_time)
+            self.stats["reasoning_chain_lengths"].append(len(reasoning_chain.steps))
+            
             # 검증된 추론인지 확인
             if reasoning_chain.verification_result.get("is_consistent", False):
                 confidence = reasoning_chain.overall_confidence
                 
                 if confidence >= REASONING_THRESHOLD:
                     self.stats["reasoning_successful"] += 1
+                    self.stats["verification_passed"] += 1
+                    
                     result = (reasoning_chain.final_answer, confidence)
                     
                     # 캐시 저장
                     self._manage_reasoning_cache()
                     self.reasoning_cache[cache_key] = result
                     
+                    if self.verbose:
+                        print(f"추론 성공: 신뢰도 {confidence:.2f}, 단계 수 {len(reasoning_chain.steps)}")
+                    
                     return result
                 else:
                     self.stats["reasoning_failed"] += 1
+                    self.stats["verification_failed"] += 1
                     return None, 0.0
             else:
                 self.stats["reasoning_failed"] += 1
+                self.stats["verification_failed"] += 1
+                if self.verbose:
+                    print(f"추론 검증 실패: 일관성 점수 {reasoning_chain.verification_result.get('consistency_score', 0.0):.2f}")
                 return None, 0.0
                 
         except Exception as e:
@@ -457,7 +477,7 @@ class FinancialAIInference:
                 del self.pattern_analysis_cache[key]
     
     def process_question(self, question: str, question_id: str, idx: int) -> str:
-        """질문 처리"""
+        """질문 처리 - 완전히 개선된 버전"""
         start_time = time.time()
         
         try:
@@ -474,7 +494,8 @@ class FinancialAIInference:
             
             self._debug_log(f"문제 {idx}: 유형={structure['question_type']}")
             
-            answer = self._process_question_by_type(question, is_mc, structure, analysis)
+            # 개선된 처리 프로세스
+            answer = self._process_question_with_integrated_reasoning(question, structure, analysis)
             
             processing_time = time.time() - start_time
             self.stats["processing_times"].append(processing_time)
@@ -493,156 +514,184 @@ class FinancialAIInference:
             fallback_type = structure.get("question_type", "multiple_choice") if 'structure' in locals() else "multiple_choice"
             return self._get_diverse_fallback_answer(question, fallback_type)
     
-    def _process_question_by_type(self, question: str, is_mc: bool, structure: Dict, analysis: Dict) -> str:
-        """유형별 질문 처리 (추론 엔진 통합)"""
-        if is_mc:
-            return self._process_multiple_choice_with_reasoning(question, structure, analysis)
-        else:
-            return self._process_subjective_with_reasoning(question, structure, analysis)
+    def _process_question_with_integrated_reasoning(self, question: str, structure: Dict, analysis: Dict) -> str:
+        """통합된 추론 시스템을 사용한 질문 처리"""
+        
+        # 1단계: 추론 엔진 우선 적용
+        reasoning_answer, reasoning_confidence = self._apply_reasoning_engine(question, structure, analysis)
+        
+        if reasoning_answer and reasoning_confidence > REASONING_THRESHOLD:
+            # 추론 엔진 결과 검증
+            if structure["question_type"] == "multiple_choice":
+                if reasoning_answer.isdigit() and 1 <= int(reasoning_answer) <= 5:
+                    self.stats["reasoning_engine_usage"] += 1
+                    self.stats["reasoning_priority_answers"] += 1
+                    self.stats["high_confidence_answers"] += 1
+                    self.stats["answer_distribution"][reasoning_answer] += 1
+                    return reasoning_answer
+            else:
+                is_valid, quality = self._validate_korean_quality_strict(reasoning_answer, structure["question_type"])
+                if is_valid and quality > QUALITY_THRESHOLD:
+                    self.stats["reasoning_engine_usage"] += 1
+                    self.stats["reasoning_priority_answers"] += 1
+                    self.stats["high_confidence_answers"] += 1
+                    return reasoning_answer
+        
+        # 2단계: CoT 프롬프트를 통한 모델 생성
+        return self._process_with_cot_prompt(question, structure, analysis, reasoning_answer, reasoning_confidence)
     
-    def _process_multiple_choice_with_reasoning(self, question: str, structure: Dict, analysis: Dict) -> str:
-        """추론 엔진을 활용한 객관식 처리"""
+    def _process_with_cot_prompt(self, question: str, structure: Dict, analysis: Dict, 
+                                reasoning_answer: Optional[str], reasoning_confidence: float) -> str:
+        """CoT 프롬프트를 활용한 처리"""
         
-        # 1단계: 추론 엔진 적용
-        reasoning_answer, reasoning_conf = self._apply_reasoning_engine(question, structure, analysis)
-        
-        if reasoning_answer and reasoning_conf > REASONING_THRESHOLD:
-            if reasoning_answer.isdigit() and 1 <= int(reasoning_answer) <= 5:
-                self.stats["reasoning_engine_usage"] += 1
-                self.stats["high_confidence_answers"] += 1
-                self.stats["answer_distribution"][reasoning_answer] += 1
-                return reasoning_answer
-        
-        # 2단계: 패턴 기반 힌트 적용
-        pattern_answer, pattern_conf = self._apply_pattern_based_answer_safe(question, structure)
-        
-        if pattern_answer and pattern_conf > 0.60:
-            self.stats["smart_hints_used"] += 1
-            self.stats["high_confidence_answers"] += 1
-            self.stats["answer_distribution"][pattern_answer] += 1
-            return pattern_answer
-        
-        # 3단계: Chain-of-Thought 프롬프트 활용
-        if self.reasoning_engine or pattern_conf > 0.4:
+        try:
+            # CoT 프롬프트 생성 및 사용
+            cot_start_time = time.time()
+            
             cot_prompt = self.prompt_engineer.create_cot_prompt(
                 question, structure["question_type"], analysis
             )
             self.stats["cot_prompts_used"] += 1
-        else:
-            cot_prompt = self.prompt_engineer.create_korean_reinforced_prompt(
-                question, structure["question_type"]
+            
+            result = self.model_handler.generate_response(
+                prompt=cot_prompt,
+                question_type=structure["question_type"],
+                max_attempts=3,
+                question_structure=structure
             )
-        
-        result = self.model_handler.generate_response(
-            prompt=cot_prompt,
-            question_type=structure["question_type"],
-            max_attempts=3,
-            question_structure=structure
-        )
-        
-        if self.model_handler.is_finetuned:
-            self.stats["finetuned_usage"] += 1
+            
+            cot_time = time.time() - cot_start_time
+            self.stats["cot_generation_time"].append(cot_time)
+            
+            if self.model_handler.is_finetuned:
+                self.stats["finetuned_usage"] += 1
+            
+            # 모델 결과 처리
+            if structure["question_type"] == "multiple_choice":
+                return self._handle_mc_cot_result(result, reasoning_answer, reasoning_confidence, structure)
+            else:
+                return self._handle_subj_cot_result(result, reasoning_answer, reasoning_confidence, structure, question)
+                
+        except Exception as e:
+            if self.verbose:
+                print(f"CoT 처리 오류: {e}")
+            self.stats["cot_failed"] += 1
+            
+            # 추론 결과로 복구 시도
+            if reasoning_answer and reasoning_confidence > 0.4:
+                self.stats["hybrid_approach_used"] += 1
+                if structure["question_type"] == "multiple_choice":
+                    self.stats["answer_distribution"][reasoning_answer] += 1
+                return reasoning_answer
+            
+            # 최종 폴백
+            return self._get_diverse_fallback_answer(question, structure["question_type"], structure)
+    
+    def _handle_mc_cot_result(self, result, reasoning_answer: Optional[str], 
+                             reasoning_confidence: float, structure: Dict) -> str:
+        """객관식 CoT 결과 처리"""
         
         extracted = self.data_processor.extract_mc_answer_fast(result.response)
         
         if extracted and extracted.isdigit() and 1 <= int(extracted) <= 5:
             self.stats["model_generation_success"] += 1
-            self.stats["pattern_extraction_success"] += 1
-            answer = extracted
-            self.stats["answer_distribution"][answer] += 1
+            self.stats["cot_successful"] += 1
+            
+            # 추론 결과와 모델 결과 비교
+            if reasoning_answer and reasoning_answer != extracted:
+                if reasoning_confidence > result.confidence:
+                    self.stats["reasoning_priority_answers"] += 1
+                    answer = reasoning_answer
+                else:
+                    self.stats["model_override_reasoning"] += 1
+                    answer = extracted
+            else:
+                answer = extracted
             
             if result.confidence > 0.7:
                 self.stats["high_confidence_answers"] += 1
+            
+            self.stats["answer_distribution"][answer] += 1
+            return answer
         else:
-            # 4단계: 하이브리드 접근법
-            if reasoning_answer and reasoning_conf > 0.4:
+            self.stats["cot_failed"] += 1
+            
+            # 추론 결과로 복구
+            if reasoning_answer and reasoning_confidence > 0.3:
                 self.stats["hybrid_approach_used"] += 1
-                answer = reasoning_answer
-                self.stats["answer_distribution"][answer] += 1
-            elif pattern_answer and pattern_conf > 0.35:
-                self.stats["smart_hints_used"] += 1
-                answer = pattern_answer
-                self.stats["answer_distribution"][answer] += 1
-            else:
-                self.stats["fallback_used"] += 1
-                answer = self._get_diverse_fallback_answer(question, "multiple_choice", structure)
-        
-        return answer
-    
-    def _process_subjective_with_reasoning(self, question: str, structure: Dict, analysis: Dict) -> str:
-        """추론 엔진을 활용한 주관식 처리"""
-        
-        # 1단계: 추론 엔진 적용
-        reasoning_answer, reasoning_conf = self._apply_reasoning_engine(question, structure, analysis)
-        
-        if reasoning_answer and reasoning_conf > REASONING_THRESHOLD:
-            is_valid, quality = self._validate_korean_quality_strict(reasoning_answer, structure["question_type"])
-            if is_valid and quality > QUALITY_THRESHOLD:
-                self.stats["reasoning_engine_usage"] += 1
-                self.stats["high_confidence_answers"] += 1
+                self.stats["answer_distribution"][reasoning_answer] += 1
                 return reasoning_answer
-        
-        # 2단계: CoT 프롬프트로 모델 생성
-        if reasoning_answer or self.reasoning_engine:
-            prompt = self.prompt_engineer.create_cot_prompt(
-                question, structure["question_type"], analysis
-            )
-            self.stats["cot_prompts_used"] += 1
-        else:
-            prompt = self.prompt_engineer.create_korean_reinforced_prompt(
-                question, structure["question_type"]
-            )
-        
-        result = self.model_handler.generate_response(
-            prompt=prompt,
-            question_type=structure["question_type"],
-            max_attempts=3,
-            question_structure=structure
-        )
-        
-        if self.model_handler.is_finetuned:
-            self.stats["finetuned_usage"] += 1
+            
+            # 패턴 기반 복구
+            pattern_answer, pattern_conf = self._apply_pattern_based_answer_safe(extracted or "", structure)
+            if pattern_answer and pattern_conf > 0.4:
+                self.stats["smart_hints_used"] += 1
+                self.stats["answer_distribution"][pattern_answer] += 1
+                return pattern_answer
+            
+            # 최종 폴백
+            self.stats["fallback_used"] += 1
+            fallback_answer = self._get_diverse_fallback_answer("", "multiple_choice", structure)
+            return fallback_answer
+    
+    def _handle_subj_cot_result(self, result, reasoning_answer: Optional[str], 
+                               reasoning_confidence: float, structure: Dict, question: str) -> str:
+        """주관식 CoT 결과 처리"""
         
         answer = self.data_processor._clean_korean_text(result.response)
         
+        # 한국어 품질 검증
         is_valid, quality = self._validate_korean_quality_strict(answer, structure["question_type"])
         self.stats["quality_scores"].append(quality)
         
-        if not is_valid or quality < QUALITY_THRESHOLD:
-            self.stats["korean_failures"] += 1
+        if is_valid and quality > QUALITY_THRESHOLD and len(answer) >= MIN_ANSWER_LENGTH:
+            self.stats["model_generation_success"] += 1
+            self.stats["cot_successful"] += 1
             
-            # 3단계: 추론 엔진 답변으로 대체 시도
-            if reasoning_answer and reasoning_conf > 0.5:
+            # 추론 결과와 모델 결과 비교
+            if reasoning_answer and reasoning_confidence > 0.5:
+                reason_valid, reason_quality = self._validate_korean_quality_strict(reasoning_answer, structure["question_type"])
+                if reason_valid and reason_quality > quality:
+                    self.stats["reasoning_priority_answers"] += 1
+                    final_answer = reasoning_answer
+                else:
+                    self.stats["model_override_reasoning"] += 1
+                    final_answer = answer
+            else:
+                final_answer = answer
+            
+            if quality > 0.8:
+                self.stats["high_confidence_answers"] += 1
+            
+            # 길이 조정
+            if len(final_answer) > MAX_ANSWER_LENGTH:
+                final_answer = final_answer[:MAX_ANSWER_LENGTH-3] + "..."
+            
+            # 학습 시스템 업데이트
+            if self.enable_learning and result.confidence > CONFIDENCE_THRESHOLD:
+                self.learning_system.learn_from_prediction(
+                    question, final_answer, result.confidence,
+                    structure["question_type"], analysis.get("domain", ["일반"])
+                )
+                self.stats["learned"] += 1
+            
+            return final_answer
+        else:
+            self.stats["korean_failures"] += 1
+            self.stats["cot_failed"] += 1
+            
+            # 추론 결과로 복구 시도
+            if reasoning_answer and reasoning_confidence > 0.4:
                 reason_valid, reason_quality = self._validate_korean_quality_strict(reasoning_answer, structure["question_type"])
                 if reason_valid and reason_quality >= quality:
                     self.stats["hybrid_approach_used"] += 1
                     self.stats["korean_fixes"] += 1
                     return reasoning_answer
             
-            # 4단계: 폴백 사용
-            answer = self._get_diverse_fallback_answer(question, structure["question_type"], structure)
+            # 최종 폴백
+            self.stats["fallback_used"] += 1
             self.stats["korean_fixes"] += 1
-            self.stats["fallback_used"] += 1
-        else:
-            self.stats["model_generation_success"] += 1
-            if quality > 0.8:
-                self.stats["high_confidence_answers"] += 1
-        
-        if len(answer) < MIN_ANSWER_LENGTH:
-            answer = self._get_diverse_fallback_answer(question, structure["question_type"], structure)
-            self.stats["fallback_used"] += 1
-        elif len(answer) > MAX_ANSWER_LENGTH:
-            answer = answer[:MAX_ANSWER_LENGTH-3] + "..."
-        
-        # 학습 시스템 업데이트
-        if self.enable_learning and result.confidence > CONFIDENCE_THRESHOLD:
-            self.learning_system.learn_from_prediction(
-                question, answer, result.confidence,
-                structure["question_type"], analysis.get("domain", ["일반"])
-            )
-            self.stats["learned"] += 1
-        
-        return answer
+            return self._get_diverse_fallback_answer(question, structure["question_type"], structure)
     
     def _manage_memory(self) -> None:
         """메모리 관리"""
@@ -873,6 +922,24 @@ class FinancialAIInference:
             print(f"  추론 성공: {self.stats['reasoning_successful']}회")
             print(f"  추론 실패: {self.stats['reasoning_failed']}회")
             print(f"  하이브리드 접근: {self.stats['hybrid_approach_used']}회")
+            print(f"  추론 우선 답변: {self.stats['reasoning_priority_answers']}회")
+            print(f"  모델 우선 답변: {self.stats['model_override_reasoning']}회")
+            print(f"  CoT 성공: {self.stats['cot_successful']}회")
+            print(f"  CoT 실패: {self.stats['cot_failed']}회")
+            print(f"  검증 통과: {self.stats['verification_passed']}회")
+            print(f"  검증 실패: {self.stats['verification_failed']}회")
+            
+            if self.stats['reasoning_time']:
+                avg_reasoning_time = np.mean(self.stats['reasoning_time'])
+                print(f"  평균 추론 시간: {avg_reasoning_time:.3f}초")
+            
+            if self.stats['cot_generation_time']:
+                avg_cot_time = np.mean(self.stats['cot_generation_time'])
+                print(f"  평균 CoT 생성 시간: {avg_cot_time:.3f}초")
+            
+            if self.stats['reasoning_chain_lengths']:
+                avg_chain_length = np.mean(self.stats['reasoning_chain_lengths'])
+                print(f"  평균 추론 체인 길이: {avg_chain_length:.1f}단계")
             
             reasoning_success_rate = 0
             if (self.stats['reasoning_successful'] + self.stats['reasoning_failed']) > 0:
@@ -951,7 +1018,16 @@ class FinancialAIInference:
                 "cot_prompts_used": self.stats["cot_prompts_used"],
                 "reasoning_successful": self.stats["reasoning_successful"],
                 "reasoning_failed": self.stats["reasoning_failed"],
-                "hybrid_approach_used": self.stats["hybrid_approach_used"]
+                "hybrid_approach_used": self.stats["hybrid_approach_used"],
+                "reasoning_priority_answers": self.stats["reasoning_priority_answers"],
+                "model_override_reasoning": self.stats["model_override_reasoning"],
+                "cot_successful": self.stats["cot_successful"],
+                "cot_failed": self.stats["cot_failed"],
+                "verification_passed": self.stats["verification_passed"],
+                "verification_failed": self.stats["verification_failed"],
+                "avg_reasoning_time": np.mean(self.stats["reasoning_time"]) if self.stats["reasoning_time"] else 0,
+                "avg_cot_generation_time": np.mean(self.stats["cot_generation_time"]) if self.stats["cot_generation_time"] else 0,
+                "avg_reasoning_chain_length": np.mean(self.stats["reasoning_chain_lengths"]) if self.stats["reasoning_chain_lengths"] else 0
             },
             "korean_quality": {
                 "failures": self.stats["korean_failures"],
