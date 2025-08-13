@@ -14,7 +14,9 @@ import re
 import time
 import gc
 import os
-from typing import List, Dict, Optional, Tuple
+import random
+import hashlib
+from typing import List, Dict, Optional, Tuple, Union
 from dataclasses import dataclass
 from transformers import (
     AutoTokenizer, 
@@ -25,6 +27,15 @@ from transformers import (
 from peft import PeftModel
 import warnings
 warnings.filterwarnings("ignore")
+
+# 상수 정의
+DEFAULT_MAX_MEMORY_GB = 22
+DEFAULT_CACHE_SIZE = 400
+DEFAULT_MC_MAX_TOKENS = 15
+DEFAULT_SUBJ_MAX_TOKENS = 250
+MEMORY_CLEANUP_INTERVAL = 20
+CACHE_CLEANUP_INTERVAL = 40
+MAX_PROMPT_LENGTH = 1200
 
 @dataclass
 class InferenceResult:
@@ -38,8 +49,8 @@ class InferenceResult:
 class ModelHandler:
     
     def __init__(self, model_name: str, device: str = "cuda", 
-                 load_in_4bit: bool = True, max_memory_gb: int = 22, 
-                 verbose: bool = False, finetuned_path: str = None):
+                 load_in_4bit: bool = True, max_memory_gb: int = DEFAULT_MAX_MEMORY_GB, 
+                 verbose: bool = False, finetuned_path: Optional[str] = None):
         self.model_name = model_name
         self.device = device
         self.max_memory_gb = max_memory_gb
@@ -47,80 +58,22 @@ class ModelHandler:
         self.finetuned_path = finetuned_path
         self.is_finetuned = False
         
+        # GPU 사용 가능 여부 초기화 시 한 번만 체크
+        self.cuda_available = torch.cuda.is_available()
+        
         if self.verbose:
             print(f"모델 로딩: {model_name}")
             if finetuned_path:
                 print(f"파인튜닝 모델: {finetuned_path}")
         
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_name,
-            trust_remote_code=True,
-            use_fast=True
-        )
-        
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
-        
-        model_kwargs = {
-            "trust_remote_code": True,
-            "torch_dtype": torch.bfloat16,
-            "device_map": "auto",
-            "low_cpu_mem_usage": True,
-        }
-        
-        if load_in_4bit and torch.cuda.is_available():
-            quantization_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.bfloat16,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_use_double_quant=True,
-            )
-            model_kwargs["quantization_config"] = quantization_config
-            
-        try:
-            import flash_attn
-            model_kwargs["attn_implementation"] = "flash_attention_2"
-            if self.verbose:
-                print("Flash Attention 2 활성화")
-        except ImportError:
-            if hasattr(torch.nn.functional, 'scaled_dot_product_attention'):
-                model_kwargs["attn_implementation"] = "sdpa"
-                if self.verbose:
-                    print("SDPA Attention 활성화")
-        
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            **model_kwargs
-        )
-        
-        if finetuned_path and os.path.exists(finetuned_path):
-            try:
-                self.model = PeftModel.from_pretrained(self.model, finetuned_path)
-                self.is_finetuned = True
-                if self.verbose:
-                    print("파인튜닝된 모델 로드 완료")
-            except Exception as e:
-                if self.verbose:
-                    print(f"파인튜닝 모델 로드 실패: {e}")
-                    print("기본 모델 사용")
-        
-        self.model.eval()
-        
-        if hasattr(torch, 'compile') and torch.__version__ >= "2.0.0":
-            try:
-                self.model = torch.compile(self.model, mode="reduce-overhead")
-                if self.verbose:
-                    print("Torch Compile 활성화")
-            except Exception:
-                if self.verbose:
-                    print("Torch Compile 실패, 기본 모델 사용")
-        
+        self._initialize_tokenizer()
+        self._initialize_model(load_in_4bit)
         self._prepare_korean_optimization()
         
+        # 캐시 및 통계 초기화
         self.response_cache = {}
         self.cache_hits = 0
-        self.max_cache_size = 400
+        self.max_cache_size = DEFAULT_CACHE_SIZE
         self.memory_cleanup_counter = 0
         
         self.generation_stats = {
@@ -138,9 +91,91 @@ class ModelHandler:
             model_type = "파인튜닝된 모델" if self.is_finetuned else "기본 모델"
             print(f"{model_type} 로드 완료")
     
-    def _prepare_korean_optimization(self):
+    def _initialize_tokenizer(self) -> None:
+        """토크나이저 초기화"""
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_name,
+                trust_remote_code=True,
+                use_fast=True
+            )
+            
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+                self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+                
+        except Exception as e:
+            raise RuntimeError(f"토크나이저 로딩 실패: {e}")
+    
+    def _initialize_model(self, load_in_4bit: bool) -> None:
+        """모델 초기화"""
+        model_kwargs = {
+            "trust_remote_code": True,
+            "torch_dtype": torch.bfloat16,
+            "device_map": "auto",
+            "low_cpu_mem_usage": True,
+        }
+        
+        # 양자화 설정
+        if load_in_4bit and self.cuda_available:
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+            )
+            model_kwargs["quantization_config"] = quantization_config
+        
+        # Attention 구현 설정
+        try:
+            import flash_attn
+            model_kwargs["attn_implementation"] = "flash_attention_2"
+            if self.verbose:
+                print("Flash Attention 2 활성화")
+        except ImportError:
+            if hasattr(torch.nn.functional, 'scaled_dot_product_attention'):
+                model_kwargs["attn_implementation"] = "sdpa"
+                if self.verbose:
+                    print("SDPA Attention 활성화")
+        
+        # 기본 모델 로딩
+        try:
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_name,
+                **model_kwargs
+            )
+        except Exception as e:
+            raise RuntimeError(f"기본 모델 로딩 실패: {e}")
+        
+        # 파인튜닝 모델 로딩
+        if self.finetuned_path and os.path.exists(self.finetuned_path):
+            try:
+                self.model = PeftModel.from_pretrained(self.model, self.finetuned_path)
+                self.is_finetuned = True
+                if self.verbose:
+                    print("파인튜닝된 모델 로드 완료")
+            except Exception as e:
+                if self.verbose:
+                    print(f"파인튜닝 모델 로드 실패: {e}")
+                    print("기본 모델 사용")
+        
+        self.model.eval()
+        
+        # Torch Compile 시도
+        if hasattr(torch, 'compile') and torch.__version__ >= "2.0.0":
+            try:
+                self.model = torch.compile(self.model, mode="reduce-overhead")
+                if self.verbose:
+                    print("Torch Compile 활성화")
+            except Exception:
+                if self.verbose:
+                    print("Torch Compile 실패, 기본 모델 사용")
+    
+    def _prepare_korean_optimization(self) -> None:
+        """한국어 최적화를 위한 불용어 설정"""
         self.bad_words_ids = []
         
+        # 문제가 되는 중국어 패턴들
         problematic_patterns = [
             "金融", "交易", "安全", "管理", "個人", "資訊", "電子", "系統",
             "保護", "認證", "加密", "網路", "軟件", "硬件", "软件", "个人",
@@ -152,23 +187,24 @@ class ModelHandler:
                 tokens = self.tokenizer.encode(pattern, add_special_tokens=False)
                 if tokens and len(tokens) <= 3:
                     self.bad_words_ids.append(tokens)
-            except:
+            except Exception:
                 continue
         
+        # 특수 기호들
         special_symbols = ["①", "②", "③", "④", "⑤", "➀", "➁", "➂", "➃", "➄", "bo", "Bo", "BO"]
         for symbol in special_symbols:
             try:
                 tokens = self.tokenizer.encode(symbol, add_special_tokens=False)
                 if tokens:
                     self.bad_words_ids.append(tokens)
-            except:
+            except Exception:
                 continue
     
-    def _create_korean_optimized_prompt(self, prompt: str, question_type: str, question_structure: Dict = None) -> str:
+    def _create_korean_optimized_prompt(self, prompt: str, question_type: str, 
+                                       question_structure: Optional[Dict] = None) -> str:
         """개선된 프롬프트 생성 - 선택지 내용 포함"""
         
         if question_type == "multiple_choice":
-            # 선택지 내용 추출
             choices = question_structure.get("choices", []) if question_structure else []
             has_negative = question_structure.get("has_negative", False) if question_structure else False
             
@@ -233,11 +269,12 @@ class ModelHandler:
         return korean_prefix + prompt + korean_suffix
     
     def generate_response(self, prompt: str, question_type: str,
-                         max_attempts: int = 3, question_structure: Dict = None) -> InferenceResult:
+                         max_attempts: int = 3, question_structure: Optional[Dict] = None) -> InferenceResult:
         
         start_time = time.time()
         
-        cache_key = hash(prompt[:100])
+        # 캐시 키 충돌 방지를 위한 개선된 해시
+        cache_key = hashlib.md5((prompt + question_type).encode('utf-8')).hexdigest()[:16]
         if cache_key in self.response_cache:
             self.cache_hits += 1
             cached = self.response_cache[cache_key]
@@ -253,48 +290,23 @@ class ModelHandler:
         
         for attempt in range(max_attempts):
             try:
-                if question_type == "multiple_choice":
-                    gen_config = GenerationConfig(
-                        do_sample=True,
-                        temperature=0.3 + (attempt * 0.1),  # 0.4에서 0.3으로 낮춤
-                        top_p=0.75,  # 0.8에서 0.75로 낮춤
-                        top_k=20,  # 25에서 20으로 낮춤
-                        max_new_tokens=15,  # 20에서 15로 줄임
-                        repetition_penalty=1.15,  # 1.1에서 1.15로 상향
-                        pad_token_id=self.tokenizer.pad_token_id,
-                        eos_token_id=self.tokenizer.eos_token_id,
-                        use_cache=True,
-                        bad_words_ids=self.bad_words_ids[:10] if self.bad_words_ids else None
-                    )
-                else:
-                    gen_config = GenerationConfig(
-                        do_sample=True,
-                        temperature=0.5 + (attempt * 0.1),  # 0.6에서 0.5로 낮춤
-                        top_p=0.80,  # 0.85에서 0.80으로 낮춤
-                        top_k=30,  # 35에서 30으로 낮춤
-                        max_new_tokens=250,  # 280에서 250으로 줄임
-                        repetition_penalty=1.1,  # 1.05에서 1.1로 상향
-                        pad_token_id=self.tokenizer.pad_token_id,
-                        eos_token_id=self.tokenizer.eos_token_id,
-                        use_cache=True,
-                        bad_words_ids=self.bad_words_ids[:15] if self.bad_words_ids else None
-                    )
+                gen_config = self._create_generation_config(question_type, attempt)
                 
                 inputs = self.tokenizer(
                     optimized_prompt,
                     return_tensors="pt",
                     truncation=True,
-                    max_length=1200  # 1000에서 1200으로 증가
+                    max_length=MAX_PROMPT_LENGTH
                 ).to(self.model.device)
                 
                 with torch.no_grad():
-                    with torch.cuda.amp.autocast(enabled=True, dtype=torch.bfloat16):
+                    with torch.cuda.amp.autocast(enabled=self.cuda_available, dtype=torch.bfloat16):
                         try:
                             outputs = self.model.generate(
                                 **inputs,
                                 generation_config=gen_config
                             )
-                        except Exception as gen_error:
+                        except (RuntimeError, ValueError, torch.cuda.OutOfMemoryError) as gen_error:
                             generation_errors += 1
                             if self.verbose:
                                 print(f"생성 오류 (시도 {attempt+1}): {str(gen_error)[:100]}")
@@ -311,13 +323,13 @@ class ModelHandler:
                     extracted_answer = self._extract_mc_answer_enhanced(cleaned_response)
                     
                     if extracted_answer and extracted_answer.isdigit() and 1 <= int(extracted_answer) <= 5:
-                        confidence = 0.92 - (attempt * 0.05)  # 0.90에서 0.92로 상향
+                        confidence = 0.92 - (attempt * 0.05)
                         if self.is_finetuned:
                             confidence += 0.05
                         result = InferenceResult(
                             response=extracted_answer,
                             confidence=confidence,
-                            reasoning_quality=0.85,  # 0.8에서 0.85로 상향
+                            reasoning_quality=0.85,
                             analysis_depth=2,
                             korean_quality=1.0,
                             inference_time=time.time() - start_time
@@ -371,7 +383,37 @@ class ModelHandler:
         
         return best_result
     
+    def _create_generation_config(self, question_type: str, attempt: int) -> GenerationConfig:
+        """생성 설정 생성"""
+        if question_type == "multiple_choice":
+            return GenerationConfig(
+                do_sample=True,
+                temperature=0.3 + (attempt * 0.1),
+                top_p=0.75,
+                top_k=20,
+                max_new_tokens=DEFAULT_MC_MAX_TOKENS,
+                repetition_penalty=1.15,
+                pad_token_id=self.tokenizer.pad_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,
+                use_cache=True,
+                bad_words_ids=self.bad_words_ids[:10] if self.bad_words_ids else None
+            )
+        else:
+            return GenerationConfig(
+                do_sample=True,
+                temperature=0.5 + (attempt * 0.1),
+                top_p=0.80,
+                top_k=30,
+                max_new_tokens=DEFAULT_SUBJ_MAX_TOKENS,
+                repetition_penalty=1.1,
+                pad_token_id=self.tokenizer.pad_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,
+                use_cache=True,
+                bad_words_ids=self.bad_words_ids[:15] if self.bad_words_ids else None
+            )
+    
     def _extract_mc_answer_enhanced(self, text: str) -> str:
+        """개선된 객관식 답변 추출"""
         if not text:
             return ""
         
@@ -422,14 +464,17 @@ class ModelHandler:
         return ""
     
     def _clean_korean_text_enhanced(self, text: str) -> str:
+        """개선된 한국어 텍스트 정리"""
         if not text:
             return ""
         
         original_text = text
         original_length = len(text)
         
+        # 제어 문자 제거
         text = re.sub(r'[\u0000-\u001f\u007f-\u009f]', '', text)
         
+        # 안전한 중국어-한국어 변환
         safe_replacements = {
             '金融': '금융', '交易': '거래', '安全': '안전', '管理': '관리',
             '個人': '개인', '資訊': '정보', '電子': '전자', '系統': '시스템',
@@ -442,16 +487,20 @@ class ModelHandler:
         for chinese, korean in safe_replacements.items():
             text = text.replace(chinese, korean)
         
+        # 문제가 되는 문자들 제거 (한국어 한자 제외한 중국어)
         text = re.sub(r'[\u4e00-\u9fff]+', '', text)
         text = re.sub(r'[\u3040-\u309f\u30a0-\u30ff]+', '', text)
-        text = re.sub(r'[а-яё]+', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'[А-я]+', '', text, flags=re.IGNORECASE)
         
+        # 특수 기호 제거
         text = re.sub(r'[①②③④⑤➀➁➂➃➄➅➆➇➈➉]', '', text)
         text = re.sub(r'\bbo+\b', '', text, flags=re.IGNORECASE)
         text = re.sub(r'\b[bB][oO]+\b', '', text)
         
+        # 깨진 한글 제거
         text = re.sub(r'\([^가-힣\s\d.,!?]*\)', '', text)
         
+        # 문제가 되는 조각들 제거
         problematic_fragments = [
             r'[ㄱ-ㅎㅏ-ㅣ]{3,}(?![가-힣])', 
             r'[^\w\s가-힣0-9.,!?()·\-\n""'']+',
@@ -462,23 +511,27 @@ class ModelHandler:
         for pattern in problematic_fragments:
             text = re.sub(pattern, ' ', text)
         
+        # 공백 및 구두점 정리
         text = re.sub(r'\s+', ' ', text)
         text = re.sub(r'[.,!?]{3,}', '.', text)
         text = re.sub(r'\.{2,}', '.', text)
         
         text = text.strip()
         
+        # 너무 많이 정리된 경우 빈 문자열 반환
         if len(text) < original_length * 0.25 and original_length > 30:
             return ""
         
         return text
     
     def _evaluate_korean_quality_enhanced(self, text: str) -> float:
+        """개선된 한국어 품질 평가"""
         if not text:
             return 0.0
         
         penalty_score = 0.0
         
+        # 패널티 요소들
         if re.search(r'[\u4e00-\u9fff]', text):
             penalty_score += 0.4
         
@@ -506,6 +559,7 @@ class ModelHandler:
         
         quality = korean_ratio * 0.85 - english_ratio * 0.1 - penalty_score
         
+        # 길이 보너스
         if 40 <= len(text) <= 350:
             quality += 0.15
         elif 25 <= len(text) <= 40:
@@ -513,23 +567,22 @@ class ModelHandler:
         elif len(text) < 25:
             quality -= 0.1
         
+        # 전문 용어 보너스
         professional_terms = ['법', '규정', '관리', '보안', '조치', '정책', '체계', '절차', '의무', '권리']
         prof_count = sum(1 for term in professional_terms if term in text)
         quality += min(prof_count * 0.06, 0.18)
         
-        if re.search(r'\.{3,}|,{3,}', text):
-            quality -= 0.1
-        
+        # 문장 구조 보너스
         sentence_count = len(re.findall(r'[.!?]', text))
         if sentence_count >= 2:
             quality += 0.05
         
         return max(0, min(1, quality))
     
-    def _create_fallback_result(self, question_type: str, question_structure: Dict = None) -> InferenceResult:
+    def _create_fallback_result(self, question_type: str, 
+                               question_structure: Optional[Dict] = None) -> InferenceResult:
+        """향상된 폴백 결과 생성"""
         if question_type == "multiple_choice":
-            import random
-            
             # 선택지 분석 활용
             if question_structure:
                 choice_analysis = question_structure.get("choice_analysis", {})
@@ -545,8 +598,8 @@ class ModelHandler:
                 
             return InferenceResult(
                 response=fallback_answer,
-                confidence=0.35,  # 0.3에서 0.35로 상향
-                reasoning_quality=0.25,  # 0.2에서 0.25로 상향
+                confidence=0.35,
+                reasoning_quality=0.25,
                 analysis_depth=1,
                 korean_quality=1.0
             )
@@ -572,23 +625,24 @@ class ModelHandler:
             
             return InferenceResult(
                 response=selected_answer,
-                confidence=0.55,  # 0.5에서 0.55로 상향
-                reasoning_quality=0.45,  # 0.4에서 0.45로 상향
+                confidence=0.55,
+                reasoning_quality=0.45,
                 analysis_depth=1,
                 korean_quality=0.85
             )
     
     def _evaluate_response(self, response: str, question_type: str) -> InferenceResult:
+        """응답 품질 평가"""
         if question_type == "multiple_choice":
             confidence = 0.6
             reasoning = 0.6
             
             if re.match(r'^[1-5]$', response.strip()):
-                confidence = 0.92  # 0.9에서 0.92로 상향
-                reasoning = 0.85  # 0.8에서 0.85로 상향
+                confidence = 0.92
+                reasoning = 0.85
             elif re.search(r'[1-5]', response):
-                confidence = 0.78  # 0.75에서 0.78로 상향
-                reasoning = 0.68  # 0.65에서 0.68로 상향
+                confidence = 0.78
+                reasoning = 0.68
             
             return InferenceResult(
                 response=response,
@@ -598,8 +652,8 @@ class ModelHandler:
             )
         
         else:
-            confidence = 0.72  # 0.7에서 0.72로 상향
-            reasoning = 0.72  # 0.7에서 0.72로 상향
+            confidence = 0.72
+            reasoning = 0.72
             
             length = len(response)
             if 60 <= length <= 350:
@@ -635,25 +689,28 @@ class ModelHandler:
                 analysis_depth=3
             )
     
-    def _manage_cache(self):
+    def _manage_cache(self) -> None:
+        """캐시 관리"""
         if len(self.response_cache) >= self.max_cache_size:
             keys_to_remove = list(self.response_cache.keys())[:self.max_cache_size // 3]
             for key in keys_to_remove:
                 del self.response_cache[key]
     
-    def _perform_memory_cleanup(self):
+    def _perform_memory_cleanup(self) -> None:
+        """메모리 정리"""
         self.memory_cleanup_counter += 1
         
-        if self.memory_cleanup_counter % 20 == 0:
+        if self.memory_cleanup_counter % MEMORY_CLEANUP_INTERVAL == 0:
             gc.collect()
-            if torch.cuda.is_available():
+            if self.cuda_available:
                 torch.cuda.empty_cache()
         
-        if self.memory_cleanup_counter % 40 == 0:
+        if self.memory_cleanup_counter % CACHE_CLEANUP_INTERVAL == 0:
             if len(self.response_cache) > self.max_cache_size // 2:
                 self._manage_cache()
     
-    def _update_generation_stats(self, result: InferenceResult, success: bool):
+    def _update_generation_stats(self, result: InferenceResult, success: bool) -> None:
+        """생성 통계 업데이트"""
         self.generation_stats["total_generations"] += 1
         if success:
             self.generation_stats["successful_generations"] += 1
@@ -670,6 +727,7 @@ class ModelHandler:
         self.generation_stats["cache_efficiency"] = self.cache_hits / max(total_requests, 1)
     
     def get_performance_stats(self) -> Dict:
+        """성능 통계 반환"""
         avg_korean_quality = 0.0
         if self.generation_stats["korean_quality_scores"]:
             avg_korean_quality = sum(self.generation_stats["korean_quality_scores"]) / len(self.generation_stats["korean_quality_scores"])
@@ -698,24 +756,31 @@ class ModelHandler:
             "finetuned_usage_rate": finetuned_rate
         }
     
-    def cleanup(self):
-        if self.verbose:
-            stats = self.get_performance_stats()
-            model_type = "파인튜닝된" if self.is_finetuned else "기본"
-            print(f"{model_type} 모델 통계: 생성 성공률 {stats['success_rate']:.1%}, 한국어 품질 {stats['avg_korean_quality']:.2f}")
-        
-        if hasattr(self, 'model'):
-            del self.model
-        if hasattr(self, 'tokenizer'):
-            del self.tokenizer
-        
-        self.response_cache.clear()
-        
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+    def cleanup(self) -> None:
+        """리소스 정리"""
+        try:
+            if self.verbose:
+                stats = self.get_performance_stats()
+                model_type = "파인튜닝된" if self.is_finetuned else "기본"
+                print(f"{model_type} 모델 통계: 생성 성공률 {stats['success_rate']:.1%}, 한국어 품질 {stats['avg_korean_quality']:.2f}")
+            
+            if hasattr(self, 'model') and self.model is not None:
+                del self.model
+            if hasattr(self, 'tokenizer') and self.tokenizer is not None:
+                del self.tokenizer
+            
+            self.response_cache.clear()
+            
+            gc.collect()
+            if self.cuda_available:
+                torch.cuda.empty_cache()
+                
+        except Exception as e:
+            if self.verbose:
+                print(f"정리 중 오류: {e}")
     
     def get_model_info(self) -> Dict:
+        """모델 정보 반환"""
         return {
             "model_name": self.model_name,
             "is_finetuned": self.is_finetuned,

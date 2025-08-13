@@ -19,9 +19,21 @@ import pickle
 import tempfile
 import os
 import random
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Union
 from dataclasses import dataclass
 from collections import defaultdict, Counter
+
+# 상수 정의
+DEFAULT_LEARNING_RATE = 0.45
+DEFAULT_CONFIDENCE_THRESHOLD = 0.55
+DEFAULT_MIN_SAMPLES = 2
+DEFAULT_CACHE_SIZE = 300
+DIVERSITY_TARGET_RATIO = 0.2
+QUALITY_THRESHOLD = 0.3
+PATTERN_LIMIT = 12
+SUCCESSFUL_ANSWERS_LIMIT = 30
+LEARNING_HISTORY_LIMIT = 100
+QUESTION_PAIRS_LIMIT = 100
 
 def _default_int():
     return 0
@@ -42,6 +54,7 @@ def _default_int_dict():
     return defaultdict(_default_int)
 
 def atomic_save_model(obj, filepath: str) -> bool:
+    """원자적 모델 저장"""
     try:
         directory = os.path.dirname(filepath)
         if directory:
@@ -61,6 +74,7 @@ def atomic_save_model(obj, filepath: str) -> bool:
         return False
 
 def atomic_load_model(filepath: str):
+    """원자적 모델 로드"""
     if not os.path.exists(filepath):
         return None
     try:
@@ -83,6 +97,7 @@ class LearningSystem:
     def __init__(self, debug_mode: bool = False):
         self.debug_mode = debug_mode
         
+        # 기본 데이터 구조 초기화
         self.pattern_weights = defaultdict(_default_float_dict)
         self.pattern_counts = defaultdict(_default_int)
         self.answer_distribution = {
@@ -91,20 +106,23 @@ class LearningSystem:
             "negative": defaultdict(_default_int)
         }
         
+        # 규칙 및 템플릿 초기화
         self.learned_rules = self._initialize_enhanced_rules()
         self.korean_templates = self._initialize_korean_templates()
         self.successful_answers = defaultdict(_default_list)
         
-        # 수정: confidence_threshold를 높여서 실제 학습이 일어나도록
-        self.learning_rate = 0.45
-        self.confidence_threshold = 0.55  # 0.35에서 0.55로 상향
-        self.min_samples = 2  # 1에서 2로 상향
+        # 학습 파라미터
+        self.learning_rate = DEFAULT_LEARNING_RATE
+        self.confidence_threshold = DEFAULT_CONFIDENCE_THRESHOLD
+        self.min_samples = DEFAULT_MIN_SAMPLES
         
+        # 데이터 저장소
         self.learning_history = []
         self.prediction_cache = {}
         self.pattern_cache = {}
-        self.max_cache_size = 300
+        self.max_cache_size = DEFAULT_CACHE_SIZE
         
+        # 통계 및 추적
         self.stats = {
             "total_samples": 0,
             "correct_predictions": 0,
@@ -113,25 +131,27 @@ class LearningSystem:
             "answer_diversity_score": 0.0
         }
         
+        # 향상된 패턴 및 추적
         self.answer_patterns = self._initialize_enhanced_patterns()
         self.answer_diversity_tracker = defaultdict(_default_int)
-        
         self.advanced_patterns = self._build_advanced_pattern_rules()
         
-        # 추가: 문제-답변 매칭 학습
+        # 문제-답변 매칭 학습
         self.question_answer_pairs = defaultdict(list)
         self.choice_content_analysis = defaultdict(dict)
         
+        # GPU 메모리 정보
         if torch.cuda.is_available():
             self.gpu_memory_total = torch.cuda.get_device_properties(0).total_memory / (1024**3)
         else:
             self.gpu_memory_total = 0
     
-    def _debug_print(self, message: str):
+    def _debug_print(self, message: str) -> None:
         if self.debug_mode:
             print(f"[DEBUG] {message}")
     
     def _initialize_enhanced_patterns(self) -> Dict:
+        """향상된 패턴 초기화"""
         return {
             "금융투자업_분류": {
                 "patterns": ["금융투자업", "구분", "해당하지", "소비자금융업", "투자매매업", "투자중개업", "보험중개업", "분류"],
@@ -199,6 +219,7 @@ class LearningSystem:
         }
     
     def _build_advanced_pattern_rules(self) -> Dict:
+        """고급 패턴 규칙 구축"""
         return {
             "법령_참조_패턴": {
                 "개인정보보호법": {"강화값": 1.3, "선호답변": ["1", "2"]},
@@ -220,6 +241,7 @@ class LearningSystem:
         }
     
     def _initialize_enhanced_rules(self) -> Dict:
+        """향상된 규칙 초기화"""
         return {
             "개인정보_정의": {
                 "keywords": ["개인정보", "정의", "의미", "개념", "식별", "살아있는", "자연인"],
@@ -260,6 +282,7 @@ class LearningSystem:
         }
     
     def _initialize_korean_templates(self) -> Dict[str, List[str]]:
+        """한국어 템플릿 초기화"""
         return {
             "개인정보보호": [
                 "개인정보보호법에 따라 개인정보의 안전한 관리와 정보주체의 권리 보호를 위한 체계적인 조치가 필요합니다.",
@@ -336,7 +359,8 @@ class LearningSystem:
         return analysis
     
     def get_smart_answer_hint(self, question: str, structure: Dict) -> Tuple[str, float]:
-        question_id = hashlib.md5(question.encode()).hexdigest()[:8]
+        """스마트 답변 힌트 생성"""
+        question_id = hashlib.md5(question.encode('utf-8')).hexdigest()[:8]
         
         if question_id in self.prediction_cache:
             return self.prediction_cache[question_id]
@@ -390,13 +414,13 @@ class LearningSystem:
                     best_match = pattern_info
                     matched_rule_name = pattern_name
         
-        if best_match and best_score > 0.25:  # 0.2에서 0.25로 상향
+        if best_match and best_score > 0.25:
             answers = best_match["preferred_answers"]
             
             # 가중치 기반 선택 개선
             answer_options = []
             for answer, weight in answers.items():
-                answer_options.extend([answer] * int(weight * 150))  # 120에서 150으로 상향
+                answer_options.extend([answer] * int(weight * 150))
             
             if answer_options:
                 selected_answer = random.choice(answer_options)
@@ -411,6 +435,7 @@ class LearningSystem:
         else:
             result = self._enhanced_diversified_fallback(question, structure)
         
+        # 캐시 관리
         if len(self.prediction_cache) >= self.max_cache_size:
             oldest_key = next(iter(self.prediction_cache))
             del self.prediction_cache[oldest_key]
@@ -421,6 +446,7 @@ class LearningSystem:
         return result
     
     def _enhanced_diversified_fallback(self, question: str, structure: Dict) -> Tuple[str, float]:
+        """향상된 다양화 폴백"""
         question_lower = question.lower()
         domains = structure.get("domain_hints", [])
         has_negative = structure.get("has_negative", False)
@@ -508,6 +534,7 @@ class LearningSystem:
         return selected, config["confidence"]
     
     def _evaluate_korean_quality(self, text: str, question_type: str) -> float:
+        """한국어 품질 평가"""
         if question_type == "multiple_choice":
             if re.match(r'^[1-5]$', text.strip()):
                 return 1.0
@@ -516,25 +543,29 @@ class LearningSystem:
         if not text or len(text) < 10:
             return 0.0
         
+        # 문제가 되는 문자 체크
         if re.search(r'[\u4e00-\u9fff]', text):
             return 0.0
         
-        korean_chars = len(re.findall(r'[가-힣]', text))
         total_chars = len(re.sub(r'[^\w]', '', text))
         
         if total_chars == 0:
             return 0.0
         
+        korean_chars = len(re.findall(r'[가-힣]', text))
         korean_ratio = korean_chars / total_chars
+        
         english_chars = len(re.findall(r'[A-Za-z]', text))
         english_ratio = english_chars / total_chars
         
         quality = korean_ratio * 0.85 - english_ratio * 0.15
         
+        # 전문 용어 보너스
         professional_terms = ['법', '규정', '조치', '관리', '보안', '체계', '정책']
         prof_count = sum(1 for term in professional_terms if term in text)
         quality += min(prof_count * 0.08, 0.24)
         
+        # 길이 보너스
         if 30 <= len(text) <= 400:
             quality += 0.1
         
@@ -543,6 +574,7 @@ class LearningSystem:
     def learn_from_prediction(self, question: str, prediction: str,
                             confidence: float, question_type: str,
                             domain: List[str]) -> None:
+        """예측으로부터 학습"""
         
         # confidence_threshold 조정으로 더 많은 학습 허용
         if confidence < self.confidence_threshold:
@@ -550,7 +582,7 @@ class LearningSystem:
         
         korean_quality = self._evaluate_korean_quality(prediction, question_type)
         
-        if korean_quality < 0.3 and question_type != "multiple_choice":  # 0.2에서 0.3으로 상향
+        if korean_quality < QUALITY_THRESHOLD and question_type != "multiple_choice":
             return
         
         patterns = self._extract_enhanced_patterns(question)
@@ -568,7 +600,7 @@ class LearningSystem:
                 self.answer_distribution["domain"][d] = defaultdict(_default_int)
             self.answer_distribution["domain"][d][prediction] += 1
         
-        if korean_quality > 0.6 and question_type != "multiple_choice":  # 0.5에서 0.6으로 상향
+        if korean_quality > 0.6 and question_type != "multiple_choice":
             self._learn_korean_patterns(prediction, domain)
         
         # 문제-답변 쌍 저장
@@ -578,6 +610,7 @@ class LearningSystem:
             "quality": korean_quality
         })
         
+        # 학습 기록 추가
         self.learning_history.append({
             "question_sample": question[:60],
             "prediction": prediction[:60] if len(prediction) > 60 else prediction,
@@ -586,14 +619,16 @@ class LearningSystem:
             "patterns": len(patterns)
         })
         
-        if len(self.learning_history) > 100:
-            self.learning_history = self.learning_history[-100:]
+        # 학습 기록 크기 제한
+        if len(self.learning_history) > LEARNING_HISTORY_LIMIT:
+            self.learning_history = self.learning_history[-LEARNING_HISTORY_LIMIT:]
         
         self.stats["total_samples"] += 1
         
         self._update_diversity_score()
     
-    def _update_diversity_score(self):
+    def _update_diversity_score(self) -> None:
+        """다양성 점수 업데이트"""
         if len(self.answer_diversity_tracker) == 0:
             self.stats["answer_diversity_score"] = 0.0
             return
@@ -617,6 +652,7 @@ class LearningSystem:
         self.stats["answer_diversity_score"] = max(0.0, min(1.0, diversity_score))
     
     def _extract_enhanced_patterns(self, question: str) -> List[str]:
+        """향상된 패턴 추출"""
         patterns = []
         question_lower = question.lower()
         
@@ -627,12 +663,13 @@ class LearningSystem:
             base_match_count = sum(1 for keyword in rule_keywords if keyword in question_lower)
             boost_match_count = sum(1 for keyword in boost_keywords if keyword in question_lower)
             
-            if base_match_count >= 2 or boost_match_count >= 1:  # 1에서 2로 상향
+            if base_match_count >= 2 or boost_match_count >= 1:
                 patterns.append(rule_name)
                 
                 if boost_match_count > 0:
                     patterns.append(f"{rule_name}_boosted")
         
+        # 부정형 패턴
         if any(neg in question_lower for neg in ["해당하지", "적절하지", "옳지", "틀린"]):
             patterns.append("negative_question")
             
@@ -640,6 +677,7 @@ class LearningSystem:
                 if neg_pattern in question_lower:
                     patterns.append(f"negative_{neg_pattern}")
         
+        # 질문 유형 패턴
         if "정의" in question_lower:
             patterns.append("definition_question")
         if "방안" in question_lower or "대책" in question_lower:
@@ -647,13 +685,15 @@ class LearningSystem:
         if "계획" in question_lower:
             patterns.append("planning_question")
         
+        # 법령 참조 패턴
         for law_pattern, config in self.advanced_patterns["법령_참조_패턴"].items():
             if law_pattern.replace("법", "") in question_lower:
                 patterns.append(f"law_reference_{law_pattern}")
         
-        return patterns[:12]  # 10에서 12로 상향
+        return patterns[:PATTERN_LIMIT]
     
     def _learn_korean_patterns(self, text: str, domains: List[str]) -> None:
+        """한국어 패턴 학습"""
         if 30 <= len(text) <= 500:
             for domain in domains:
                 self.successful_answers[domain].append({
@@ -662,19 +702,21 @@ class LearningSystem:
                     "quality": self._evaluate_korean_quality(text, "subjective")
                 })
                 
-                if len(self.successful_answers[domain]) > 30:
+                if len(self.successful_answers[domain]) > SUCCESSFUL_ANSWERS_LIMIT:
                     self.successful_answers[domain] = sorted(
                         self.successful_answers[domain],
                         key=lambda x: x["quality"],
                         reverse=True
-                    )[:30]
+                    )[:SUCCESSFUL_ANSWERS_LIMIT]
     
     def predict_with_patterns(self, question: str, question_type: str) -> Tuple[str, float]:
+        """패턴을 사용한 예측"""
         patterns = self._extract_enhanced_patterns(question)
         
         if not patterns:
             return self._get_default_answer(question_type), 0.35
         
+        # 학습된 규칙 우선 적용
         for rule_name in patterns:
             base_rule_name = rule_name.replace("_boosted", "")
             if base_rule_name in self.learned_rules:
@@ -683,7 +725,7 @@ class LearningSystem:
                 
                 answer_options = []
                 for answer, weight in answers.items():
-                    multiplier = 70 if "_boosted" in rule_name else 60  # 상향 조정
+                    multiplier = 70 if "_boosted" in rule_name else 60
                     answer_options.extend([answer] * int(weight * multiplier))
                 
                 if answer_options:
@@ -692,6 +734,7 @@ class LearningSystem:
                     confidence = min(rule["confidence"] * confidence_boost, 0.85)
                     return selected, confidence
         
+        # 패턴 가중치 기반 예측
         answer_scores = defaultdict(_default_float)
         total_weight = 0
         
@@ -722,11 +765,12 @@ class LearningSystem:
         return self._get_default_answer(question_type), 0.35
     
     def _get_default_answer(self, question_type: str) -> str:
+        """기본 답변 생성"""
         if question_type == "multiple_choice":
             current_distribution = dict(self.answer_diversity_tracker)
             total = sum(current_distribution.values())
             
-            if total > 10:  # 8에서 10으로 상향
+            if total > 10:
                 underrepresented = []
                 target_per_answer = total / 5
                 for ans in ["1", "2", "3", "4", "5"]:
@@ -740,7 +784,7 @@ class LearningSystem:
             return random.choice(["1", "2", "3", "4", "5"])
         else:
             template_options = [
-                "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 개선을 통해 안전성을 확보해야 합니다.",
+                "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 개선을 수행해야 합니다.",
                 "정보보안 정책과 절차를 수립하여 체계적인 보안 관리와 위험 평가를 수행해야 합니다.",
                 "적절한 기술적, 관리적, 물리적 보안조치를 통해 정보자산을 안전하게 보호해야 합니다.",
                 "법령에서 요구하는 안전성 확보조치를 이행하고 정기적인 점검을 통해 개선해야 합니다.",
@@ -749,9 +793,11 @@ class LearningSystem:
             return random.choice(template_options)
     
     def optimize_patterns(self) -> Dict:
+        """패턴 최적화"""
         optimized = 0
         removed = 0
         
+        # 충분한 샘플이 없는 패턴 제거
         patterns_to_remove = []
         for pattern, count in self.pattern_counts.items():
             if count < self.min_samples:
@@ -764,6 +810,7 @@ class LearningSystem:
                 del self.pattern_counts[pattern]
             removed += 1
         
+        # 패턴 가중치 최적화
         for pattern in self.pattern_weights:
             total = sum(self.pattern_weights[pattern].values())
             if total > 0:
@@ -784,11 +831,13 @@ class LearningSystem:
         }
     
     def get_current_accuracy(self) -> float:
+        """현재 정확도 반환"""
         if self.stats["total_samples"] == 0:
             return 0.0
         return min(self.stats["correct_predictions"] / self.stats["total_samples"], 1.0)
     
     def save_model(self, filepath: str = "./learning_model.pkl") -> bool:
+        """모델 저장"""
         model_data = {
             "pattern_weights": {k: dict(v) for k, v in self.pattern_weights.items()},
             "pattern_counts": dict(self.pattern_counts),
@@ -801,7 +850,7 @@ class LearningSystem:
             "learning_history": self.learning_history[-50:],
             "learned_rules": self.learned_rules,
             "answer_diversity_tracker": dict(self.answer_diversity_tracker),
-            "question_answer_pairs": dict(list(self.question_answer_pairs.items())[-100:]),  # 최근 100개만
+            "question_answer_pairs": dict(list(self.question_answer_pairs.items())[-QUESTION_PAIRS_LIMIT:]),
             "parameters": {
                 "learning_rate": self.learning_rate,
                 "confidence_threshold": self.confidence_threshold,
@@ -812,17 +861,20 @@ class LearningSystem:
         return atomic_save_model(model_data, filepath)
     
     def load_model(self, filepath: str = "./learning_model.pkl") -> bool:
+        """모델 로드"""
         model_data = atomic_load_model(filepath)
         if model_data is None:
             return False
         
         try:
+            # 패턴 가중치 복원
             self.pattern_weights = defaultdict(_default_float_dict)
             for k, v in model_data.get("pattern_weights", {}).items():
                 self.pattern_weights[k] = defaultdict(_default_float, v)
             
             self.pattern_counts = defaultdict(_default_int, model_data.get("pattern_counts", {}))
             
+            # 답변 분포 복원
             answer_dist = model_data.get("answer_distribution", {})
             self.answer_distribution = {
                 "mc": defaultdict(_default_int, answer_dist.get("mc", {})),
@@ -833,6 +885,7 @@ class LearningSystem:
             for k, v in answer_dist.get("domain", {}).items():
                 self.answer_distribution["domain"][k] = defaultdict(_default_int, v)
             
+            # 기타 데이터 복원
             self.successful_answers = defaultdict(_default_list, model_data.get("successful_answers", {}))
             self.learning_history = model_data.get("learning_history", [])
             self.answer_diversity_tracker = defaultdict(_default_int, model_data.get("answer_diversity_tracker", {}))
@@ -843,20 +896,28 @@ class LearningSystem:
             if "learned_rules" in model_data:
                 self.learned_rules.update(model_data["learned_rules"])
             
+            # 파라미터 복원
             params = model_data.get("parameters", {})
-            self.learning_rate = params.get("learning_rate", 0.45)
-            self.confidence_threshold = params.get("confidence_threshold", 0.55)
-            self.min_samples = params.get("min_samples", 2)
+            self.learning_rate = params.get("learning_rate", DEFAULT_LEARNING_RATE)
+            self.confidence_threshold = params.get("confidence_threshold", DEFAULT_CONFIDENCE_THRESHOLD)
+            self.min_samples = params.get("min_samples", DEFAULT_MIN_SAMPLES)
             
             self._update_diversity_score()
             
             return True
-        except Exception:
+        except Exception as e:
+            if self.debug_mode:
+                print(f"모델 로드 오류: {e}")
             return False
     
-    def cleanup(self):
-        total_patterns = len(self.pattern_weights)
-        total_samples = len(self.learning_history)
-        diversity = self.stats.get("answer_diversity_score", 0)
-        if total_patterns > 0 or total_samples > 0:
-            print(f"학습 시스템: {total_patterns}개 패턴, {total_samples}개 샘플, 다양성 {diversity:.2f}")
+    def cleanup(self) -> None:
+        """정리"""
+        try:
+            total_patterns = len(self.pattern_weights)
+            total_samples = len(self.learning_history)
+            diversity = self.stats.get("answer_diversity_score", 0)
+            if total_patterns > 0 or total_samples > 0:
+                print(f"학습 시스템: {total_patterns}개 패턴, {total_samples}개 샘플, 다양성 {diversity:.2f}")
+        except Exception as e:
+            if self.debug_mode:
+                print(f"정리 중 오류: {e}")
