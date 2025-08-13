@@ -1,4 +1,5 @@
-torch==2.1.0;
+# requirements.txt
+torch==2.1.0
 transformers==4.36.0
 pandas==2.0.3
 numpy==1.24.3
@@ -28,6 +29,7 @@ idna==3.6
 setuptools==69.0.3
 wheel==0.42.0
 pip==23.3.1
+konlpy==0.6.0
 
 # 개별설치 (선택)
 # pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
