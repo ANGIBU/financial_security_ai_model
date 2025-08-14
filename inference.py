@@ -34,16 +34,20 @@ class FinancialAIInference:
         self.verbose = verbose
         self.start_time = time.time()
         
-        print("추론 시스템 초기화")
+        if verbose:
+            print("추론 시스템 초기화")
         
         # 컴포넌트 초기화
-        print("1/3 모델 핸들러 초기화...")
+        if verbose:
+            print("1/3 모델 핸들러 초기화...")
         self.model_handler = SimpleModelHandler(verbose=verbose)
         
-        print("2/3 데이터 프로세서 초기화...")
+        if verbose:
+            print("2/3 데이터 프로세서 초기화...")
         self.data_processor = SimpleDataProcessor()
         
-        print("3/3 지식베이스 초기화...")
+        if verbose:
+            print("3/3 지식베이스 초기화...")
         self.knowledge_base = FinancialSecurityKnowledgeBase()
         
         # 통계
@@ -59,7 +63,8 @@ class FinancialAIInference:
             "quality_scores": []
         }
         
-        print("초기화 완료")
+        if verbose:
+            print("초기화 완료")
         
     def process_single_question(self, question: str, question_id: str) -> str:
         """단일 질문 처리"""
@@ -205,10 +210,12 @@ class FinancialAIInference:
                                    output_file: str = "./final_submission.csv") -> Dict:
         """데이터프레임으로 추론 실행"""
         
-        print(f"\n데이터 로드 완료: {len(test_df)}개 문항")
+        if self.verbose:
+            print(f"\n데이터 로드 완료: {len(test_df)}개 문항")
         
         # 전체 추론 진행
-        print("AI 추론 시작")
+        if self.verbose:
+            print("AI 추론 시작")
         
         answers = []
         total_questions = len(test_df)
@@ -223,91 +230,22 @@ class FinancialAIInference:
             answers.append(answer)
             
             # 게이지바 업데이트
-            self.print_progress_bar(idx + 1, total_questions, inference_start_time)
+            if self.verbose:
+                self.print_progress_bar(idx + 1, total_questions, inference_start_time)
             
             # 메모리 관리 (50문항마다)
             if (idx + 1) % 50 == 0:
                 gc.collect()
         
         # 진행률 완료 후 줄바꿈
-        print()
+        if self.verbose:
+            print()
         
         # 결과 저장
         submission_df['Answer'] = answers
         submission_df.to_csv(output_file, index=False, encoding='utf-8-sig')
         
-        # 최종 결과 출력
-        self._print_final_results(output_file)
-        
         return self._get_results_summary()
-    
-    def _print_final_results(self, output_file: str):
-        """최종 결과 출력"""
-        total_time = time.time() - self.start_time
-        
-        print("\nAI 추론 완료")
-        
-        print(f"총 처리시간: {total_time:.1f}초 ({total_time/60:.1f}분)")
-        print(f"총 문항수: {self.stats['total']}개")
-        print(f"객관식: {self.stats['mc_count']}개")
-        print(f"주관식: {self.stats['subj_count']}개")
-        
-        if self.stats["total"] > 0:
-            success_rate = (self.stats["model_success"] / self.stats["total"]) * 100
-            korean_rate = (self.stats["korean_compliance"] / self.stats["total"]) * 100
-            avg_time = sum(self.stats["processing_times"]) / len(self.stats["processing_times"])
-            
-            print(f"모델 성공률: {success_rate:.1f}%")
-            print(f"한국어 준수율: {korean_rate:.1f}%")
-            print(f"평균 처리시간: {avg_time:.2f}초/문항")
-        
-        # 답변 품질 분석
-        if self.stats["quality_scores"]:
-            avg_quality = sum(self.stats["quality_scores"]) / len(self.stats["quality_scores"])
-            print(f"평균 답변 품질: {avg_quality:.2f}/1.0")
-        
-        # 도메인별 분포
-        print(f"\n도메인별 분포:")
-        for domain, count in self.stats["domain_stats"].items():
-            pct = (count / self.stats["total"]) * 100
-            print(f"  {domain}: {count}개 ({pct:.1f}%)")
-        
-        # 난이도별 분포
-        print(f"\n난이도별 분포:")
-        for difficulty, count in self.stats["difficulty_stats"].items():
-            pct = (count / self.stats["total"]) * 100
-            print(f"  {difficulty}: {count}개 ({pct:.1f}%)")
-        
-        # 객관식 답변 분포
-        mc_stats = self.model_handler.get_answer_stats()
-        if mc_stats["total_mc"] > 0:
-            print(f"\n객관식 답변 분포:")
-            for num in range(1, 6):
-                count = mc_stats["distribution"][str(num)]
-                pct = (count / mc_stats["total_mc"]) * 100
-                print(f"  {num}번: {count}개 ({pct:.1f}%)")
-            
-            # 다양성 평가
-            used_answers = len([v for v in mc_stats["distribution"].values() if v > 0])
-            diversity = "우수" if used_answers >= 4 else "양호" if used_answers >= 3 else "개선필요"
-            print(f"  답변 다양성: {diversity} ({used_answers}/5개 번호 사용)")
-        
-        # 학습 통계
-        learning_stats = self.model_handler.get_learning_stats()
-        print(f"\n학습 데이터 현황:")
-        print(f"  성공 기록: {learning_stats['successful_count']}개")
-        print(f"  실패 기록: {learning_stats['failed_count']}개")
-        if learning_stats['avg_quality'] > 0:
-            print(f"  평균 품질: {learning_stats['avg_quality']:.2f}")
-        
-        # 데이터 처리 통계
-        processing_stats = self.data_processor.get_processing_stats()
-        print(f"\n데이터 처리 통계:")
-        print(f"  총 처리: {processing_stats['total_processed']}개")
-        print(f"  한국어 준수: {processing_stats['korean_compliance_rate']:.1f}%")
-        print(f"  검증 실패: {processing_stats['validation_failure_rate']:.1f}%")
-        
-        print(f"\n결과 파일: {output_file}")
     
     def _get_results_summary(self) -> Dict:
         """결과 요약"""
@@ -336,8 +274,6 @@ class FinancialAIInference:
     def cleanup(self):
         """리소스 정리"""
         try:
-            print("시스템 정리 중...")
-            
             if hasattr(self, 'model_handler'):
                 self.model_handler.cleanup()
             
@@ -348,10 +284,10 @@ class FinancialAIInference:
                 self.knowledge_base.cleanup()
             
             gc.collect()
-            print("시스템 정리 완료")
             
         except Exception as e:
-            print(f"정리 중 오류: {e}")
+            if self.verbose:
+                print(f"정리 중 오류: {e}")
 
 
 def main():

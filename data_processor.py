@@ -13,11 +13,16 @@ import pickle
 import os
 from typing import Dict, List
 from datetime import datetime
+from pathlib import Path
 
 class SimpleDataProcessor:
     """데이터 처리기"""
     
     def __init__(self):
+        # pkl 저장 폴더 생성
+        self.pkl_dir = Path("./pkl")
+        self.pkl_dir.mkdir(exist_ok=True)
+        
         # 객관식 패턴
         self.mc_patterns = [
             r'①.*②.*③.*④.*⑤',  # 동그라미 숫자
@@ -96,9 +101,9 @@ class SimpleDataProcessor:
     
     def _load_processing_history(self):
         """이전 처리 기록 로드"""
-        history_file = "./processing_history.pkl"
+        history_file = self.pkl_dir / "processing_history.pkl"
         
-        if os.path.exists(history_file):
+        if history_file.exists():
             try:
                 with open(history_file, 'rb') as f:
                     saved_stats = pickle.load(f)
@@ -108,7 +113,7 @@ class SimpleDataProcessor:
     
     def _save_processing_history(self):
         """처리 기록 저장"""
-        history_file = "./processing_history.pkl"
+        history_file = self.pkl_dir / "processing_history.pkl"
         
         try:
             save_data = {

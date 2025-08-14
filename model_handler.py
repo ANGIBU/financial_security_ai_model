@@ -18,6 +18,7 @@ import os
 from datetime import datetime
 from typing import Dict, Optional, Tuple, List
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
+from pathlib import Path
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -28,6 +29,10 @@ class SimpleModelHandler:
         self.model_name = model_name
         self.verbose = verbose
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # pkl 저장 폴더 생성
+        self.pkl_dir = Path("./pkl")
+        self.pkl_dir.mkdir(exist_ok=True)
         
         # 답변 분포 추적
         self.answer_distribution = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
@@ -44,8 +49,9 @@ class SimpleModelHandler:
         # 이전 학습 데이터 로드
         self._load_learning_data()
         
-        print(f"모델 로딩: {model_name}")
-        print(f"디바이스: {self.device}")
+        if verbose:
+            print(f"모델 로딩: {model_name}")
+            print(f"디바이스: {self.device}")
         
         # 토크나이저 로드
         self.tokenizer = AutoTokenizer.from_pretrained(
@@ -104,17 +110,18 @@ class SimpleModelHandler:
         # 워밍업
         self._warmup()
         
-        print("모델 로딩 완료")
+        if verbose:
+            print("모델 로딩 완료")
         
         # 학습 데이터 로드 현황
-        if len(self.learning_data["successful_answers"]) > 0:
+        if len(self.learning_data["successful_answers"]) > 0 and verbose:
             print(f"이전 학습 데이터 로드: 성공 {len(self.learning_data['successful_answers'])}개, 실패 {len(self.learning_data['failed_answers'])}개")
     
     def _load_learning_data(self):
         """이전 학습 데이터 로드"""
-        learning_file = "./learning_data.pkl"
+        learning_file = self.pkl_dir / "learning_data.pkl"
         
-        if os.path.exists(learning_file):
+        if learning_file.exists():
             try:
                 with open(learning_file, 'rb') as f:
                     saved_data = pickle.load(f)
@@ -127,7 +134,7 @@ class SimpleModelHandler:
     
     def _save_learning_data(self):
         """학습 데이터 저장"""
-        learning_file = "./learning_data.pkl"
+        learning_file = self.pkl_dir / "learning_data.pkl"
         
         try:
             # 저장할 데이터 정리 (최근 1000개까지만)
@@ -142,8 +149,6 @@ class SimpleModelHandler:
             with open(learning_file, 'wb') as f:
                 pickle.dump(save_data, f)
                 
-            if self.verbose:
-                print("학습 데이터 저장 완료")
         except Exception as e:
             if self.verbose:
                 print(f"학습 데이터 저장 오류: {e}")

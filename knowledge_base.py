@@ -11,12 +11,17 @@ import pickle
 import os
 from datetime import datetime
 from typing import Dict, List
+from pathlib import Path
 import random
 
 class FinancialSecurityKnowledgeBase:
     """금융보안 지식베이스"""
     
     def __init__(self):
+        # pkl 저장 폴더 생성
+        self.pkl_dir = Path("./pkl")
+        self.pkl_dir.mkdir(exist_ok=True)
+        
         # 도메인별 키워드
         self.domain_keywords = {
             "개인정보보호": [
@@ -133,9 +138,9 @@ class FinancialSecurityKnowledgeBase:
     
     def _load_analysis_history(self):
         """이전 분석 이력 로드"""
-        history_file = "./analysis_history.pkl"
+        history_file = self.pkl_dir / "analysis_history.pkl"
         
-        if os.path.exists(history_file):
+        if history_file.exists():
             try:
                 with open(history_file, 'rb') as f:
                     saved_history = pickle.load(f)
@@ -145,7 +150,7 @@ class FinancialSecurityKnowledgeBase:
     
     def _save_analysis_history(self):
         """분석 이력 저장"""
-        history_file = "./analysis_history.pkl"
+        history_file = self.pkl_dir / "analysis_history.pkl"
         
         try:
             save_data = {
