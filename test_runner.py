@@ -21,9 +21,7 @@ from inference import FinancialAIInference
 def run_test(test_size: int = 50, verbose: bool = True):
     """테스트 실행"""
     
-    print("=" * 60)
-    print(f"금융보안 AI 테스트 실행 ({test_size}문항)")
-    print("=" * 60)
+    print(f"테스트 실행 ({test_size}문항)")
     
     # 파일 존재 확인
     test_file = "./test.csv"
@@ -47,22 +45,23 @@ def run_test(test_size: int = 50, verbose: bool = True):
         # 지정된 크기로 제한
         if len(test_df) > test_size:
             test_df = test_df.head(test_size)
-            submission_df = submission_df.head(test_size)
             
-            # 임시 파일 생성
+            # 테스트 파일만 생성
             test_df.to_csv("./test_temp.csv", index=False)
-            submission_df.to_csv("./submission_temp.csv", index=False)
+            
+            # submission 파일은 메모리에서 처리
+            temp_submission = submission_df.head(test_size).copy()
             
             output_file = f"./test_result_{test_size}.csv"
-            results = engine.execute_inference(
-                "./test_temp.csv", 
-                "./submission_temp.csv", 
+            results = engine.execute_inference_with_data(
+                test_df, 
+                temp_submission, 
                 output_file
             )
             
             # 임시 파일 정리
-            os.remove("./test_temp.csv")
-            os.remove("./submission_temp.csv")
+            if os.path.exists("./test_temp.csv"):
+                os.remove("./test_temp.csv")
         else:
             output_file = f"./test_result_{len(test_df)}.csv"
             results = engine.execute_inference(
@@ -269,6 +268,28 @@ def validate_output_file(output_file: str, results: dict):
         
     except Exception as e:
         print(f"파일 검증 오류: {e}")
+
+def print_progress_bar(current: int, total: int, start_time: float, bar_length: int = 50):
+    """진행률 게이지바 출력"""
+    progress = current / total
+    filled_length = int(bar_length * progress)
+    bar = '█' * filled_length + '░' * (bar_length - filled_length)
+    
+    # 시간 계산
+    elapsed = time.time() - start_time
+    if current > 0:
+        avg_time_per_item = elapsed / current
+        remaining_items = total - current
+        eta = avg_time_per_item * remaining_items
+        eta_minutes = int(eta // 60)
+        eta_seconds = int(eta % 60)
+        eta_str = f"{eta_minutes:02d}:{eta_seconds:02d}"
+    else:
+        eta_str = "--:--"
+    
+    # 진행률 출력
+    percent = progress * 100
+    print(f"\r진행: [{bar}] {current}/{total} ({percent:.1f}%) - 남은시간: {eta_str}", end='', flush=True)
 
 def main():
     """메인 함수"""

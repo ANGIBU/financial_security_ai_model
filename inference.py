@@ -33,9 +33,7 @@ class FinancialAIInference:
         self.verbose = verbose
         self.start_time = time.time()
         
-        print("=" * 50)
-        print("금융보안 AI 추론 시스템 초기화")
-        print("=" * 50)
+        print("추론 시스템 초기화")
         
         # 컴포넌트 초기화
         print("1/3 모델 핸들러 초기화...")
@@ -72,9 +70,6 @@ class FinancialAIInference:
             
             # 지식베이스 분석
             kb_analysis = self.knowledge_base.analyze_question(question)
-            
-            if self.verbose:
-                print(f"질문 {question_id}: {question_type}, {domain}, {difficulty}")
             
             # 2. AI 모델로 답변 생성
             answer = self.model_handler.generate_answer(question, question_type)
@@ -122,6 +117,28 @@ class FinancialAIInference:
         # 난이도 통계
         self.stats["difficulty_stats"][difficulty] += 1
     
+    def print_progress_bar(self, current: int, total: int, start_time: float, bar_length: int = 50):
+        """진행률 게이지바 출력"""
+        progress = current / total
+        filled_length = int(bar_length * progress)
+        bar = '█' * filled_length + '░' * (bar_length - filled_length)
+        
+        # 시간 계산
+        elapsed = time.time() - start_time
+        if current > 0:
+            avg_time_per_item = elapsed / current
+            remaining_items = total - current
+            eta = avg_time_per_item * remaining_items
+            eta_minutes = int(eta // 60)
+            eta_seconds = int(eta % 60)
+            eta_str = f"{eta_minutes:02d}:{eta_seconds:02d}"
+        else:
+            eta_str = "--:--"
+        
+        # 진행률 출력
+        percent = progress * 100
+        print(f"\r진행: [{bar}] {current}/{total} ({percent:.1f}%) - 남은시간: {eta_str}", end='', flush=True)
+    
     def execute_inference(self, test_file: str = "./test.csv", 
                          submission_file: str = "./sample_submission.csv",
                          output_file: str = "./final_submission.csv") -> Dict:
@@ -134,38 +151,39 @@ class FinancialAIInference:
         except Exception as e:
             raise RuntimeError(f"데이터 로드 실패: {e}")
         
+        return self.execute_inference_with_data(test_df, submission_df, output_file)
+    
+    def execute_inference_with_data(self, test_df: pd.DataFrame, 
+                                   submission_df: pd.DataFrame,
+                                   output_file: str = "./final_submission.csv") -> Dict:
+        """데이터프레임으로 추론 실행"""
+        
         print(f"\n데이터 로드 완료: {len(test_df)}개 문항")
         
         # 전체 추론 진행
-        print("=" * 50)
         print("AI 추론 시작")
-        print("=" * 50)
         
         answers = []
         total_questions = len(test_df)
+        inference_start_time = time.time()
         
         for idx, row in test_df.iterrows():
             question = row['Question']
             question_id = row['ID']
             
-            # 진행률 표시
-            if (idx + 1) % 10 == 0 or idx == 0:
-                progress = (idx + 1) / total_questions * 100
-                elapsed = time.time() - self.start_time
-                eta = (elapsed / (idx + 1)) * (total_questions - idx - 1) if idx > 0 else 0
-                print(f"진행: {idx+1}/{total_questions} ({progress:.1f}%) - 남은시간: {eta/60:.1f}분")
-            
             # 실제 추론 수행
             answer = self.process_single_question(question, question_id)
             answers.append(answer)
             
-            # 중간 통계 (100문항마다)
-            if (idx + 1) % 100 == 0:
-                self._print_interim_stats()
+            # 게이지바 업데이트
+            self.print_progress_bar(idx + 1, total_questions, inference_start_time)
             
             # 메모리 관리 (50문항마다)
             if (idx + 1) % 50 == 0:
                 gc.collect()
+        
+        # 진행률 완료 후 줄바꿈
+        print()
         
         # 결과 저장
         submission_df['Answer'] = answers
@@ -176,30 +194,11 @@ class FinancialAIInference:
         
         return self._get_results_summary()
     
-    def _print_interim_stats(self):
-        """중간 통계 출력"""
-        total = self.stats["total"]
-        if total == 0:
-            return
-        
-        model_success_rate = (self.stats["model_success"] / total) * 100
-        avg_time = sum(self.stats["processing_times"]) / len(self.stats["processing_times"])
-        
-        print(f"  중간 통계: 모델성공률 {model_success_rate:.1f}%, 평균처리시간 {avg_time:.2f}초")
-        
-        # 모델 답변 분포
-        mc_stats = self.model_handler.get_answer_stats()
-        if mc_stats["total_mc"] > 0:
-            dist = [f"{k}:{v}" for k, v in mc_stats["distribution"].items() if v > 0]
-            print(f"  객관식 분포: {', '.join(dist)}")
-    
     def _print_final_results(self, output_file: str):
         """최종 결과 출력"""
         total_time = time.time() - self.start_time
         
-        print("\n" + "=" * 50)
-        print("AI 추론 완료")
-        print("=" * 50)
+        print("\nAI 추론 완료")
         
         print(f"총 처리시간: {total_time:.1f}초 ({total_time/60:.1f}분)")
         print(f"총 문항수: {self.stats['total']}개")
@@ -262,7 +261,7 @@ class FinancialAIInference:
     def cleanup(self):
         """리소스 정리"""
         try:
-            print("\n시스템 정리 중...")
+            print("시스템 정리 중...")
             
             if hasattr(self, 'model_handler'):
                 self.model_handler.cleanup()
@@ -282,8 +281,7 @@ class FinancialAIInference:
 
 def main():
     """메인 함수"""
-    print("금융보안 AI 시스템")
-    print("=" * 50)
+    print("AI 시스템 실행")
     
     engine = None
     try:
@@ -294,12 +292,12 @@ def main():
         results = engine.execute_inference()
         
         if results["success"]:
-            print(f"\n완료됨!")
+            print("완료됨!")
             print(f"모델 성공률: {results['model_success_rate']:.1f}%")
             print(f"총 처리시간: {results['total_time']:.1f}초")
         
     except KeyboardInterrupt:
-        print("\n추론 중단됨")
+        print("추론 중단됨")
     except Exception as e:
         print(f"오류 발생: {e}")
         import traceback
