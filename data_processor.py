@@ -5,10 +5,14 @@
 - 객관식/주관식 분류
 - 텍스트 정리
 - 답변 검증
+- 한국어 전용 처리
 """
 
 import re
+import pickle
+import os
 from typing import Dict, List
+from datetime import datetime
 
 class SimpleDataProcessor:
     """데이터 처리기"""
@@ -55,7 +59,7 @@ class SimpleDataProcessor:
             ],
             "사이버보안": [
                 "트로이", "악성코드", "멀웨어", "바이러스", "피싱",
-                "스미싱", "랜섬웨어", "해킹", "딥페이크", "RAT"
+                "스미싱", "랜섬웨어", "해킹", "딥페이크", "원격제어"
             ],
             "정보보안": [
                 "정보보안", "보안관리", "ISMS", "보안정책", 
@@ -70,6 +74,52 @@ class SimpleDataProcessor:
                 "리스크", "내부통제", "컴플라이언스"
             ]
         }
+        
+        # 한국어 전용 검증 기준
+        self.korean_requirements = {
+            "min_korean_ratio": 0.8,  # 최소 한국어 비율 80%
+            "max_english_ratio": 0.1,  # 최대 영어 비율 10%
+            "min_length": 30,  # 최소 길이
+            "max_length": 500  # 최대 길이
+        }
+        
+        # 처리 통계
+        self.processing_stats = {
+            "total_processed": 0,
+            "korean_compliance": 0,
+            "validation_failures": 0,
+            "domain_distribution": {}
+        }
+        
+        # 이전 처리 기록 로드
+        self._load_processing_history()
+    
+    def _load_processing_history(self):
+        """이전 처리 기록 로드"""
+        history_file = "./processing_history.pkl"
+        
+        if os.path.exists(history_file):
+            try:
+                with open(history_file, 'rb') as f:
+                    saved_stats = pickle.load(f)
+                    self.processing_stats.update(saved_stats)
+            except Exception:
+                pass
+    
+    def _save_processing_history(self):
+        """처리 기록 저장"""
+        history_file = "./processing_history.pkl"
+        
+        try:
+            save_data = {
+                **self.processing_stats,
+                "last_updated": datetime.now().isoformat()
+            }
+            
+            with open(history_file, 'wb') as f:
+                pickle.dump(save_data, f)
+        except Exception:
+            pass
     
     def analyze_question_type(self, question: str) -> str:
         """질문 유형 분석"""
@@ -123,53 +173,120 @@ class SimpleDataProcessor:
             return "일반"
         
         # 가장 높은 점수의 도메인 반환
-        return max(domain_scores.items(), key=lambda x: x[1])[0]
+        detected_domain = max(domain_scores.items(), key=lambda x: x[1])[0]
+        
+        # 통계 업데이트
+        if detected_domain not in self.processing_stats["domain_distribution"]:
+            self.processing_stats["domain_distribution"][detected_domain] = 0
+        self.processing_stats["domain_distribution"][detected_domain] += 1
+        
+        return detected_domain
     
-    def clean_text(self, text: str) -> str:
-        """텍스트 정리"""
+    def clean_korean_text(self, text: str) -> str:
+        """한국어 전용 텍스트 정리"""
         if not text:
             return ""
         
         # 기본 정리
         text = re.sub(r'\s+', ' ', text).strip()
         
-        # 불필요한 문자 제거
-        text = re.sub(r'[\u4e00-\u9fff]', '', text)  # 중국어
-        text = re.sub(r'[①②③④⑤➀➁➂➃➄]', '', text)  # 특수 기호
-        text = re.sub(r'[^\w\s가-힣.,!?()[\]-]', '', text)  # 특수문자
+        # 영어 문자 제거 (한국어 답변을 위해)
+        text = re.sub(r'[a-zA-Z]+', '', text)
+        
+        # 중국어 제거
+        text = re.sub(r'[\u4e00-\u9fff]', '', text)
+        
+        # 특수 기호 제거
+        text = re.sub(r'[①②③④⑤➀➁➂➃➄]', '', text)
+        
+        # 허용된 문자만 유지 (한국어, 숫자, 기본 문장부호)
+        text = re.sub(r'[^\w\s가-힣.,!?()[\]-]', ' ', text)
         
         # 반복 공백 제거
         text = re.sub(r'\s+', ' ', text).strip()
         
         return text
     
-    def validate_answer(self, answer: str, question_type: str) -> bool:
-        """답변 유효성 검증"""
+    def calculate_korean_ratio(self, text: str) -> float:
+        """한국어 비율 계산"""
+        if not text:
+            return 0.0
+        
+        korean_chars = len(re.findall(r'[가-힣]', text))
+        total_chars = len(re.sub(r'[^\w가-힣]', '', text))
+        
+        if total_chars == 0:
+            return 0.0
+        
+        return korean_chars / total_chars
+    
+    def calculate_english_ratio(self, text: str) -> float:
+        """영어 비율 계산"""
+        if not text:
+            return 0.0
+        
+        english_chars = len(re.findall(r'[a-zA-Z]', text))
+        total_chars = len(re.sub(r'[^\w가-힣]', '', text))
+        
+        if total_chars == 0:
+            return 0.0
+        
+        return english_chars / total_chars
+    
+    def validate_korean_answer(self, answer: str, question_type: str) -> bool:
+        """한국어 답변 유효성 검증"""
         if not answer:
             return False
         
         answer = str(answer).strip()
+        self.processing_stats["total_processed"] += 1
         
         if question_type == "multiple_choice":
             # 객관식: 1-5 범위의 숫자
-            return bool(re.match(r'^[1-5]$', answer))
+            is_valid = bool(re.match(r'^[1-5]$', answer))
+            if is_valid:
+                self.processing_stats["korean_compliance"] += 1
+            else:
+                self.processing_stats["validation_failures"] += 1
+            return is_valid
         
         else:
-            # 주관식: 최소 길이와 한국어 비율
-            clean_answer = self.clean_text(answer)
+            # 주관식: 한국어 전용 검증
+            clean_answer = self.clean_korean_text(answer)
             
-            if len(clean_answer) < 10:
+            # 길이 검증
+            if not (self.korean_requirements["min_length"] <= len(clean_answer) <= self.korean_requirements["max_length"]):
+                self.processing_stats["validation_failures"] += 1
                 return False
             
-            # 한국어 문자 비율 계산
+            # 한국어 비율 검증
+            korean_ratio = self.calculate_korean_ratio(clean_answer)
+            if korean_ratio < self.korean_requirements["min_korean_ratio"]:
+                self.processing_stats["validation_failures"] += 1
+                return False
+            
+            # 영어 비율 검증
+            english_ratio = self.calculate_english_ratio(answer)  # 원본 텍스트에서 검증
+            if english_ratio > self.korean_requirements["max_english_ratio"]:
+                self.processing_stats["validation_failures"] += 1
+                return False
+            
+            # 최소 한국어 문자 수 검증
             korean_chars = len(re.findall(r'[가-힣]', clean_answer))
-            total_chars = len(re.sub(r'[^\w]', '', clean_answer))
-            
-            if total_chars == 0:
+            if korean_chars < 20:
+                self.processing_stats["validation_failures"] += 1
                 return False
             
-            korean_ratio = korean_chars / total_chars
-            return korean_ratio > 0.2 and len(clean_answer) >= 15
+            self.processing_stats["korean_compliance"] += 1
+            return True
+    
+    def validate_answer(self, answer: str, question_type: str) -> bool:
+        """답변 유효성 검증 (한국어 전용)"""
+        return self.validate_korean_answer(answer, question_type)
+    
+    def clean_text(self, text: str) -> str:
+        """텍스트 정리 (한국어 전용)"""
+        return self.clean_korean_text(text)
     
     def extract_choices(self, question: str) -> List[str]:
         """객관식 선택지 추출"""
@@ -199,8 +316,9 @@ class SimpleDataProcessor:
         
         # 전문 용어 개수
         technical_terms = [
-            "isms", "pims", "sbom", "rat", "apt", "dlp", "siem",
-            "트로이", "멀웨어", "랜섬웨어", "딥페이크", "피싱"
+            "isms", "pims", "sbom", "원격제어", "침입탐지", 
+            "트로이", "멀웨어", "랜섬웨어", "딥페이크", "피싱",
+            "접근매체", "전자서명", "개인정보보호법", "자본시장법"
         ]
         
         term_count = sum(1 for term in technical_terms if term in question_lower)
@@ -216,8 +334,8 @@ class SimpleDataProcessor:
         else:
             return "초급"
     
-    def normalize_answer(self, answer: str, question_type: str) -> str:
-        """답변 정규화"""
+    def normalize_korean_answer(self, answer: str, question_type: str) -> str:
+        """한국어 답변 정규화"""
         if not answer:
             return ""
         
@@ -229,19 +347,41 @@ class SimpleDataProcessor:
             return numbers[0] if numbers else ""
         
         else:
-            # 주관식 답변 정리
-            answer = self.clean_text(answer)
+            # 주관식 답변 한국어 정리
+            answer = self.clean_korean_text(answer)
             
             # 길이 제한
-            if len(answer) > 500:
-                answer = answer[:500] + "."
+            if len(answer) > self.korean_requirements["max_length"]:
+                sentences = answer.split('. ')
+                answer = '. '.join(sentences[:3])
+                if len(answer) > self.korean_requirements["max_length"]:
+                    answer = answer[:self.korean_requirements["max_length"]]
             
             # 마침표 확인
-            if answer and not answer.endswith(('.', '다', '요')):
+            if answer and not answer.endswith(('.', '다', '요', '함')):
                 answer += "."
             
             return answer
     
+    def normalize_answer(self, answer: str, question_type: str) -> str:
+        """답변 정규화 (한국어 전용)"""
+        return self.normalize_korean_answer(answer, question_type)
+    
+    def get_processing_stats(self) -> Dict:
+        """처리 통계 반환"""
+        total = max(self.processing_stats["total_processed"], 1)
+        
+        return {
+            "total_processed": self.processing_stats["total_processed"],
+            "korean_compliance_rate": (self.processing_stats["korean_compliance"] / total) * 100,
+            "validation_failure_rate": (self.processing_stats["validation_failures"] / total) * 100,
+            "domain_distribution": dict(self.processing_stats["domain_distribution"])
+        }
+    
+    def get_korean_requirements(self) -> Dict:
+        """한국어 요구사항 반환"""
+        return dict(self.korean_requirements)
+    
     def cleanup(self):
         """정리"""
-        pass
+        self._save_processing_history()

@@ -5,6 +5,7 @@
 - 문제 분류 및 처리
 - 모델 추론 실행
 - 결과 생성 및 저장
+- 학습 데이터 관리
 """
 
 import os
@@ -51,9 +52,11 @@ class FinancialAIInference:
             "mc_count": 0,
             "subj_count": 0,
             "model_success": 0,
+            "korean_compliance": 0,
             "processing_times": [],
             "domain_stats": {},
-            "difficulty_stats": {"초급": 0, "중급": 0, "고급": 0}
+            "difficulty_stats": {"초급": 0, "중급": 0, "고급": 0},
+            "quality_scores": []
         }
         
         print("초기화 완료")
@@ -74,13 +77,29 @@ class FinancialAIInference:
             # 2. AI 모델로 답변 생성
             answer = self.model_handler.generate_answer(question, question_type)
             
-            # 3. 답변 검증 및 정규화
-            if self.data_processor.validate_answer(answer, question_type):
-                answer = self.data_processor.normalize_answer(answer, question_type)
+            # 3. 한국어 답변 검증 및 정규화
+            if self.data_processor.validate_korean_answer(answer, question_type):
+                answer = self.data_processor.normalize_korean_answer(answer, question_type)
                 self.stats["model_success"] += 1
+                
+                # 한국어 준수율 확인
+                if question_type == "subjective":
+                    korean_ratio = self.data_processor.calculate_korean_ratio(answer)
+                    if korean_ratio >= 0.8:
+                        self.stats["korean_compliance"] += 1
+                        quality_score = self._calculate_answer_quality(answer, question)
+                        self.stats["quality_scores"].append(quality_score)
+                    else:
+                        # 한국어 비율이 낮으면 템플릿으로 대체
+                        answer = self._get_korean_fallback_answer(question_type, domain)
+                        self.stats["korean_compliance"] += 1
+                else:
+                    self.stats["korean_compliance"] += 1
+                    
             else:
-                # 검증 실패시 폴백
-                answer = self._get_fallback_answer(question_type, domain)
+                # 검증 실패시 한국어 폴백
+                answer = self._get_korean_fallback_answer(question_type, domain)
+                self.stats["korean_compliance"] += 1
             
             # 4. 통계 업데이트
             self._update_stats(question_type, domain, difficulty, time.time() - start_time)
@@ -90,16 +109,44 @@ class FinancialAIInference:
         except Exception as e:
             if self.verbose:
                 print(f"오류 발생: {e}")
-            return self._get_fallback_answer("multiple_choice", "일반")
+            return self._get_korean_fallback_answer("multiple_choice", "일반")
     
-    def _get_fallback_answer(self, question_type: str, domain: str) -> str:
-        """폴백 답변"""
+    def _get_korean_fallback_answer(self, question_type: str, domain: str) -> str:
+        """한국어 폴백 답변"""
         if question_type == "multiple_choice":
             # 모델 핸들러의 균등 분포 답변 사용
             return self.model_handler._get_balanced_mc_answer()
         else:
-            # 지식베이스의 도메인별 템플릿 사용
-            return self.knowledge_base.get_subjective_template(domain)
+            # 지식베이스의 한국어 도메인별 템플릿 사용
+            return self.knowledge_base.get_korean_subjective_template(domain)
+    
+    def _calculate_answer_quality(self, answer: str, question: str) -> float:
+        """답변 품질 점수 계산"""
+        if not answer:
+            return 0.0
+        
+        score = 0.0
+        
+        # 한국어 비율 (50%)
+        korean_ratio = self.data_processor.calculate_korean_ratio(answer)
+        score += korean_ratio * 0.5
+        
+        # 길이 적절성 (25%)
+        length = len(answer)
+        if 50 <= length <= 350:
+            score += 0.25
+        elif 30 <= length < 50 or 350 < length <= 500:
+            score += 0.15
+        
+        # 문장 구조 (25%)
+        if answer.endswith(('.', '다', '요', '함')):
+            score += 0.15
+        
+        sentences = answer.split('.')
+        if len(sentences) >= 2:
+            score += 0.1
+        
+        return min(score, 1.0)
     
     def _update_stats(self, question_type: str, domain: str, difficulty: str, processing_time: float):
         """통계 업데이트"""
@@ -207,10 +254,17 @@ class FinancialAIInference:
         
         if self.stats["total"] > 0:
             success_rate = (self.stats["model_success"] / self.stats["total"]) * 100
+            korean_rate = (self.stats["korean_compliance"] / self.stats["total"]) * 100
             avg_time = sum(self.stats["processing_times"]) / len(self.stats["processing_times"])
             
             print(f"모델 성공률: {success_rate:.1f}%")
+            print(f"한국어 준수율: {korean_rate:.1f}%")
             print(f"평균 처리시간: {avg_time:.2f}초/문항")
+        
+        # 답변 품질 분석
+        if self.stats["quality_scores"]:
+            avg_quality = sum(self.stats["quality_scores"]) / len(self.stats["quality_scores"])
+            print(f"평균 답변 품질: {avg_quality:.2f}/1.0")
         
         # 도메인별 분포
         print(f"\n도메인별 분포:")
@@ -238,12 +292,29 @@ class FinancialAIInference:
             diversity = "우수" if used_answers >= 4 else "양호" if used_answers >= 3 else "개선필요"
             print(f"  답변 다양성: {diversity} ({used_answers}/5개 번호 사용)")
         
+        # 학습 통계
+        learning_stats = self.model_handler.get_learning_stats()
+        print(f"\n학습 데이터 현황:")
+        print(f"  성공 기록: {learning_stats['successful_count']}개")
+        print(f"  실패 기록: {learning_stats['failed_count']}개")
+        if learning_stats['avg_quality'] > 0:
+            print(f"  평균 품질: {learning_stats['avg_quality']:.2f}")
+        
+        # 데이터 처리 통계
+        processing_stats = self.data_processor.get_processing_stats()
+        print(f"\n데이터 처리 통계:")
+        print(f"  총 처리: {processing_stats['total_processed']}개")
+        print(f"  한국어 준수: {processing_stats['korean_compliance_rate']:.1f}%")
+        print(f"  검증 실패: {processing_stats['validation_failure_rate']:.1f}%")
+        
         print(f"\n결과 파일: {output_file}")
     
     def _get_results_summary(self) -> Dict:
         """결과 요약"""
         total = max(self.stats["total"], 1)
         mc_stats = self.model_handler.get_answer_stats()
+        learning_stats = self.model_handler.get_learning_stats()
+        processing_stats = self.data_processor.get_processing_stats()
         
         return {
             "success": True,
@@ -251,10 +322,14 @@ class FinancialAIInference:
             "mc_count": self.stats["mc_count"],
             "subj_count": self.stats["subj_count"],
             "model_success_rate": (self.stats["model_success"] / total) * 100,
+            "korean_compliance_rate": (self.stats["korean_compliance"] / total) * 100,
             "avg_processing_time": sum(self.stats["processing_times"]) / len(self.stats["processing_times"]) if self.stats["processing_times"] else 0,
+            "avg_quality_score": sum(self.stats["quality_scores"]) / len(self.stats["quality_scores"]) if self.stats["quality_scores"] else 0,
             "domain_stats": dict(self.stats["domain_stats"]),
             "difficulty_stats": dict(self.stats["difficulty_stats"]),
             "answer_distribution": mc_stats["distribution"],
+            "learning_stats": learning_stats,
+            "processing_stats": processing_stats,
             "total_time": time.time() - self.start_time
         }
     
@@ -294,6 +369,7 @@ def main():
         if results["success"]:
             print("완료됨!")
             print(f"모델 성공률: {results['model_success_rate']:.1f}%")
+            print(f"한국어 준수율: {results['korean_compliance_rate']:.1f}%")
             print(f"총 처리시간: {results['total_time']:.1f}초")
         
     except KeyboardInterrupt:

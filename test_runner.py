@@ -5,11 +5,13 @@
 - 시스템 테스트 실행
 - 성능 측정 및 분석
 - 결과 검증
+- 한국어 준수율 검증
 """
 
 import os
 import sys
 import time
+import re
 from pathlib import Path
 
 # 현재 디렉토리 설정
@@ -94,6 +96,32 @@ def run_test(test_size: int = 50, verbose: bool = True):
         if engine:
             engine.cleanup()
 
+def calculate_korean_ratio(text: str) -> float:
+    """한국어 비율 계산"""
+    if not text:
+        return 0.0
+    
+    korean_chars = len(re.findall(r'[가-힣]', text))
+    total_chars = len(re.sub(r'[^\w가-힣]', '', text))
+    
+    if total_chars == 0:
+        return 0.0
+    
+    return korean_chars / total_chars
+
+def calculate_english_ratio(text: str) -> float:
+    """영어 비율 계산"""
+    if not text:
+        return 0.0
+    
+    english_chars = len(re.findall(r'[a-zA-Z]', text))
+    total_chars = len(re.sub(r'[^\w가-힣]', '', text))
+    
+    if total_chars == 0:
+        return 0.0
+    
+    return english_chars / total_chars
+
 def print_test_results(results: dict, output_file: str, test_size: int):
     """테스트 결과 출력"""
     
@@ -103,8 +131,13 @@ def print_test_results(results: dict, output_file: str, test_size: int):
     print(f"처리 완료: {results['total_questions']}문항")
     print(f"객관식: {results['mc_count']}개, 주관식: {results['subj_count']}개")
     print(f"모델 성공률: {results['model_success_rate']:.1f}%")
+    print(f"한국어 준수율: {results['korean_compliance_rate']:.1f}%")
     print(f"평균 처리시간: {results['avg_processing_time']:.2f}초/문항")
     print(f"총 소요시간: {results['total_time']:.1f}초")
+    
+    # 답변 품질 점수
+    if results.get('avg_quality_score', 0) > 0:
+        print(f"평균 답변 품질: {results['avg_quality_score']:.2f}/1.0")
     
     # 도메인별 분포
     if results['domain_stats']:
@@ -145,6 +178,24 @@ def print_test_results(results: dict, output_file: str, test_size: int):
         print(f"  답변 다양성: {diversity_status} ({used_numbers}/5개 번호 사용)")
         print(f"  다양성 점수: {diversity_score:.2f}")
     
+    # 학습 통계
+    if 'learning_stats' in results:
+        learning = results['learning_stats']
+        print(f"\n학습 데이터 현황:")
+        print(f"  성공 기록: {learning['successful_count']}개")
+        print(f"  실패 기록: {learning['failed_count']}개")
+        if learning.get('avg_quality', 0) > 0:
+            print(f"  평균 품질: {learning['avg_quality']:.2f}")
+    
+    # 데이터 처리 통계
+    if 'processing_stats' in results:
+        processing = results['processing_stats']
+        print(f"\n데이터 처리 통계:")
+        print(f"  총 처리: {processing['total_processed']}개")
+        print(f"  한국어 준수: {processing['korean_compliance_rate']:.1f}%")
+        if processing['validation_failure_rate'] > 0:
+            print(f"  검증 실패: {processing['validation_failure_rate']:.1f}%")
+    
     # 성능 평가
     print(f"\n성능 평가:")
     
@@ -159,6 +210,18 @@ def print_test_results(results: dict, output_file: str, test_size: int):
         model_grade = "D"
     
     print(f"모델 성능: {model_grade}등급 ({results['model_success_rate']:.1f}%)")
+    
+    # 한국어 준수
+    if results['korean_compliance_rate'] >= 95:
+        korean_grade = "A"
+    elif results['korean_compliance_rate'] >= 85:
+        korean_grade = "B"
+    elif results['korean_compliance_rate'] >= 70:
+        korean_grade = "C"
+    else:
+        korean_grade = "D"
+    
+    print(f"한국어 준수: {korean_grade}등급 ({results['korean_compliance_rate']:.1f}%)")
     
     # 처리 속도
     if results['avg_processing_time'] <= 10:
@@ -219,21 +282,37 @@ def validate_output_file(output_file: str, results: dict):
         mc_answers = 0
         subj_answers = 0
         invalid_answers = 0
+        korean_compliant = 0
+        english_violations = 0
         
         for answer in result_df['Answer']:
             answer_str = str(answer).strip()
             if answer_str in ['1', '2', '3', '4', '5']:
                 mc_answers += 1
+                korean_compliant += 1
             elif len(answer_str) > 10:
                 subj_answers += 1
+                
+                # 한국어 비율 검증
+                korean_ratio = calculate_korean_ratio(answer_str)
+                english_ratio = calculate_english_ratio(answer_str)
+                
+                if korean_ratio >= 0.8 and english_ratio <= 0.1:
+                    korean_compliant += 1
+                else:
+                    english_violations += 1
             else:
                 invalid_answers += 1
         
         print(f"  객관식 답변: {mc_answers}개")
         print(f"  주관식 답변: {subj_answers}개")
+        print(f"  한국어 준수: {korean_compliant}개")
         
         if invalid_answers > 0:
             print(f"  유효하지 않은 답변: {invalid_answers}개")
+        
+        if english_violations > 0:
+            print(f"  한국어 위반: {english_violations}개")
         
         # 예상 비율과 비교
         expected_mc = results['mc_count']
@@ -241,9 +320,11 @@ def validate_output_file(output_file: str, results: dict):
         
         mc_accuracy = (mc_answers / expected_mc * 100) if expected_mc > 0 else 0
         subj_accuracy = (subj_answers / expected_subj * 100) if expected_subj > 0 else 0
+        korean_accuracy = (korean_compliant / len(result_df) * 100)
         
         print(f"  객관식 정확도: {mc_accuracy:.1f}%")
         print(f"  주관식 정확도: {subj_accuracy:.1f}%")
+        print(f"  한국어 준수율: {korean_accuracy:.1f}%")
         
         # 품질 평가
         if mc_answers > 0:
@@ -263,21 +344,44 @@ def validate_output_file(output_file: str, results: dict):
         if subj_answers > 0:
             # 주관식 답변 길이 확인
             subj_lengths = []
+            korean_ratios = []
+            
             for answer in result_df['Answer']:
                 answer_str = str(answer).strip()
                 if len(answer_str) > 10:
                     subj_lengths.append(len(answer_str))
+                    korean_ratios.append(calculate_korean_ratio(answer_str))
             
             if subj_lengths:
                 avg_length = sum(subj_lengths) / len(subj_lengths)
-                print(f"  주관식 평균 길이: {avg_length:.0f}자")
+                avg_korean_ratio = sum(korean_ratios) / len(korean_ratios)
                 
-                if avg_length < 20:
+                print(f"  주관식 평균 길이: {avg_length:.0f}자")
+                print(f"  주관식 한국어 비율: {avg_korean_ratio*100:.1f}%")
+                
+                if avg_length < 30:
                     print("  경고: 주관식 답변이 너무 짧음")
                 elif avg_length > 500:
                     print("  경고: 주관식 답변이 너무 김")
                 else:
                     print("  주관식 답변 길이 적절")
+                
+                if avg_korean_ratio < 0.8:
+                    print("  경고: 한국어 비율이 기준 미달")
+                else:
+                    print("  한국어 전용 답변 기준 충족")
+        
+        # 한국어 품질 종합 평가
+        if korean_accuracy >= 95:
+            korean_quality = "우수"
+        elif korean_accuracy >= 85:
+            korean_quality = "양호"
+        elif korean_accuracy >= 70:
+            korean_quality = "보통"
+        else:
+            korean_quality = "개선필요"
+        
+        print(f"  한국어 품질 평가: {korean_quality}")
         
     except Exception as e:
         print(f"파일 검증 오류: {e}")
@@ -308,6 +412,8 @@ def select_test_size():
             sys.exit(0)
         except Exception:
             print("잘못된 입력입니다. 다시 시도하세요.")
+
+def print_progress_bar(current: int, total: int, start_time: float, bar_length: int = 50):
     """진행률 게이지바 출력"""
     progress = current / total
     filled_length = int(bar_length * progress)
@@ -339,6 +445,7 @@ def main():
     test_size = select_test_size()
     
     print(f"선택된 테스트: {test_size}문항")
+    print("한국어 전용 답변 모드로 실행됩니다.")
     print()
     
     success = run_test(test_size, verbose=True)
