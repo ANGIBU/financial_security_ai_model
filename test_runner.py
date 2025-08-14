@@ -25,6 +25,10 @@ from typing import Dict, Optional, Tuple, List
 import threading
 import queue
 
+# 오프라인 환경 설정
+os.environ['TRANSFORMERS_OFFLINE'] = '1'
+os.environ['HF_DATASETS_OFFLINE'] = '1'
+
 current_dir = Path(__file__).parent.absolute()
 sys.path.append(str(current_dir))
 
@@ -39,6 +43,16 @@ PROGRESS_UPDATE_INTERVAL = 5
 DETAILED_ANALYSIS_INTERVAL = 10
 MEMORY_CHECK_INTERVAL = 20
 PERFORMANCE_SNAPSHOT_INTERVAL = 15
+
+def print_progress_bar(current: int, total: int, prefix: str = '', suffix: str = '', 
+                      length: int = 50, fill: str = '█', decimals: int = 1):
+    """심플한 게이지바 출력"""
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (current / float(total)))
+    filled_length = int(length * current // total)
+    bar = fill * filled_length + '-' * (length - filled_length)
+    print(f'\r{prefix} |{bar}| {percent}% {suffix}', end='', flush=True)
+    if current == total:
+        print()
 
 class IntegratedTestRunner:
     """통합 테스트 실행기 (대회 규칙 100% 준수)"""
@@ -124,8 +138,13 @@ class IntegratedTestRunner:
         estimated_times = []
         question_types = {"multiple_choice": 0, "subjective": 0}
         
+        # 게이지바를 위한 분석 진행
+        total_questions = len(test_df)
         for idx, row in test_df.iterrows():
             try:
+                print_progress_bar(idx + 1, total_questions, prefix='문제 분석', 
+                                 suffix=f'({idx + 1}/{total_questions})')
+                
                 question = row['Question']
                 
                 # 구조 분석 (실제 딥러닝 분석 수행)
@@ -142,14 +161,14 @@ class IntegratedTestRunner:
                 question_types[structure["question_type"]] += 1
                 
             except Exception as e:
-                print(f"문제 {idx} 분석 오류: {e}")
+                print(f"\n문제 {idx} 분석 오류: {e}")
                 complexity_scores.append(0.5)
                 estimated_times.append(10.0)
         
         avg_complexity = np.mean(complexity_scores)
         total_estimated_time = sum(estimated_times)
         
-        print(f"사전 분석 완료:")
+        print(f"\n사전 분석 완료:")
         print(f"  - 객관식: {question_types['multiple_choice']}개")
         print(f"  - 주관식: {question_types['subjective']}개")
         print(f"  - 평균 복잡도: {avg_complexity:.2f}")
@@ -192,12 +211,15 @@ class IntegratedTestRunner:
         detailed_results = []
         
         try:
+            total_questions = len(test_df)
             for idx, row in test_df.iterrows():
                 question_start_time = time.time()
                 question = row['Question']
                 question_id = row['ID']
                 
-                print(f"\n문항 {idx+1}/{self.test_size}: 통합 추론 수행 중... (SOLAR 모델)")
+                # 게이지바로 진행상황 표시
+                print_progress_bar(idx + 1, total_questions, prefix='추론 진행', 
+                                 suffix=f'문항 {idx+1}/{total_questions}')
                 
                 # inference.py의 통합 추론 메서드 사용 (단일 모델)
                 answer = self.inference_engine.process_question(question, question_id, idx)
@@ -214,11 +236,14 @@ class IntegratedTestRunner:
                 
                 # 진행 상황 업데이트
                 if (idx + 1) % PROGRESS_UPDATE_INTERVAL == 0:
+                    print()  # 게이지바 후 줄바꿈
                     self._print_progress_update(idx + 1, detailed_results[-PROGRESS_UPDATE_INTERVAL:])
                 
                 # 성능 스냅샷 수집
                 if (idx + 1) % PERFORMANCE_SNAPSHOT_INTERVAL == 0:
                     self._take_performance_snapshot(idx + 1)
+            
+            print()  # 최종 게이지바 후 줄바꿈
             
             # 결과 저장
             submission_df['Answer'] = answers

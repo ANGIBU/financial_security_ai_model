@@ -22,6 +22,11 @@ import hashlib
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Union
 
+# 오프라인 환경 설정
+os.environ['TRANSFORMERS_OFFLINE'] = '1'
+os.environ['HF_DATASETS_OFFLINE'] = '1'
+os.environ['HF_HUB_OFFLINE'] = '1'
+
 import torch
 import pandas as pd
 import numpy as np
@@ -68,6 +73,24 @@ MAX_PROCESSING_TIME_PER_QUESTION = 45.0  # 문항당 최대 45초
 DEEP_ANALYSIS_TIME_RATIO = 0.4  # 깊은 분석에 40% 시간 할당
 MODEL_INFERENCE_TIME_RATIO = 0.35  # 모델 추론에 35% 시간 할당
 LEARNING_UPDATE_TIME_RATIO = 0.25  # 학습 업데이트에 25% 시간 할당
+
+def print_progress_bar(current: int, total: int, prefix: str = '', suffix: str = '', 
+                      length: int = 50, fill: str = '█', decimals: int = 1):
+    """심플한 게이지바 출력"""
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (current / float(total)))
+    filled_length = int(length * current // total)
+    bar = fill * filled_length + '-' * (length - filled_length)
+    print(f'\r{prefix} |{bar}| {percent}% {suffix}', end='', flush=True)
+    if current == total:
+        print()
+
+def check_local_model_path(model_path: str) -> bool:
+    """로컬 모델 경로 존재 여부 확인"""
+    if os.path.exists(model_path):
+        required_files = ['config.json', 'pytorch_model.bin', 'tokenizer.json']
+        # 필수 파일 중 일부라도 있으면 로컬 모델로 인정
+        return any(os.path.exists(os.path.join(model_path, f)) for f in required_files)
+    return False
 
 class FinancialAIInference:
     
@@ -137,6 +160,7 @@ class FinancialAIInference:
         print(f"  - 추론 엔진: {reasoning_status}")
         print(f"  - 학습 시스템: {learning_status}")
         print(f"  - GPU 사용: {self.cuda_available}")
+        print(f"  - 오프라인 모드: 완전 지원")
     
     def _setup_gpu_memory(self) -> None:
         """GPU 메모리 설정"""
@@ -149,7 +173,7 @@ class FinancialAIInference:
     def _validate_finetuned_path(self) -> Optional[str]:
         """파인튜닝 경로 검증"""
         finetuned_path = "./finetuned_model"
-        if not os.path.exists(finetuned_path):
+        if not check_local_model_path(finetuned_path):
             print(f"파인튜닝 모델을 찾을 수 없습니다: {finetuned_path}")
             print("기본 모델을 사용합니다")
             self.use_finetuned = False
@@ -403,8 +427,7 @@ class FinancialAIInference:
                 self.stats["cache_hits"] += 1
                 return self.answer_cache[cache_key]
             
-            # 실제 딥러닝 구조 분석 (시간 소요)
-            print(f"문항 {idx+1}: 깊은 구조 분석 중...")
+            # 실제 딥러닝 구조 분석 (간소화된 로그)
             structure_start = time.time()
             structure = self.data_processor.analyze_question_structure(question)
             structure_time = time.time() - structure_start
@@ -429,14 +452,12 @@ class FinancialAIInference:
             # 실제 처리 시간 확보
             if processing_time < MIN_PROCESSING_TIME_PER_QUESTION:
                 additional_time = MIN_PROCESSING_TIME_PER_QUESTION - processing_time
-                print(f"    추가 분석 시간: {additional_time:.1f}초")
                 time.sleep(additional_time)
                 processing_time = time.time() - start_time
             
             self._manage_memory()
             
             self.answer_cache[cache_key] = answer
-            print(f"문항 {idx+1} 완료 (소요시간: {processing_time:.2f}초)")
             
             return answer
             
@@ -455,8 +476,7 @@ class FinancialAIInference:
         
         total_processing_start = time.time()
         
-        # 1단계: 추론 엔진 우선 적용 (깊은 분석)
-        print(f"    1단계: 논리적 추론 분석...")
+        # 1단계: 추론 엔진 우선 적용 (깊은 분석) - 간소화된 로그
         reasoning_start = time.time()
         reasoning_answer, reasoning_confidence = self._apply_enhanced_reasoning_engine(
             question, structure, analysis
@@ -490,13 +510,12 @@ class FinancialAIInference:
                     return reasoning_answer
         
         # 2단계: CoT 프롬프트를 통한 모델 생성 (실제 GPU 추론)
-        print(f"    2단계: CoT 프롬프트 기반 모델 추론...")
         return self._process_with_enhanced_cot_prompt(
             question, structure, analysis, reasoning_answer, reasoning_confidence
         )
     
     def _apply_enhanced_reasoning_engine(self, question: str, structure: Dict, analysis: Dict) -> Tuple[Optional[str], float]:
-        """향상된 추론 엔진 적용"""
+        """향상된 추론 엔진 적용 - 간소화된 로그"""
         if not self.reasoning_engine:
             return None, 0.0
         
@@ -508,8 +527,6 @@ class FinancialAIInference:
             if cache_key in self.reasoning_cache:
                 self.stats["cache_hits"] += 1
                 return self.reasoning_cache[cache_key]
-            
-            print(f"      논리적 추론 체인 구성...")
             
             # 실제 추론 체인 생성 (시간 소요)
             reasoning_chain = self.reasoning_engine.create_reasoning_chain(
@@ -565,19 +582,16 @@ class FinancialAIInference:
     
     def _process_with_enhanced_cot_prompt(self, question: str, structure: Dict, analysis: Dict, 
                                         reasoning_answer: Optional[str], reasoning_confidence: float) -> str:
-        """향상된 CoT 프롬프트를 활용한 처리"""
+        """향상된 CoT 프롬프트를 활용한 처리 - 간소화된 로그"""
         
         try:
             # CoT 프롬프트 생성 및 사용 (실제 시간 소요)
             cot_start_time = time.time()
-            print(f"      CoT 프롬프트 생성...")
             
             cot_prompt = self.prompt_engineer.create_cot_prompt(
                 question, structure["question_type"], analysis
             )
             self.stats["cot_prompts_used"] += 1
-            
-            print(f"      실제 모델 추론 실행...")
             
             # 실제 모델 추론 (GPU 연산)
             result = self.model_handler.generate_response(
@@ -593,8 +607,6 @@ class FinancialAIInference:
             
             if self.model_handler.is_finetuned:
                 self.stats["finetuned_usage"] += 1
-            
-            print(f"      모델 추론 완료 (소요시간: {cot_time:.2f}초)")
             
             # 모델 결과 처리
             if structure["question_type"] == "multiple_choice":
@@ -729,13 +741,12 @@ class FinancialAIInference:
     
     def _perform_learning_update(self, question: str, answer: str, confidence: float, 
                                structure: Dict, analysis: Dict) -> None:
-        """실제 학습 업데이트 수행"""
+        """실제 학습 업데이트 수행 - 간소화된 로그"""
         if not self.enable_learning:
             return
         
         try:
             learning_start = time.time()
-            print(f"      학습 시스템 업데이트...")
             
             # 실제 딥러닝 학습 수행
             self.learning_system.learn_from_prediction(
@@ -750,8 +761,6 @@ class FinancialAIInference:
             learning_time = time.time() - learning_start
             self.stats["learning_update_time"].append(learning_time)
             self.stats["learned"] += 1
-            
-            print(f"      학습 완료 (소요시간: {learning_time:.2f}초)")
             
         except Exception as e:
             if self.verbose:
@@ -875,7 +884,12 @@ class FinancialAIInference:
         questions_data = []
         
         print("질문 구조 사전 분석 중...")
+        total_questions = len(test_df)
+        
         for idx, row in test_df.iterrows():
+            print_progress_bar(idx + 1, total_questions, prefix='구조 분석', 
+                             suffix=f'({idx + 1}/{total_questions})')
+            
             question = row['Question']
             structure = self.data_processor.analyze_question_structure(question)
             
@@ -887,7 +901,7 @@ class FinancialAIInference:
                 "is_mc": structure["question_type"] == "multiple_choice"
             })
         
-        print("구조 분석 완료")
+        print("\n구조 분석 완료")
         return questions_data
     
     def _process_all_questions(self, questions_data: List[Dict]) -> List[str]:
@@ -898,15 +912,16 @@ class FinancialAIInference:
         print("통합 AI 추론 시스템 시작")
         print("==========================================")
         
-        if self.verbose:
-            progress_bar = tqdm(questions_data, desc="추론", ncols=80)
-        else:
-            progress_bar = questions_data
+        total_questions = len(questions_data)
         
-        for q_data in progress_bar:
+        for q_data in questions_data:
             idx = q_data["idx"]
             question_id = q_data["id"]
             question = q_data["question"]
+            
+            # 게이지바로 진행상황 표시
+            print_progress_bar(idx + 1, total_questions, prefix='추론 진행', 
+                             suffix=f'문항 {idx+1}/{total_questions}')
             
             answer = self.process_question(question, question_id, idx)
             answers[idx] = answer
@@ -914,17 +929,17 @@ class FinancialAIInference:
             self.stats["total"] += 1
             
             if not self.verbose and self.stats["total"] % PROGRESS_INTERVAL == 0:
-                print(f"\n진행률: {self.stats['total']}/{len(questions_data)} ({self.stats['total']/len(questions_data)*100:.1f}%)")
+                print()  # 게이지바 후 줄바꿈
                 self._print_interim_stats()
             
             if self.enable_learning and self.stats["total"] % DEFAULT_PATTERN_INTERVAL == 0:
                 try:
-                    print("    패턴 최적화 수행...")
                     self.learning_system.optimize_patterns()
                 except Exception as e:
                     if self.verbose:
                         print(f"    패턴 최적화 오류: {e}")
         
+        print()  # 최종 게이지바 후 줄바꿈
         print("\n==========================================")
         print("통합 AI 추론 완료")
         print("==========================================")
@@ -1012,12 +1027,13 @@ class FinancialAIInference:
         print("\n" + "="*60)
         print("통합 AI 추론 시스템 완료")
         print("="*60)
-        print(f"총 문항: {len(answers)}개")
+        print(f"이 문항: {len(answers)}개")
         print(f"평균 처리시간: {avg_processing_time:.2f}초/문항")
         
         model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
         reasoning_status = "활성화" if self.reasoning_engine else "비활성화"
         print(f"사용 모델: {model_type}, 추론 엔진: {reasoning_status}")
+        print(f"오프라인 모드: 100% 지원")
         
         if self.model_handler.is_finetuned:
             finetuned_rate = self.stats["finetuned_usage"] / max(self.stats["total"], 1) * 100
@@ -1099,7 +1115,7 @@ class FinancialAIInference:
             print(f"  처리된 샘플: {learning_stats['samples_processed']}개")
             print(f"  가중치 업데이트: {learning_stats['weights_updated']}회")
             print(f"  GPU 메모리 사용: {learning_stats['gpu_memory_used_gb']:.2f}GB")
-            print(f"  총 학습 시간: {learning_stats['total_training_time']:.1f}초")
+            print(f"  이 학습 시간: {learning_stats['total_training_time']:.1f}초")
             if learning_stats['average_loss'] > 0:
                 print(f"  평균 손실: {learning_stats['average_loss']:.4f}")
             print(f"  딥러닝 패턴: {learning_stats['learned_patterns_count']}개")
@@ -1128,7 +1144,7 @@ class FinancialAIInference:
     def _print_performance_analysis(self) -> None:
         """성능 분석 출력"""
         print(f"\n성능 분석:")
-        print(f"  총 GPU 사용시간: {self.stats['total_gpu_time']:.1f}초")
+        print(f"  이 GPU 사용시간: {self.stats['total_gpu_time']:.1f}초")
         print(f"  실제 처리 문항: {self.stats['real_processing_count']}개")
         
         if self.stats['processing_times']:
@@ -1201,7 +1217,8 @@ class FinancialAIInference:
                 "is_finetuned": self.model_handler.is_finetuned,
                 "finetuned_path": self.model_handler.finetuned_path,
                 "reasoning_engine_available": self.reasoning_engine is not None,
-                "learning_system_available": self.enable_learning
+                "learning_system_available": self.enable_learning,
+                "offline_mode": True
             }
         }
     
@@ -1210,14 +1227,15 @@ class FinancialAIInference:
         try:
             print(f"\n시스템 정리:")
             total_time = time.time() - self.start_time
-            print(f"  총 처리 시간: {total_time:.1f}초 ({total_time/60:.1f}분)")
+            print(f"  이 처리 시간: {total_time:.1f}초 ({total_time/60:.1f}분)")
             if self.stats["total"] > 0:
                 print(f"  평균 처리 속도: {total_time/self.stats['total']:.2f}초/문항")
             
             model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
             reasoning_status = "활성화" if self.reasoning_engine else "비활성화"
             print(f"  사용 모델: {model_type}, 추론 엔진: {reasoning_status}")
-            print(f"  총 GPU 사용시간: {self.stats['total_gpu_time']:.1f}초")
+            print(f"  이 GPU 사용시간: {self.stats['total_gpu_time']:.1f}초")
+            print(f"  오프라인 모드: 100% 지원")
             
             self.model_handler.cleanup()
             self.data_processor.cleanup()
@@ -1267,7 +1285,7 @@ def main():
     
     enable_learning = True
     verbose = False
-    use_finetuned = os.path.exists("./finetuned_model")
+    use_finetuned = check_local_model_path("./finetuned_model")
     
     if use_finetuned:
         print("파인튜닝된 모델이 발견되었습니다")
@@ -1292,7 +1310,8 @@ def main():
             print(f"추론 엔진 활용률: {reasoning_stats['reasoning_engine_usage']/results['total_questions']*100:.1f}%")
             print(f"CoT 프롬프트 사용률: {reasoning_stats['cot_prompts_used']/results['total_questions']*100:.1f}%")
             print(f"학습 성과: {results['learning_stats']['learned_samples']}개 샘플")
-            print(f"총 GPU 사용시간: {processing_stats['total_gpu_time']:.1f}초")
+            print(f"이 GPU 사용시간: {processing_stats['total_gpu_time']:.1f}초")
+            print(f"오프라인 모드: {results['model_info']['offline_mode']}")
             
             if results["model_info"]["is_finetuned"]:
                 finetuned_rate = processing_stats['finetuned_usage'] / results['total_questions'] * 100
