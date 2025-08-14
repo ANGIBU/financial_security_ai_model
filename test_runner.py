@@ -89,9 +89,6 @@ def validate_answers(output_file: str):
         import pandas as pd
         result_df = pd.read_csv(output_file)
         
-        print("\n답변 검증 결과:")
-        print("-" * 50)
-        
         # 객관식 답변 검증
         mc_answers = []
         subj_answers = []
@@ -164,10 +161,8 @@ def calculate_english_ratio(text: str) -> float:
 
 def print_test_results(results: dict, output_file: str, test_size: int):
     """테스트 결과 출력"""
-    
-    print("\n" + "="*60)
+
     print("테스트 완료")
-    print("="*60)
     
     # 핵심 정보 출력
     total_time_minutes = results['total_time'] / 60
@@ -176,32 +171,9 @@ def print_test_results(results: dict, output_file: str, test_size: int):
     print(f"  처리 시간: {total_time_minutes:.1f}분")
     print(f"  처리 문항: {results['total_questions']}개")
     print(f"  결과 파일: {output_file}")
-    
-    print(f"\n성능 지표:")
-    print(f"  모델 성공률: {results['model_success_rate']:.1f}%")
-    print(f"  한국어 준수율: {results['korean_compliance_rate']:.1f}%")
-    
-    if results['avg_quality_score'] > 0:
-        print(f"  평균 품질 점수: {results['avg_quality_score']:.2f}")
-    
-    print(f"\n문항 유형:")
-    print(f"  객관식: {results['mc_count']}개")
-    print(f"  주관식: {results['subj_count']}개")
-    
-    # 도메인 분포
-    if results['domain_stats']:
-        print(f"\n도메인 분포:")
-        for domain, count in results['domain_stats'].items():
-            percentage = (count / results['total_questions']) * 100
-            print(f"  {domain}: {count}개 ({percentage:.1f}%)")
-    
-    print("="*60)
 
 def select_test_size():
     """테스트 문항 수 선택"""
-    print("\n" + "="*60)
-    print("금융보안 AI 모델 테스트 시스템")
-    print("="*60)
     print("\n테스트할 문항 수를 선택하세요:")
     print("1. 5문항 (빠른 테스트)")
     print("2. 10문항 (기본 테스트)")
