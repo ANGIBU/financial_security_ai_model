@@ -52,7 +52,16 @@ def run_test(test_size: int = 50, verbose: bool = True):
             # submission 파일은 메모리에서 처리
             temp_submission = submission_df.head(test_size).copy()
             
-            output_file = f"./test_result_{test_size}.csv"
+            # 테스트 크기별 파일명
+            if test_size == 5:
+                output_file = "./quick_test_result.csv"
+            elif test_size == 10:
+                output_file = "./basic_test_result.csv"
+            elif test_size == 50:
+                output_file = "./full_test_result.csv"
+            else:
+                output_file = f"./test_result_{test_size}.csv"
+                
             results = engine.execute_inference_with_data(
                 test_df, 
                 temp_submission, 
@@ -88,9 +97,7 @@ def run_test(test_size: int = 50, verbose: bool = True):
 def print_test_results(results: dict, output_file: str, test_size: int):
     """테스트 결과 출력"""
     
-    print("\n" + "=" * 60)
-    print("테스트 결과 분석")
-    print("=" * 60)
+    print("\n테스트 결과 분석")
     
     # 기본 통계
     print(f"처리 완료: {results['total_questions']}문항")
@@ -165,8 +172,14 @@ def print_test_results(results: dict, output_file: str, test_size: int):
     
     print(f"처리 속도: {speed_grade}등급 ({results['avg_processing_time']:.2f}초/문항)")
     
-    # 시간 효율성
-    expected_time = test_size * 30  # 30초/문항 기준
+    # 시간 효율성 (테스트 크기별 기준 시간)
+    if test_size == 5:
+        expected_time = test_size * 20  # 20초/문항 기준
+    elif test_size == 10:
+        expected_time = test_size * 25  # 25초/문항 기준
+    else:
+        expected_time = test_size * 30  # 30초/문항 기준
+        
     efficiency = (expected_time / results['total_time']) * 100
     print(f"시간 효율성: {efficiency:.1f}%")
     
@@ -269,7 +282,32 @@ def validate_output_file(output_file: str, results: dict):
     except Exception as e:
         print(f"파일 검증 오류: {e}")
 
-def print_progress_bar(current: int, total: int, start_time: float, bar_length: int = 50):
+def select_test_size():
+    """테스트 문항 수 선택"""
+    print("테스트할 문항 수를 선택하세요:")
+    print("1. 5문항 (빠른 테스트)")
+    print("2. 10문항 (기본 테스트)")
+    print("3. 50문항 (전체 테스트)")
+    print()
+    
+    while True:
+        try:
+            choice = input("선택 (1-3): ").strip()
+            
+            if choice == "1":
+                return 5
+            elif choice == "2":
+                return 10
+            elif choice == "3":
+                return 50
+            else:
+                print("잘못된 선택입니다. 1, 2, 3 중 하나를 입력하세요.")
+                
+        except KeyboardInterrupt:
+            print("\n프로그램을 종료합니다.")
+            sys.exit(0)
+        except Exception:
+            print("잘못된 입력입니다. 다시 시도하세요.")
     """진행률 게이지바 출력"""
     progress = current / total
     filled_length = int(bar_length * progress)
@@ -293,26 +331,22 @@ def print_progress_bar(current: int, total: int, start_time: float, bar_length: 
 
 def main():
     """메인 함수"""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='금융보안 AI 테스트')
-    parser.add_argument('--size', type=int, default=50, help='테스트할 문항 수 (기본: 50)')
-    parser.add_argument('--verbose', action='store_true', help='상세 출력')
-    
-    args = parser.parse_args()
-    
-    # 테스트 크기 제한
-    test_size = max(1, min(args.size, 515))
-    
+    print("금융보안 AI 테스트 시스템")
     print(f"Python 버전: {sys.version.split()[0]}")
-    print(f"테스트 크기: {test_size}문항")
+    print()
     
-    success = run_test(test_size, args.verbose)
+    # 테스트 크기 선택
+    test_size = select_test_size()
+    
+    print(f"선택된 테스트: {test_size}문항")
+    print()
+    
+    success = run_test(test_size, verbose=True)
     
     if success:
-        print("\n테스트 완료!")
+        print("테스트 완료!")
     else:
-        print("\n테스트 실패")
+        print("테스트 실패")
         sys.exit(1)
 
 if __name__ == "__main__":
