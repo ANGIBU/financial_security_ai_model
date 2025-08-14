@@ -1,1620 +1,287 @@
 # inference.py
 
 """
-메인 추론 시스템 - 최종 수정됨
-- 실제 LLM 모델 추론 강제 실행
-- 금융보안 객관식/주관식 문제 추론  
-- reasoning_engine 기반 논리적 추론  
-- Chain-of-Thought 다단계 추론 프로세스
-- 파인튜닝 모델 지원
-- 학습 시스템 통합 관리
-- 한국어 답변 생성 및 검증
-- 오프라인 환경 대응
-- 실제 딥러닝 추론 프로세스 통합
-- 답변 필터링 강화 (분석 과정 제거)
-- 통계 계산 오류 수정
+실제 작동하는 핵심 추론 시스템
+- 복잡성 완전 제거
+- 실제 LLM 모델 실행 보장  
+- 정확한 문제 분류
+- 다양한 답변 생성
 """
 
 import os
-import sys
-import gc
 import time
-import re
-import random
-import hashlib
+import gc
+import pandas as pd
+from typing import Dict, List
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Union
 
-# 오프라인 환경 설정
+# 오프라인 설정
 os.environ['TRANSFORMERS_OFFLINE'] = '1'
 os.environ['HF_DATASETS_OFFLINE'] = '1'
-os.environ['HF_HUB_OFFLINE'] = '1'
 
-import torch
-import pandas as pd
-import numpy as np
-from tqdm import tqdm
-import warnings
-
-warnings.filterwarnings("ignore")
-
+# 현재 디렉토리 설정
 current_dir = Path(__file__).parent.absolute()
-sys.path.append(str(current_dir))
 
-from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
-from transformers.utils import logging
-logging.set_verbosity_error()
-
-from model_handler import ModelHandler
-from data_processor import RealDataProcessor
-from prompt_engineering import PromptEngineer
-from learning_system import RealLearningSystem
-from reasoning_engine import ReasoningEngine
-
-# 상수 정의
-DEFAULT_MODEL_NAME = "upstage/SOLAR-10.7B-Instruct-v1.0"
-DEFAULT_OUTPUT_FILE = "./final_submission.csv"
-DEFAULT_MEMORY_FRACTION = 0.90
-DEFAULT_CACHE_SIZE = 400
-DEFAULT_CLEANUP_INTERVAL = 20
-DEFAULT_PATTERN_INTERVAL = 30
-MEMORY_CLEANUP_THRESHOLD = 0.85
-QUALITY_THRESHOLD = 0.65
-CONFIDENCE_THRESHOLD = 0.5
-REASONING_THRESHOLD = 0.7
-MAX_ANSWER_LENGTH = 550
-MIN_ANSWER_LENGTH = 25
-MIN_KOREAN_RATIO = 0.60
-
-# *** 핵심 수정: LLM 모델 강제 실행 설정 ***
-FORCE_LLM_MODEL_EXECUTION = True
-MIN_LLM_SUCCESS_RATE = 0.5  # 최소 50% LLM 성공률
-LLM_PRIORITY_MODE = True    # LLM 우선 모드
-
-# 진행률 출력 간격
-PROGRESS_INTERVAL = 50
-INTERIM_STATS_INTERVAL = 50
-
-# 실제 딥러닝 처리 시간 임계값
-MIN_PROCESSING_TIME_PER_QUESTION = 8.0
-MAX_PROCESSING_TIME_PER_QUESTION = 45.0
-DEEP_ANALYSIS_TIME_RATIO = 0.4
-MODEL_INFERENCE_TIME_RATIO = 0.35
-LEARNING_UPDATE_TIME_RATIO = 0.25
-
-def print_progress_bar(current: int, total: int, prefix: str = '', suffix: str = '', 
-                      length: int = 50, fill: str = '█', decimals: int = 1):
-    """심플한 게이지바 출력"""
-    percent = ("{0:." + str(decimals) + "f}").format(100 * (current / float(total)))
-    filled_length = int(length * current // total)
-    bar = fill * filled_length + '-' * (length - filled_length)
-    print(f'\r{prefix} |{bar}| {percent}% {suffix}', end='', flush=True)
-    if current == total:
-        print()
-
-def check_local_model_path(model_path: str) -> bool:
-    """로컬 모델 경로 존재 여부 확인"""
-    if os.path.exists(model_path):
-        required_files = ['config.json', 'pytorch_model.bin', 'tokenizer.json']
-        return any(os.path.exists(os.path.join(model_path, f)) for f in required_files)
-    return False
-
-# RealLearningSystem에 누락된 메서드 추가를 위한 패치
-class EnhancedLearningSystem:
-    """학습 시스템 확장"""
-    
-    def __init__(self, real_learning_system):
-        self.real_system = real_learning_system
-        self.current_accuracy = 0.75  # 기본 정확도
-    
-    def get_current_accuracy(self) -> float:
-        """현재 정확도 반환"""
-        try:
-            # 실제 학습 통계가 있다면 계산
-            stats = self.real_system.get_learning_statistics()
-            if stats.get('samples_processed', 0) > 10:
-                # 학습된 샘플이 충분하면 정확도 추정
-                processed = stats.get('samples_processed', 1)
-                accuracy = min(0.6 + (processed * 0.02), 0.95)
-                self.current_accuracy = accuracy
-            return self.current_accuracy
-        except:
-            return self.current_accuracy
-    
-    def __getattr__(self, name):
-        """다른 메서드들은 원본 시스템으로 위임"""
-        return getattr(self.real_system, name)
+# 로컬 모듈 import
+from model_handler import SimpleModelHandler
+from data_processor import SimpleDataProcessor
 
 class FinancialAIInference:
+    """실제 작동하는 금융보안 AI 추론 시스템"""
     
-    def __init__(self, enable_learning: bool = True, verbose: bool = False, use_finetuned: bool = False):
-        self.start_time = time.time()
-        self.enable_learning = enable_learning
+    def __init__(self, verbose: bool = False):
         self.verbose = verbose
-        self.use_finetuned = use_finetuned
-        self.cuda_available = torch.cuda.is_available()
+        self.start_time = time.time()
         
-        if self.cuda_available:
-            self._setup_gpu_memory()
+        print("=" * 50)
+        print("실제 작동하는 AI 추론 시스템 시작")
+        print("=" * 50)
         
-        print("통합 AI 추론 시스템 초기화 중...")
+        # 컴포넌트 초기화
+        print("1/2 모델 핸들러 초기화...")
+        self.model_handler = SimpleModelHandler(verbose=verbose)
         
-        finetuned_path = self._validate_finetuned_path() if use_finetuned else None
+        print("2/2 데이터 프로세서 초기화...")
+        self.data_processor = SimpleDataProcessor()
         
-        try:
-            print("  1/5 모델 핸들러 초기화...")
-            self.model_handler = ModelHandler(
-                model_name=DEFAULT_MODEL_NAME,
-                device="cuda" if self.cuda_available else "cpu",
-                load_in_4bit=True,
-                max_memory_gb=22,
-                verbose=self.verbose,
-                finetuned_path=finetuned_path
-            )
-        except Exception as e:
-            raise RuntimeError(f"모델 핸들러 초기화 실패: {e}")
-        
-        print("  2/5 데이터 처리기 초기화...")
-        self.data_processor = RealDataProcessor(debug_mode=self.verbose)
-        
-        print("  3/5 프롬프트 엔지니어 초기화...")
-        self.prompt_engineer = PromptEngineer()
-        
-        print("  4/5 추론 엔진 초기화...")
-        try:
-            self.reasoning_engine = ReasoningEngine(
-                knowledge_base=self.prompt_engineer.knowledge_base,
-                debug_mode=self.verbose
-            )
-            print("     추론 엔진 초기화 완료")
-        except Exception as e:
-            print(f"     추론 엔진 초기화 실패: {e}")
-            self.reasoning_engine = None
-        
-        print("  5/5 학습 시스템 초기화...")
-        if self.enable_learning:
-            real_learning_system = RealLearningSystem(debug_mode=self.verbose)
-            self.learning_system = EnhancedLearningSystem(real_learning_system)
-            self._load_existing_learning_data()
-        
-        # *** 핵심 수정: 통계 시스템 완전 재설계 ***
-        self.stats = self._initialize_safe_stats()
-        self.answer_cache = {}
-        self.pattern_analysis_cache = {}
-        self.reasoning_cache = {}
-        self.max_cache_size = DEFAULT_CACHE_SIZE
-        self.memory_cleanup_counter = 0
-        
-        self.enhanced_fallback_templates = self._build_enhanced_fallback_templates()
-        
-        model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
-        reasoning_status = "활성화" if self.reasoning_engine else "비활성화"
-        learning_status = "활성화" if self.enable_learning else "비활성화"
-        print(f"통합 AI 추론 시스템 초기화 완료")
-        print(f"  - 모델: {model_type}")
-        print(f"  - 추론 엔진: {reasoning_status}")
-        print(f"  - 학습 시스템: {learning_status}")
-        print(f"  - GPU 사용: {self.cuda_available}")
-        print(f"  - 오프라인 모드: 완전 지원")
-    
-    def _setup_gpu_memory(self) -> None:
-        """GPU 메모리 설정"""
-        try:
-            torch.cuda.empty_cache()
-            torch.cuda.set_per_process_memory_fraction(DEFAULT_MEMORY_FRACTION)
-        except Exception as e:
-            print(f"GPU 메모리 설정 실패: {e}")
-    
-    def _validate_finetuned_path(self) -> Optional[str]:
-        """파인튜닝 경로 검증"""
-        finetuned_path = "./finetuned_model"
-        if not check_local_model_path(finetuned_path):
-            print(f"파인튜닝 모델을 찾을 수 없습니다: {finetuned_path}")
-            print("기본 모델을 사용합니다")
-            self.use_finetuned = False
-            return None
-        return finetuned_path
-    
-    def _initialize_safe_stats(self) -> Dict:
-        """안전한 통계 초기화 - 0으로 나누기 방지"""
-        return {
+        # 통계
+        self.stats = {
             "total": 0,
-            "mc_correct": 0,
-            "subj_correct": 0,
-            "errors": 0,
-            "timeouts": 0,
-            "learned": 0,
-            "korean_failures": 0,
-            "korean_fixes": 0,
-            "fallback_used": 0,
-            "smart_hints_used": 0,
-            "model_generation_success": 0,
-            "pattern_extraction_success": 0,
-            "pattern_based_answers": 0,
-            "high_confidence_answers": 0,
-            "cache_hits": 0,
-            "answer_distribution": {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0},
-            "quality_scores": [],
+            "mc_count": 0,
+            "subj_count": 0,
+            "model_success": 0,
             "processing_times": [],
-            "finetuned_usage": 0,
-            "reasoning_engine_usage": 0,
-            "cot_prompts_used": 0,
-            "reasoning_successful": 0,
-            "reasoning_failed": 0,
-            "hybrid_approach_used": 0,
-            "reasoning_priority_answers": 0,
-            "model_override_reasoning": 0,
-            "cot_successful": 0,
-            "cot_failed": 0,
-            "reasoning_time": [],
-            "cot_generation_time": [],
-            "reasoning_chain_lengths": [],
-            "verification_passed": 0,
-            "verification_failed": 0,
-            "deep_analysis_time": [],
-            "learning_update_time": [],
-            "total_gpu_time": 0.0,
-            "real_processing_count": 0,
-            # *** 새로운 LLM 추적 통계 ***
-            "actual_llm_generations": 0,
-            "successful_llm_responses": 0,
-            "llm_gpu_time": 0.0,
-            "forced_llm_attempts": 0,
-            "llm_success_rate": 0.0
-        }
-    
-    def _build_enhanced_fallback_templates(self) -> Dict[str, List[str]]:
-        """향상된 폴백 템플릿 구축"""
-        return {
-            "사이버보안": [
-                "트로이목마는 정상 프로그램으로 위장한 악성코드로, 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결과 시스템 리소스 사용 증가가 있습니다.",
-                "악성코드 탐지를 위해 실시간 모니터링과 행위 기반 분석 기술을 활용해야 합니다. 정기적인 보안 점검과 업데이트를 통해 위협에 대응해야 합니다.",
-                "사이버 공격에 대응하기 위해 침입탐지시스템과 방화벽 등 다층적 보안체계를 구축해야 합니다. 보안관제센터를 통한 24시간 모니터링이 필요합니다.",
-                "피싱과 스미싱 등 사회공학 공격에 대한 사용자 교육과 기술적 차단 조치가 필요합니다. 정기적인 보안교육을 통해 보안 의식을 제고해야 합니다."
-            ],
-            "개인정보보호": [
-                "개인정보보호법에 따라 개인정보의 안전한 관리와 정보주체의 권리 보호를 위한 체계적인 조치가 필요합니다. 개인정보 처리방침을 수립하고 공개해야 합니다.",
-                "개인정보 처리 시 수집, 이용, 제공의 최소화 원칙을 준수하고 목적 달성 후 지체 없이 파기해야 합니다. 정보주체의 동의를 받아 처리해야 합니다.",
-                "정보주체의 열람, 정정, 삭제 요구권을 보장하고 안전성 확보조치를 통해 개인정보를 보호해야 합니다. 개인정보보호책임자를 지정해야 합니다.",
-                "민감정보와 고유식별정보는 별도의 동의를 받아 처리하며 엄격한 보안조치를 적용해야 합니다. 개인정보 영향평가를 실시해야 합니다."
-            ],
-            "전자금융": [
-                "전자금융거래법에 따라 전자적 장치를 통한 금융거래의 안전성을 확보하고 이용자를 보호해야 합니다. 접근매체의 안전한 관리가 중요합니다.",
-                "접근매체의 안전한 관리와 거래내역 통지, 오류정정 절차를 구축해야 합니다. 전자서명과 전자인증서를 통한 본인인증이 필요합니다.",
-                "전자금융거래의 신뢰성 보장을 위해 적절한 보안조치와 이용자 보호 체계가 필요합니다. 거래 무결성과 기밀성을 보장해야 합니다.",
-                "오류 발생 시 신속한 정정 절차와 손해배상 체계를 마련하여 이용자 보호에 만전을 기해야 합니다. 분쟁처리 절차를 마련해야 합니다."
-            ],
-            "정보보안": [
-                "정보보안 관리체계를 통해 체계적인 보안 관리와 지속적인 위험 평가를 수행해야 합니다. ISMS 인증 취득을 통해 보안관리 수준을 향상시켜야 합니다.",
-                "정보자산의 기밀성, 무결성, 가용성을 보장하기 위한 종합적인 보안대책이 필요합니다. 정보자산 분류와 중요도에 따른 차등보호가 필요합니다.",
-                "보안정책 수립, 접근통제, 암호화 등 다층적 보안체계를 구축해야 합니다. 물리적, 기술적, 관리적 보안조치를 종합적으로 적용해야 합니다.",
-                "보안사고 예방과 대응을 위한 보안관제 체계와 침입탐지 시스템을 운영해야 합니다. 보안사고 발생 시 즉시 대응할 수 있는 체계가 필요합니다."
-            ]
-        }
-    
-    def _load_existing_learning_data(self) -> None:
-        """기존 학습 데이터 로드"""
-        try:
-            if self.learning_system.load_model():
-                if self.verbose:
-                    print(f"학습 데이터 로드: {len(self.learning_system.training_samples)}개")
-        except Exception as e:
-            if self.verbose:
-                print(f"학습 데이터 로드 오류: {e}")
-    
-    def _validate_korean_quality_strict(self, text: str, question_type: str) -> Tuple[bool, float]:
-        """엄격한 한국어 품질 검증"""
-        if question_type == "multiple_choice":
-            if re.match(r'^[1-5]$', text.strip()):
-                return True, 1.0
-            if re.search(r'[1-5]', text):
-                return True, 0.7
-            return False, 0.0
-        
-        if not text or len(text.strip()) < 20:
-            return False, 0.0
-        
-        penalty_factors = [
-            (r'[\u4e00-\u9fff]', 0.5),
-            (r'[①②③④⑤➀➁➂➃➄]', 0.3),
-            (r'\bbo+\b', 0.4),
-            (r'[ㄱ-ㅎㅏ-ㅣ]{3,}', 0.3),
-            (r'[A-Za-z]{8,}', 0.2)
-        ]
-        
-        total_penalty = 0
-        for pattern, penalty in penalty_factors:
-            if re.search(pattern, text, re.IGNORECASE):
-                total_penalty += penalty
-        
-        if total_penalty > 0.6:
-            return False, 0.0
-        
-        korean_chars = len(re.findall(r'[가-힣]', text))
-        total_chars = len(re.sub(r'[^\w]', '', text))
-        
-        if total_chars == 0:
-            return False, 0.0
-        
-        korean_ratio = korean_chars / total_chars
-        english_chars = len(re.findall(r'[A-Za-z]', text))
-        english_ratio = english_chars / total_chars
-        
-        if korean_ratio < MIN_KOREAN_RATIO:
-            return False, korean_ratio
-        
-        if english_ratio > 0.15:
-            return False, 1 - english_ratio
-        
-        quality_score = korean_ratio * 0.85 - total_penalty
-        
-        professional_terms = ['법', '규정', '조치', '관리', '보안', '체계', '정책', '절차', '의무', '권리']
-        prof_count = sum(1 for term in professional_terms if term in text)
-        quality_score += min(prof_count * 0.04, 0.15)
-        
-        if 30 <= len(text) <= 450:
-            quality_score += 0.05
-        
-        final_quality = max(0, min(1, quality_score))
-        
-        return final_quality > QUALITY_THRESHOLD, final_quality
-    
-    def _get_diverse_fallback_answer(self, question: str, question_type: str, 
-                                   structure: Optional[Dict] = None) -> str:
-        """다양한 폴백 답변 생성"""
-        if question_type == "multiple_choice":
-            current_distribution = self.stats["answer_distribution"]
-            total_answers = sum(current_distribution.values())
-            
-            if total_answers > 15:
-                target_per_answer = total_answers / 5
-                underrepresented = []
-                for ans in ["1", "2", "3", "4", "5"]:
-                    count = current_distribution[ans]
-                    if count < target_per_answer * 0.65:
-                        underrepresented.append(ans)
-                
-                if underrepresented:
-                    selected = random.choice(underrepresented)
-                    self._safe_increment_stat("answer_distribution", selected)
-                    return selected
-            
-            if self.enable_learning:
-                hint, conf = self.learning_system.predict_with_deep_learning(question, question_type)
-                if conf > 0.40:
-                    self._safe_increment_stat("smart_hints_used")
-                    self._safe_increment_stat("answer_distribution", hint)
-                    return hint
-            
-            question_features = self._analyze_question_features(question, structure)
-            selected = self._select_mc_answer_by_features(question_features)
-            
-            self._safe_increment_stat("answer_distribution", selected)
-            return selected
-        
-        # 주관식 폴백
-        domain = self._extract_simple_domain(question)
-        return random.choice(self.enhanced_fallback_templates.get(domain, self.enhanced_fallback_templates.get("정보보안", ["체계적인 관리 방안을 수립하고 지속적인 개선을 수행해야 합니다."])))
-    
-    def _analyze_question_features(self, question: str, structure: Optional[Dict]) -> Dict:
-        """질문 특징 분석"""
-        return {
-            "length": len(question),
-            "has_negative": any(neg in question.lower() for neg in ["해당하지", "적절하지", "옳지", "틀린"]),
-            "domain": self._extract_simple_domain(question),
-            "complexity": structure.get("complexity_score", 0) if structure else 0
-        }
-    
-    def _select_mc_answer_by_features(self, features: Dict) -> str:
-        """특징 기반 객관식 답변 선택"""
-        question_hash = hash(str(features)) % 100
-        
-        if features["has_negative"]:
-            negative_strategies = {
-                True: {"options": ["1", "3", "4", "5"], "weights": [0.28, 0.26, 0.24, 0.22]}
-            }
-            config = negative_strategies[True]
-            return random.choices(config["options"], weights=config["weights"])[0]
-        
-        domain_patterns = {
-            "개인정보": {
-                0: ["1", "2", "3"], 1: ["2", "3", "1"], 2: ["3", "1", "2"], 3: ["1", "3", "2"]
-            },
-            "전자금융": {
-                0: ["1", "2", "3"], 1: ["2", "1", "4"], 2: ["3", "4", "1"], 3: ["4", "1", "2"]
-            }
+            "answer_distribution": {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
         }
         
-        domain = features["domain"]
-        if domain in domain_patterns:
-            pattern_idx = question_hash % 4
-            options = domain_patterns[domain][pattern_idx]
-            weights = [0.36, 0.34, 0.30]
-            return random.choices(options, weights=weights)[0]
+        print("초기화 완료")
         
-        # 일반 패턴
-        simple_options = ["1", "2", "3", "4", "5"]
-        return simple_options[question_hash % 5]
-    
-    def _extract_simple_domain(self, question: str) -> str:
-        """간단한 도메인 추출"""
-        question_lower = question.lower()
-        
-        domain_keywords = {
-            "개인정보": ["개인정보", "정보주체", "개인정보보호법", "민감정보"],
-            "전자금융": ["전자금융", "전자적", "접근매체", "전자금융거래법"],
-            "사이버보안": ["트로이", "악성코드", "해킹", "멀웨어", "피싱", "스미싱"],
-            "정보보안": ["정보보안", "보안관리", "ISMS", "보안정책", "접근통제"]
-        }
-        
-        domain_scores = {}
-        for domain, keywords in domain_keywords.items():
-            score = sum(1 for keyword in keywords if keyword in question_lower)
-            if score > 0:
-                domain_scores[domain] = score / len(keywords)
-        
-        if domain_scores:
-            return max(domain_scores, key=domain_scores.get)
-        else:
-            return "정보보안"
-    
-    def process_question(self, question: str, question_id: str, idx: int) -> str:
-        """*** 핵심 수정: LLM 모델 강제 실행 통합 질문 처리 시스템 ***"""
+    def process_single_question(self, question: str, question_id: str) -> str:
+        """단일 질문 처리"""
         start_time = time.time()
         
         try:
-            cache_key = hashlib.md5(question[:200].encode('utf-8')).hexdigest()[:16]
-            if cache_key in self.answer_cache:
-                self._safe_increment_stat("cache_hits")
-                return self.answer_cache[cache_key]
+            # 1. 질문 유형 분석
+            question_type = self.data_processor.analyze_question_type(question)
             
-            # 실제 딥러닝 구조 분석
-            structure_start = time.time()
-            structure = self.data_processor.analyze_question_structure(question)
-            structure_time = time.time() - structure_start
+            if self.verbose:
+                print(f"질문 {question_id}: {question_type}")
             
-            # 지식 기반 분석
-            analysis = self.prompt_engineer.knowledge_base.analyze_question(question)
+            # 2. 실제 AI 모델로 답변 생성
+            answer = self.model_handler.generate_answer(question, question_type)
             
-            is_mc = structure["question_type"] == "multiple_choice"
-            is_subjective = structure["question_type"] == "subjective"
+            # 3. 답변 검증
+            if self.data_processor.validate_answer(answer, question_type):
+                self.stats["model_success"] += 1
+            else:
+                # 검증 실패시 폴백
+                answer = self._get_fallback_answer(question_type)
             
-            self._debug_log(f"문제 {idx}: 유형={structure['question_type']}, 분석시간={structure_time:.2f}초")
+            # 4. 통계 업데이트
+            self._update_stats(question_type, answer, time.time() - start_time)
             
-            # *** 핵심 수정: LLM 모델 강제 우선 실행 ***
-            if FORCE_LLM_MODEL_EXECUTION and LLM_PRIORITY_MODE:
-                answer = self._force_llm_model_execution(question, structure, analysis, idx)
-                if answer:
-                    processing_time = time.time() - start_time
-                    self._update_processing_stats(processing_time, True)
-                    self._manage_memory()
-                    self.answer_cache[cache_key] = answer
-                    return answer
-            
-            # 기존 통합 추론 프로세스 (LLM 실패 시에만)
-            answer = self._process_with_enhanced_filtering(
-                question, structure, analysis, idx
-            )
-            
-            processing_time = time.time() - start_time
-            self._update_processing_stats(processing_time, False)
-            
-            # 실제 처리 시간 확보
-            if processing_time < MIN_PROCESSING_TIME_PER_QUESTION:
-                additional_time = MIN_PROCESSING_TIME_PER_QUESTION - processing_time
-                time.sleep(additional_time)
-                processing_time = time.time() - start_time
-            
-            self._manage_memory()
-            self.answer_cache[cache_key] = answer
             return answer
             
         except Exception as e:
-            self._safe_increment_stat("errors")
             if self.verbose:
-                print(f"처리 오류: {str(e)[:100]}")
-            
-            self._safe_increment_stat("fallback_used")
-            fallback_type = structure.get("question_type", "multiple_choice") if 'structure' in locals() else "multiple_choice"
-            return self._get_diverse_fallback_answer(question, fallback_type)
+                print(f"오류 발생: {e}")
+            return self._get_fallback_answer("multiple_choice")
     
-    def _force_llm_model_execution(self, question: str, structure: Dict, 
-                                  analysis: Dict, idx: int) -> Optional[str]:
-        """*** 핵심 메서드: LLM 모델 강제 실행 ***"""
-        
-        try:
-            self._safe_increment_stat("forced_llm_attempts")
+    def _get_fallback_answer(self, question_type: str) -> str:
+        """폴백 답변 - 다양성 보장"""
+        if question_type == "multiple_choice":
+            import random
+            # 균등 분포를 위한 가중치
+            weights = [1, 1, 1, 1, 1]  # 1~5번 균등
             
-            # 프롬프트 생성
-            if structure["question_type"] == "multiple_choice":
-                prompt = self.prompt_engineer.create_mc_prompt(question, analysis)
-            else:
-                prompt = self.prompt_engineer.create_subjective_prompt(question, analysis)
+            # 현재까지의 분포 확인하여 조정
+            total_mc = sum(self.stats["answer_distribution"].values())
+            if total_mc > 10:
+                for i in range(1, 6):
+                    current_count = self.stats["answer_distribution"][str(i)]
+                    target_ratio = total_mc / 5
+                    if current_count < target_ratio * 0.5:
+                        weights[i-1] = 3  # 부족한 번호에 가중치
             
-            # *** 실제 LLM 모델 호출 ***
-            llm_start_time = time.time()
-            
-            result = self.model_handler.generate_response(
-                prompt=prompt,
-                question_type=structure["question_type"],
-                max_attempts=3,
-                question_structure=structure
-            )
-            
-            llm_time = time.time() - llm_start_time
-            self._safe_add_stat("llm_gpu_time", llm_time)
-            self._safe_add_stat("total_gpu_time", llm_time)
-            
-            # LLM 모델이 실제로 사용되었는지 확인
-            if hasattr(result, 'model_actually_used') and result.model_actually_used:
-                self._safe_increment_stat("actual_llm_generations")
-                self._safe_increment_stat("model_generation_success")
-                
-                # 응답 검증 및 처리
-                processed_answer = self._process_llm_response(result.response, structure["question_type"])
-                
-                if processed_answer:
-                    self._safe_increment_stat("successful_llm_responses")
-                    
-                    # 객관식 답변 분포 업데이트
-                    if structure["question_type"] == "multiple_choice":
-                        self._safe_increment_stat("answer_distribution", processed_answer)
-                    
-                    # 신뢰도가 높으면 고신뢰도 답변으로 기록
-                    if result.confidence > 0.7:
-                        self._safe_increment_stat("high_confidence_answers")
-                    
-                    # 파인튜닝 모델 사용 기록
-                    if self.model_handler.is_finetuned:
-                        self._safe_increment_stat("finetuned_usage")
-                    
-                    # 학습 업데이트
-                    self._perform_learning_update(question, processed_answer, result.confidence, structure, analysis)
-                    
-                    # LLM 성공률 업데이트
-                    self._update_llm_success_rate()
-                    
-                    if self.verbose:
-                        print(f"      LLM 모델 성공: {processed_answer[:50]}")
-                    
-                    return processed_answer
-                else:
-                    if self.verbose:
-                        print(f"      LLM 응답 검증 실패: {result.response[:50]}")
-            else:
-                if self.verbose:
-                    print(f"      LLM 모델 실제 실행 실패")
-                    
-        except Exception as e:
-            if self.verbose:
-                print(f"      LLM 강제 실행 오류: {e}")
-        
-        return None
+            answer = str(random.choices([1, 2, 3, 4, 5], weights=weights)[0])
+            self.stats["answer_distribution"][answer] += 1
+            return answer
+        else:
+            # 주관식 다양한 템플릿
+            templates = [
+                "관련 법령에 따라 체계적인 보안 관리 체계를 구축하고 지속적인 모니터링을 수행해야 합니다.",
+                "해당 분야의 전문적인 보안 정책을 수립하고 정기적인 점검과 개선을 실시해야 합니다.", 
+                "법적 요구사항을 준수하며 효과적인 보안 조치를 시행하고 사용자 교육을 강화해야 합니다.",
+                "위험 요소를 사전에 식별하고 적절한 대응 방안을 마련하여 체계적으로 관리해야 합니다.",
+                "보안 관리 절차를 확립하고 정기적인 평가를 통해 지속적인 개선을 추진해야 합니다."
+            ]
+            import random
+            return random.choice(templates)
     
-    def _process_llm_response(self, response: str, question_type: str) -> Optional[str]:
-        """LLM 응답 처리 및 검증"""
-        if not response:
-            return None
+    def _update_stats(self, question_type: str, answer: str, processing_time: float):
+        """통계 업데이트"""
+        self.stats["total"] += 1
+        self.stats["processing_times"].append(processing_time)
         
         if question_type == "multiple_choice":
-            # 객관식: 숫자 추출
-            cleaned = re.search(r'[1-5]', str(response))
-            if cleaned and cleaned.group().isdigit():
-                answer = cleaned.group()
-                if 1 <= int(answer) <= 5:
-                    return answer
-            return None
+            self.stats["mc_count"] += 1
         else:
-            # 주관식: 한국어 품질 검증
-            cleaned = self.data_processor._clean_korean_text(response)
-            is_valid, quality = self._validate_korean_quality_strict(cleaned, question_type)
-            
-            if is_valid and len(cleaned) >= MIN_ANSWER_LENGTH:
-                # 길이 조정
-                if len(cleaned) > MAX_ANSWER_LENGTH:
-                    cleaned = cleaned[:MAX_ANSWER_LENGTH-3] + "..."
-                return cleaned
-            
-            return None
+            self.stats["subj_count"] += 1
     
-    def _update_llm_success_rate(self) -> None:
-        """LLM 성공률 업데이트"""
-        if self.stats["forced_llm_attempts"] > 0:
-            self.stats["llm_success_rate"] = self.stats["successful_llm_responses"] / self.stats["forced_llm_attempts"]
-    
-    def _process_with_enhanced_filtering(self, question: str, structure: Dict, analysis: Dict, idx: int) -> str:
-        """답변 필터링이 강화된 처리 시스템 (LLM 실패 시 폴백)"""
+    def execute_inference(self, test_file: str = "./test.csv", 
+                         submission_file: str = "./sample_submission.csv",
+                         output_file: str = "./final_submission.csv") -> Dict:
+        """전체 추론 실행"""
         
-        total_processing_start = time.time()
-        
-        # 1단계: 추론 엔진 우선 적용
-        reasoning_start = time.time()
-        reasoning_answer, reasoning_confidence = self._apply_enhanced_reasoning_engine(
-            question, structure, analysis
-        )
-        reasoning_time = time.time() - reasoning_start
-        self.stats["reasoning_time"].append(reasoning_time)
-        
-        # 추론 엔진 결과 필터링
-        if reasoning_answer and reasoning_confidence > REASONING_THRESHOLD:
-            filtered_answer = self._filter_reasoning_answer(reasoning_answer, structure["question_type"])
-            
-            if filtered_answer:
-                if structure["question_type"] == "multiple_choice":
-                    if re.match(r'^[1-5]$', filtered_answer):
-                        self._safe_increment_stat("reasoning_engine_usage")
-                        self._safe_increment_stat("reasoning_priority_answers")
-                        self._safe_increment_stat("high_confidence_answers")
-                        self._safe_increment_stat("answer_distribution", filtered_answer)
-                        
-                        # 학습 업데이트
-                        self._perform_learning_update(question, filtered_answer, reasoning_confidence, structure, analysis)
-                        
-                        return filtered_answer
-                else:
-                    is_valid, quality = self._validate_korean_quality_strict(filtered_answer, structure["question_type"])
-                    if is_valid and quality > QUALITY_THRESHOLD:
-                        self._safe_increment_stat("reasoning_engine_usage")
-                        self._safe_increment_stat("reasoning_priority_answers")
-                        self._safe_increment_stat("high_confidence_answers")
-                        
-                        # 학습 업데이트
-                        self._perform_learning_update(question, filtered_answer, reasoning_confidence, structure, analysis)
-                        
-                        return filtered_answer
-        
-        # 2단계: 기존 CoT 프롬프트를 통한 모델 생성 (실제 GPU 추론)
-        return self._process_with_enhanced_cot_prompt(
-            question, structure, analysis, reasoning_answer, reasoning_confidence
-        )
-    
-    def _filter_reasoning_answer(self, answer: str, question_type: str) -> str:
-        """추론 엔진 답변 필터링 - 분석 과정 완전 제거"""
-        if not answer:
-            return ""
-        
-        try:
-            if question_type == "multiple_choice":
-                # 객관식: 숫자만 추출
-                clean_answer = re.search(r'[1-5]', str(answer))
-                return clean_answer.group() if clean_answer else ""
-            
-            else:
-                # 주관식: 분석 과정 텍스트 제거
-                cleaned = str(answer)
-                
-                # 분석 과정 패턴 제거
-                analysis_patterns = [
-                    r'문제.*?분석.*?결과[,:]?\s*',
-                    r'도메인.*?특성[,:]?\s*',
-                    r'언어적.*?패턴[,:]?\s*',
-                    r'논리적.*?접근하면[,:]?\s*',
-                    r'분석.*?결과.*?일관성.*?보이며[,:]?\s*',
-                    r'평균.*?신뢰도.*?논리적.*?연결성.*?확인[,:]?\s*',
-                    r'\d+가지.*?추론.*?방법.*?다각도.*?분석.*?결과[,:]?\s*',
-                    r'평균.*?신뢰도.*?종합적.*?결론.*?도출[,:]?\s*',
-                    r'문제\s*의도:\s*[^,]*[,]?\s*',
-                    r'도메인\s*특성:\s*[^,]*[,]?\s*',
-                    r'언어적\s*패턴:\s*[^,]*[,]?\s*'
-                ]
-                
-                for pattern in analysis_patterns:
-                    cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
-                
-                # 앞쪽 분석 접두사 제거
-                cleaned = re.sub(r'^.*?의도:\s*', '', cleaned)
-                cleaned = re.sub(r'^.*?특성:\s*', '', cleaned)
-                cleaned = re.sub(r'^.*?패턴:\s*', '', cleaned)
-                
-                # 문장 정리
-                cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-                
-                # 최소 길이 확인
-                if len(cleaned) >= 20:
-                    return cleaned
-                
-                return ""
-                
-        except Exception:
-            return ""
-    
-    def _apply_enhanced_reasoning_engine(self, question: str, structure: Dict, analysis: Dict) -> Tuple[Optional[str], float]:
-        """향상된 추론 엔진 적용"""
-        if not self.reasoning_engine:
-            return None, 0.0
-        
-        try:
-            reasoning_start_time = time.time()
-            
-            cache_key = hashlib.md5(question[:150].encode('utf-8')).hexdigest()[:12]
-            
-            if cache_key in self.reasoning_cache:
-                self._safe_increment_stat("cache_hits")
-                return self.reasoning_cache[cache_key]
-            
-            # 실제 추론 체인 생성 (시간 소요)
-            reasoning_chain = self.reasoning_engine.create_reasoning_chain(
-                question=question,
-                question_type=structure["question_type"],
-                domain_analysis=analysis
-            )
-            
-            reasoning_time = time.time() - reasoning_start_time
-            self.stats["reasoning_chain_lengths"].append(len(reasoning_chain.steps))
-            
-            # 검증된 추론인지 확인
-            if reasoning_chain.verification_result.get("is_consistent", False):
-                confidence = reasoning_chain.overall_confidence
-                
-                if confidence >= REASONING_THRESHOLD:
-                    self._safe_increment_stat("reasoning_successful")
-                    self._safe_increment_stat("verification_passed")
-                    
-                    # 최종 답변만 반환
-                    final_answer = reasoning_chain.final_answer
-                    
-                    result = (final_answer, confidence)
-                    
-                    # 캐시 저장
-                    self._manage_reasoning_cache()
-                    self.reasoning_cache[cache_key] = result
-                    
-                    if self.verbose:
-                        print(f"      추론 성공: 신뢰도 {confidence:.2f}, 단계 수 {len(reasoning_chain.steps)}")
-                    
-                    return result
-                else:
-                    self._safe_increment_stat("reasoning_failed")
-                    self._safe_increment_stat("verification_failed")
-                    return None, 0.0
-            else:
-                self._safe_increment_stat("reasoning_failed")
-                self._safe_increment_stat("verification_failed")
-                if self.verbose:
-                    print(f"      추론 검증 실패: 일관성 점수 {reasoning_chain.verification_result.get('consistency_score', 0.0):.2f}")
-                return None, 0.0
-                
-        except Exception as e:
-            if self.verbose:
-                print(f"      추론 엔진 오류: {e}")
-            self._safe_increment_stat("reasoning_failed")
-            return None, 0.0
-    
-    def _manage_reasoning_cache(self) -> None:
-        """추론 캐시 관리"""
-        if len(self.reasoning_cache) >= self.max_cache_size // 2:
-            oldest_keys = list(self.reasoning_cache.keys())[:self.max_cache_size // 4]
-            for key in oldest_keys:
-                del self.reasoning_cache[key]
-    
-    def _process_with_enhanced_cot_prompt(self, question: str, structure: Dict, analysis: Dict, 
-                                        reasoning_answer: Optional[str], reasoning_confidence: float) -> str:
-        """향상된 CoT 프롬프트를 활용한 처리"""
-        
-        try:
-            # CoT 프롬프트 생성 및 사용 (실제 시간 소요)
-            cot_start_time = time.time()
-            
-            cot_prompt = self.prompt_engineer.create_cot_prompt(
-                question, structure["question_type"], analysis
-            )
-            self._safe_increment_stat("cot_prompts_used")
-            
-            # 실제 모델 추론 (GPU 연산)
-            result = self.model_handler.generate_response(
-                prompt=cot_prompt,
-                question_type=structure["question_type"],
-                max_attempts=3,
-                question_structure=structure
-            )
-            
-            cot_time = time.time() - cot_start_time
-            self.stats["cot_generation_time"].append(cot_time)
-            self._safe_add_stat("total_gpu_time", cot_time)
-            
-            if self.model_handler.is_finetuned:
-                self._safe_increment_stat("finetuned_usage")
-            
-            # 모델 결과 처리 - 필터링 강화
-            if structure["question_type"] == "multiple_choice":
-                return self._handle_enhanced_mc_cot_result(
-                    result, reasoning_answer, reasoning_confidence, structure, question
-                )
-            else:
-                return self._handle_enhanced_subj_cot_result(
-                    result, reasoning_answer, reasoning_confidence, structure, question
-                )
-                
-        except Exception as e:
-            if self.verbose:
-                print(f"      CoT 처리 오류: {e}")
-            self._safe_increment_stat("cot_failed")
-            
-            # 추론 결과로 복구 시도
-            if reasoning_answer and reasoning_confidence > 0.4:
-                filtered = self._filter_reasoning_answer(reasoning_answer, structure["question_type"])
-                if filtered:
-                    self._safe_increment_stat("hybrid_approach_used")
-                    if structure["question_type"] == "multiple_choice":
-                        self._safe_increment_stat("answer_distribution", filtered)
-                    return filtered
-            
-            # 최종 폴백
-            return self._get_diverse_fallback_answer(question, structure["question_type"], structure)
-    
-    def _handle_enhanced_mc_cot_result(self, result, reasoning_answer: Optional[str], 
-                                     reasoning_confidence: float, structure: Dict, question: str) -> str:
-        """향상된 객관식 CoT 결과 처리 - 필터링 강화"""
-        
-        # 모델 응답에서 숫자만 추출
-        extracted = self._extract_mc_answer_fast(result.response)
-        
-        if extracted and extracted.isdigit() and 1 <= int(extracted) <= 5:
-            self._safe_increment_stat("model_generation_success")
-            self._safe_increment_stat("cot_successful")
-            
-            # 추론 결과와 모델 결과 비교
-            if reasoning_answer:
-                reasoning_filtered = self._filter_reasoning_answer(reasoning_answer, "multiple_choice")
-                if reasoning_filtered and reasoning_filtered != extracted:
-                    if reasoning_confidence > result.confidence:
-                        self._safe_increment_stat("reasoning_priority_answers")
-                        answer = reasoning_filtered
-                    else:
-                        self._safe_increment_stat("model_override_reasoning")
-                        answer = extracted
-                else:
-                    answer = extracted
-            else:
-                answer = extracted
-            
-            if result.confidence > 0.7:
-                self._safe_increment_stat("high_confidence_answers")
-            
-            self._safe_increment_stat("answer_distribution", answer)
-            
-            # 학습 업데이트
-            self._perform_learning_update(question, answer, result.confidence, structure, {})
-            
-            return answer
-        else:
-            self._safe_increment_stat("cot_failed")
-            
-            # 추론 결과로 복구
-            if reasoning_answer:
-                reasoning_filtered = self._filter_reasoning_answer(reasoning_answer, "multiple_choice")
-                if reasoning_filtered and reasoning_confidence > 0.3:
-                    self._safe_increment_stat("hybrid_approach_used")
-                    self._safe_increment_stat("answer_distribution", reasoning_filtered)
-                    return reasoning_filtered
-            
-            # 패턴 기반 복구
-            if self.enable_learning:
-                pattern_answer, pattern_conf = self.learning_system.predict_with_deep_learning(question, "multiple_choice")
-                if pattern_answer and pattern_conf > 0.4:
-                    self._safe_increment_stat("smart_hints_used")
-                    self._safe_increment_stat("answer_distribution", pattern_answer)
-                    return pattern_answer
-            
-            # 최종 폴백
-            self._safe_increment_stat("fallback_used")
-            fallback_answer = self._get_diverse_fallback_answer(question, "multiple_choice", structure)
-            return fallback_answer
-    
-    def _handle_enhanced_subj_cot_result(self, result, reasoning_answer: Optional[str], 
-                                       reasoning_confidence: float, structure: Dict, question: str) -> str:
-        """향상된 주관식 CoT 결과 처리 - 필터링 강화"""
-        
-        answer = self.data_processor._clean_korean_text(result.response)
-        
-        # 추가 필터링: 분석 과정 제거
-        answer = self._filter_reasoning_answer(answer, "subjective")
-        
-        # 한국어 품질 검증
-        is_valid, quality = self._validate_korean_quality_strict(answer, structure["question_type"])
-        self.stats["quality_scores"].append(quality)
-        
-        if is_valid and quality > QUALITY_THRESHOLD and len(answer) >= MIN_ANSWER_LENGTH:
-            self._safe_increment_stat("model_generation_success")
-            self._safe_increment_stat("cot_successful")
-            
-            # 추론 결과와 모델 결과 비교
-            if reasoning_answer:
-                reasoning_filtered = self._filter_reasoning_answer(reasoning_answer, "subjective")
-                if reasoning_filtered and reasoning_confidence > 0.5:
-                    reason_valid, reason_quality = self._validate_korean_quality_strict(reasoning_filtered, structure["question_type"])
-                    if reason_valid and reason_quality > quality:
-                        self._safe_increment_stat("reasoning_priority_answers")
-                        final_answer = reasoning_filtered
-                    else:
-                        self._safe_increment_stat("model_override_reasoning")
-                        final_answer = answer
-                else:
-                    final_answer = answer
-            else:
-                final_answer = answer
-            
-            if quality > 0.8:
-                self._safe_increment_stat("high_confidence_answers")
-            
-            # 길이 조정
-            if len(final_answer) > MAX_ANSWER_LENGTH:
-                final_answer = final_answer[:MAX_ANSWER_LENGTH-3] + "..."
-            
-            # 학습 업데이트
-            self._perform_learning_update(question, final_answer, result.confidence, structure, {})
-            
-            return final_answer
-        else:
-            self._safe_increment_stat("korean_failures")
-            self._safe_increment_stat("cot_failed")
-            
-            # 추론 결과로 복구 시도
-            if reasoning_answer:
-                reasoning_filtered = self._filter_reasoning_answer(reasoning_answer, "subjective")
-                if reasoning_filtered and reasoning_confidence > 0.4:
-                    reason_valid, reason_quality = self._validate_korean_quality_strict(reasoning_filtered, structure["question_type"])
-                    if reason_valid and reason_quality >= quality:
-                        self._safe_increment_stat("hybrid_approach_used")
-                        self._safe_increment_stat("korean_fixes")
-                        return reasoning_filtered
-            
-            # 최종 폴백
-            self._safe_increment_stat("fallback_used")
-            self._safe_increment_stat("korean_fixes")
-            return self._get_diverse_fallback_answer(question, structure["question_type"], structure)
-    
-    def _perform_learning_update(self, question: str, answer: str, confidence: float, 
-                               structure: Dict, analysis: Dict) -> None:
-        """실제 학습 업데이트 수행"""
-        if not self.enable_learning:
-            return
-        
-        try:
-            learning_start = time.time()
-            
-            # 실제 딥러닝 학습 수행
-            self.learning_system.learn_from_prediction(
-                question=question,
-                prediction=answer,
-                confidence=confidence,
-                question_type=structure["question_type"],
-                domain=analysis.get("domain", ["일반"]),
-                is_model_result=True
-            )
-            
-            learning_time = time.time() - learning_start
-            self.stats["learning_update_time"].append(learning_time)
-            self._safe_increment_stat("learned")
-            
-        except Exception as e:
-            if self.verbose:
-                print(f"      학습 업데이트 오류: {e}")
-    
-    def _extract_mc_answer_fast(self, text: str) -> str:
-        """빠른 객관식 답변 추출 - 필터링 강화"""
-        if not text:
-            return ""
-        
-        text = text.strip()
-        
-        # 단순 숫자 매칭
-        if re.match(r'^[1-5]$', text):
-            return text
-        
-        # 첫 몇 글자에서 숫자 찾기
-        first_part = text[:15] if len(text) > 15 else text
-        early_match = re.search(r'[1-5]', first_part)
-        if early_match:
-            return early_match.group()
-        
-        priority_patterns = [
-            (r'정답[:\s]*([1-5])', 0.95),
-            (r'답[:\s]*([1-5])', 0.90),
-            (r'^([1-5])\s*$', 0.95),
-            (r'^([1-5])\s*번', 0.85),
-            (r'선택[:\s]*([1-5])', 0.85),
-            (r'([1-5])번이', 0.80),
-            (r'([1-5])가\s*정답', 0.80),
-            (r'([1-5])이\s*정답', 0.80),
-            (r'([1-5])\s*이\s*적절', 0.75),
-            (r'([1-5])\s*가\s*적절', 0.75)
-        ]
-        
-        best_match = None
-        best_confidence = 0
-        
-        for pattern, confidence in priority_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE | re.MULTILINE)
-            if matches and confidence > best_confidence:
-                answer = matches[0]
-                if answer.isdigit() and 1 <= int(answer) <= 5:
-                    best_match = answer
-                    best_confidence = confidence
-        
-        if best_match:
-            return best_match
-        
-        # 전체 텍스트에서 첫 번째 숫자
-        numbers = re.findall(r'[1-5]', text)
-        if numbers:
-            return numbers[0]
-        
-        return ""
-    
-    def _update_processing_stats(self, processing_time: float, llm_used: bool) -> None:
-        """처리 통계 업데이트"""
-        self.stats["processing_times"].append(processing_time)
-        self._safe_increment_stat("real_processing_count")
-        
-        if llm_used:
-            self._safe_increment_stat("actual_llm_generations")
-    
-    def _safe_increment_stat(self, stat_name: str, sub_key: str = None) -> None:
-        """안전한 통계 증가"""
-        try:
-            if sub_key:
-                if stat_name not in self.stats:
-                    self.stats[stat_name] = {}
-                if sub_key not in self.stats[stat_name]:
-                    self.stats[stat_name][sub_key] = 0
-                self.stats[stat_name][sub_key] += 1
-            else:
-                if stat_name not in self.stats:
-                    self.stats[stat_name] = 0
-                self.stats[stat_name] += 1
-        except Exception as e:
-            if self.verbose:
-                print(f"통계 업데이트 오류: {stat_name}, {e}")
-    
-    def _safe_add_stat(self, stat_name: str, value: float) -> None:
-        """안전한 통계 추가"""
-        try:
-            if stat_name not in self.stats:
-                self.stats[stat_name] = 0.0
-            self.stats[stat_name] += value
-        except Exception as e:
-            if self.verbose:
-                print(f"통계 추가 오류: {stat_name}, {e}")
-    
-    def _safe_division(self, numerator: Union[int, float], denominator: Union[int, float]) -> float:
-        """안전한 나누기 연산 (0으로 나누기 방지)"""
-        try:
-            if denominator == 0:
-                return 0.0
-            return float(numerator) / float(denominator)
-        except:
-            return 0.0
-    
-    def _manage_memory(self) -> None:
-        """메모리 관리"""
-        self.memory_cleanup_counter += 1
-        
-        if self.memory_cleanup_counter % DEFAULT_CLEANUP_INTERVAL == 0:
-            if self.cuda_available:
-                torch.cuda.empty_cache()
-            gc.collect()
-        
-        if self.memory_cleanup_counter % (DEFAULT_CLEANUP_INTERVAL * 2) == 0:
-            if len(self.answer_cache) > self.max_cache_size * 0.8:
-                keys_to_remove = list(self.answer_cache.keys())[:self.max_cache_size // 3]
-                for key in keys_to_remove:
-                    del self.answer_cache[key]
-    
-    def _debug_log(self, message: str) -> None:
-        """디버그 로깅"""
-        if self.verbose:
-            print(f"[DEBUG] {message}")
-    
-    # 나머지 메서드들은 기존과 동일... (execute_inference, _generate_final_report 등)
-    def execute_inference(self, test_file: str, submission_file: str,
-                         output_file: str = DEFAULT_OUTPUT_FILE) -> Dict:
-        """통합 추론 실행"""
+        # 데이터 로드
         try:
             test_df = pd.read_csv(test_file)
             submission_df = pd.read_csv(submission_file)
         except Exception as e:
             raise RuntimeError(f"데이터 로드 실패: {e}")
         
-        print(f"데이터 로드 완료: {len(test_df)}개 문항")
+        print(f"\n데이터 로드 완료: {len(test_df)}개 문항")
         
-        questions_data = self._prepare_questions_data(test_df)
+        # 전체 추론 진행
+        print("=" * 50)
+        print("AI 추론 시작")
+        print("=" * 50)
         
-        mc_count = sum(1 for q in questions_data if q["is_mc"])
-        subj_count = len(questions_data) - mc_count
-        
-        print(f"문제 구성: 객관식 {mc_count}개, 주관식 {subj_count}개")
-        
-        if self.enable_learning:
-            print(f"학습 모드: 활성화")
-        
-        model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
-        reasoning_status = "활성화" if self.reasoning_engine else "비활성화"
-        print(f"사용 모델: {model_type}, 추론 엔진: {reasoning_status}")
-        
-        expected_total_time = len(questions_data) * (MIN_PROCESSING_TIME_PER_QUESTION + MAX_PROCESSING_TIME_PER_QUESTION) / 2
-        print(f"예상 소요 시간: {expected_total_time/60:.1f}분 - {expected_total_time/3600:.1f}시간")
-        
-        answers = self._process_all_questions(questions_data)
-        
-        submission_df['Answer'] = answers
-        
-        try:
-            submission_df.to_csv(output_file, index=False, encoding='utf-8-sig')
-        except Exception as e:
-            raise RuntimeError(f"결과 파일 저장 실패: {e}")
-        
-        if self.enable_learning:
-            self._save_learning_data()
-        
-        return self._generate_final_report(answers, questions_data, output_file)
-    
-    def _prepare_questions_data(self, test_df: pd.DataFrame) -> List[Dict]:
-        """질문 데이터 준비"""
-        questions_data = []
-        
-        print("질문 구조 사전 분석 중...")
+        answers = []
         total_questions = len(test_df)
         
         for idx, row in test_df.iterrows():
-            print_progress_bar(idx + 1, total_questions, prefix='구조 분석', 
-                             suffix=f'({idx + 1}/{total_questions})')
-            
             question = row['Question']
-            structure = self.data_processor.analyze_question_structure(question)
+            question_id = row['ID']
             
-            questions_data.append({
-                "idx": idx,
-                "id": row['ID'],
-                "question": question,
-                "structure": structure,
-                "is_mc": structure["question_type"] == "multiple_choice"
-            })
-        
-        print("\n구조 분석 완료")
-        return questions_data
-    
-    def _process_all_questions(self, questions_data: List[Dict]) -> List[str]:
-        """모든 질문 처리"""
-        answers = [""] * len(questions_data)
-        
-        print("\n==========================================")
-        print("통합 AI 추론 시스템 시작")
-        print("==========================================")
-        
-        total_questions = len(questions_data)
-        
-        for q_data in questions_data:
-            idx = q_data["idx"]
-            question_id = q_data["id"]
-            question = q_data["question"]
+            # 진행률 표시
+            if (idx + 1) % 10 == 0 or idx == 0:
+                progress = (idx + 1) / total_questions * 100
+                print(f"진행: {idx+1}/{total_questions} ({progress:.1f}%)")
             
-            # 게이지바로 진행상황 표시
-            print_progress_bar(idx + 1, total_questions, prefix='추론 진행', 
-                             suffix=f'문항 {idx+1}/{total_questions}')
+            # 실제 추론 수행
+            answer = self.process_single_question(question, question_id)
+            answers.append(answer)
             
-            answer = self.process_question(question, question_id, idx)
-            answers[idx] = answer
-            
-            self._safe_increment_stat("total")
-            
-            if not self.verbose and self.stats["total"] % PROGRESS_INTERVAL == 0:
-                print()  # 게이지바 후 줄바꿈
+            # 중간 통계 (50문항마다)
+            if (idx + 1) % 50 == 0:
                 self._print_interim_stats()
-            
-            if self.enable_learning and self.stats["total"] % DEFAULT_PATTERN_INTERVAL == 0:
-                try:
-                    self.learning_system.optimize_patterns()
-                except Exception as e:
-                    if self.verbose:
-                        print(f"    패턴 최적화 오류: {e}")
         
-        print()  # 최종 게이지바 후 줄바꿈
-        print("\n==========================================")
-        print("통합 AI 추론 완료")
-        print("==========================================")
+        # 결과 저장
+        submission_df['Answer'] = answers
+        submission_df.to_csv(output_file, index=False, encoding='utf-8-sig')
         
-        return answers
+        # 최종 결과 출력
+        self._print_final_results(output_file)
+        
+        return self._get_results_summary()
     
-    def _save_learning_data(self) -> None:
-        """학습 데이터 저장"""
-        try:
-            if self.learning_system.save_model():
-                if self.verbose:
-                    print("학습 데이터 저장 완료")
-        except Exception as e:
-            if self.verbose:
-                print(f"데이터 저장 오류: {e}")
+    def _print_interim_stats(self):
+        """중간 통계 출력"""
+        total = self.stats["total"]
+        if total == 0:
+            return
+        
+        model_success_rate = (self.stats["model_success"] / total) * 100
+        avg_time = sum(self.stats["processing_times"]) / len(self.stats["processing_times"])
+        
+        print(f"  중간 통계: 모델성공률 {model_success_rate:.1f}%, 평균처리시간 {avg_time:.2f}초")
+        
+        # 답변 분포
+        mc_total = sum(self.stats["answer_distribution"].values())
+        if mc_total > 0:
+            dist = [f"{k}:{v}" for k, v in self.stats["answer_distribution"].items() if v > 0]
+            print(f"  객관식 분포: {', '.join(dist)}")
     
-    def _print_interim_stats(self) -> None:
-        """중간 통계 출력 - 안전한 나누기 적용"""
+    def _print_final_results(self, output_file: str):
+        """최종 결과 출력"""
+        total_time = time.time() - self.start_time
+        
+        print("\n" + "=" * 50)
+        print("AI 추론 완료")
+        print("=" * 50)
+        
+        print(f"총 처리시간: {total_time:.1f}초 ({total_time/60:.1f}분)")
+        print(f"총 문항수: {self.stats['total']}개")
+        print(f"객관식: {self.stats['mc_count']}개")
+        print(f"주관식: {self.stats['subj_count']}개")
+        
         if self.stats["total"] > 0:
-            success_rate = self._safe_division(self.stats["model_generation_success"], self.stats["total"]) * 100
-            reasoning_rate = self._safe_division(self.stats["reasoning_engine_usage"], self.stats["total"]) * 100
-            pattern_rate = self._safe_division(self.stats["pattern_based_answers"], self.stats["total"]) * 100
-            fallback_rate = self._safe_division(self.stats["fallback_used"], self.stats["total"]) * 100
-            cot_rate = self._safe_division(self.stats["cot_prompts_used"], self.stats["total"]) * 100
-            llm_rate = self._safe_division(self.stats["actual_llm_generations"], self.stats["total"]) * 100
+            success_rate = (self.stats["model_success"] / self.stats["total"]) * 100
+            avg_time = sum(self.stats["processing_times"]) / len(self.stats["processing_times"])
             
-            if self.model_handler.is_finetuned:
-                finetuned_rate = self._safe_division(self.stats["finetuned_usage"], self.stats["total"]) * 100
-                print(f"  중간 통계: 모델성공 {success_rate:.1f}%, LLM사용 {llm_rate:.1f}%, 추론엔진 {reasoning_rate:.1f}%, 패턴활용 {pattern_rate:.1f}%, CoT {cot_rate:.1f}%, 폴백 {fallback_rate:.1f}%, 파인튜닝 {finetuned_rate:.1f}%")
-            else:
-                print(f"  중간 통계: 모델성공 {success_rate:.1f}%, LLM사용 {llm_rate:.1f}%, 추론엔진 {reasoning_rate:.1f}%, 패턴활용 {pattern_rate:.1f}%, CoT {cot_rate:.1f}%, 폴백 {fallback_rate:.1f}%")
-            
-            distribution = self.stats["answer_distribution"]
-            total_mc = sum(distribution.values())
-            if total_mc > 0:
-                dist_str = ", ".join([f"{k}:{v}({self._safe_division(v, total_mc)*100:.0f}%)" for k, v in distribution.items() if v > 0])
-                print(f"  답변분포: {dist_str}")
-            
-            if self.stats["processing_times"]:
-                avg_time = sum(self.stats["processing_times"][-50:]) / min(len(self.stats["processing_times"]), 50)
-                print(f"  평균 처리시간: {avg_time:.2f}초/문항")
-                
-            print(f"  GPU 총 사용시간: {self.stats['total_gpu_time']:.1f}초")
-    
-    def _generate_final_report(self, answers: List[str], questions_data: List[Dict], output_file: str) -> Dict:
-        """최종 보고서 생성"""
-        mc_answers = []
-        subj_answers = []
+            print(f"모델 성공률: {success_rate:.1f}%")
+            print(f"평균 처리시간: {avg_time:.2f}초/문항")
         
-        for answer, q_data in zip(answers, questions_data):
-            if q_data["is_mc"]:
-                if answer.isdigit() and 1 <= int(answer) <= 5:
-                    mc_answers.append(answer)
-            else:
-                subj_answers.append(answer)
+        # 객관식 답변 분포
+        print(f"\n객관식 답변 분포:")
+        mc_total = sum(self.stats["answer_distribution"].values())
+        for num in range(1, 6):
+            count = self.stats["answer_distribution"][str(num)]
+            if mc_total > 0:
+                pct = (count / mc_total) * 100
+                print(f"  {num}번: {count}개 ({pct:.1f}%)")
         
-        answer_distribution = {}
-        for ans in mc_answers:
-            answer_distribution[ans] = answer_distribution.get(ans, 0) + 1
-        
-        korean_quality_scores = []
-        for answer in subj_answers:
-            _, quality = self._validate_korean_quality_strict(answer, "subjective")
-            korean_quality_scores.append(quality)
-        
-        mc_quality_scores = []
-        for answer in mc_answers:
-            _, quality = self._validate_korean_quality_strict(answer, "multiple_choice")
-            mc_quality_scores.append(quality)
-        
-        all_quality_scores = korean_quality_scores + mc_quality_scores
-        avg_korean_quality = np.mean(all_quality_scores) if all_quality_scores else 0
-        avg_processing_time = np.mean(self.stats["processing_times"]) if self.stats["processing_times"] else 0
-        
-        self._print_final_report(answers, mc_answers, subj_answers, answer_distribution, 
-                               avg_korean_quality, avg_processing_time, output_file)
-        
-        return self._create_report_dict(answers, questions_data, answer_distribution, 
-                                      avg_korean_quality, avg_processing_time, 
-                                      korean_quality_scores, mc_quality_scores)
-    
-    def _print_final_report(self, answers: List[str], mc_answers: List[str], subj_answers: List[str],
-                          answer_distribution: Dict, avg_korean_quality: float, 
-                          avg_processing_time: float, output_file: str) -> None:
-        """최종 보고서 출력 - 안전한 나누기 적용"""
-        print("\n" + "="*60)
-        print("통합 AI 추론 시스템 완료")
-        print("="*60)
-        print(f"총 처리시간: {time.time() - self.start_time:.1f}초 ({(time.time() - self.start_time)/60:.1f}분)")
-        print(f"문항당 평균: {avg_processing_time:.2f}초")
-        
-        model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
-        reasoning_status = "활성화" if self.reasoning_engine else "비활성화"
-        print(f"사용 모델: {model_type}, 추론 엔진: {reasoning_status}")
-        
-        if self.model_handler.is_finetuned:
-            finetuned_rate = self._safe_division(self.stats["finetuned_usage"], max(self.stats["total"], 1)) * 100
-            print(f"파인튜닝 모델 사용률: {finetuned_rate:.1f}%")
-        
-        self._print_processing_stats()
-        self._print_reasoning_stats()
-        self._print_korean_quality_report(avg_korean_quality, len(answers))
-        self._print_learning_stats()
-        self._print_mc_distribution(mc_answers, answer_distribution)
-        self._print_performance_analysis()
+        # 다양성 평가
+        used_answers = len([v for v in self.stats["answer_distribution"].values() if v > 0])
+        diversity = "우수" if used_answers >= 4 else "양호" if used_answers >= 3 else "개선필요"
+        print(f"  답변 다양성: {diversity} ({used_answers}/5개 번호 사용)")
         
         print(f"\n결과 파일: {output_file}")
     
-    def _print_processing_stats(self) -> None:
-        """처리 통계 출력 - 안전한 나누기 적용"""
-        print(f"\n통합 추론 성능:")
-        total = max(self.stats["total"], 1)
-        print(f"  모델 생성 성공: {self.stats['model_generation_success']}/{self.stats['total']} ({self._safe_division(self.stats['model_generation_success'], total)*100:.1f}%)")
-        print(f"  실제 LLM 사용: {self.stats['actual_llm_generations']}/{self.stats['total']} ({self._safe_division(self.stats['actual_llm_generations'], total)*100:.1f}%)")
-        print(f"  추론 엔진 사용: {self.stats['reasoning_engine_usage']}/{self.stats['total']} ({self._safe_division(self.stats['reasoning_engine_usage'], total)*100:.1f}%)")
-        print(f"  CoT 프롬프트 사용: {self.stats['cot_prompts_used']}/{self.stats['total']} ({self._safe_division(self.stats['cot_prompts_used'], total)*100:.1f}%)")
-        print(f"  고신뢰도 답변: {self.stats['high_confidence_answers']}/{self.stats['total']} ({self._safe_division(self.stats['high_confidence_answers'], total)*100:.1f}%)")
-        print(f"  폴백 사용: {self.stats['fallback_used']}/{self.stats['total']} ({self._safe_division(self.stats['fallback_used'], total)*100:.1f}%")
-        
-        # LLM 성공률 표시
-        if self.stats.get("forced_llm_attempts", 0) > 0:
-            llm_success_rate = self._safe_division(self.stats.get("successful_llm_responses", 0), self.stats.get("forced_llm_attempts", 1)) * 100
-            print(f"  LLM 모델 성공률: {llm_success_rate:.1f}%")
-    
-    def _print_reasoning_stats(self) -> None:
-        """추론 통계 출력 - 안전한 나누기 적용"""
-        if self.reasoning_engine:
-            print(f"\n추론 엔진 상세:")
-            total = max(self.stats["total"], 1)
-            print(f"  추론 엔진 사용: {self.stats['reasoning_engine_usage']}회 ({self._safe_division(self.stats['reasoning_engine_usage'], total)*100:.1f}%)")
-            print(f"  CoT 프롬프트 사용: {self.stats['cot_prompts_used']}회 ({self._safe_division(self.stats['cot_prompts_used'], total)*100:.1f}%)")
-            print(f"  추론 성공: {self.stats['reasoning_successful']}회")
-            print(f"  추론 실패: {self.stats['reasoning_failed']}회")
-            print(f"  하이브리드 접근: {self.stats['hybrid_approach_used']}회")
-            print(f"  검증 통과: {self.stats['verification_passed']}회")
-            print(f"  검증 실패: {self.stats['verification_failed']}회")
-            
-            if self.stats['reasoning_time']:
-                avg_reasoning_time = np.mean(self.stats['reasoning_time'])
-                print(f"  평균 추론 시간: {avg_reasoning_time:.3f}초")
-            
-            if self.stats['reasoning_chain_lengths']:
-                avg_chain_length = np.mean(self.stats['reasoning_chain_lengths'])
-                print(f"  평균 추론 체인 길이: {avg_chain_length:.1f}단계")
-    
-    def _print_korean_quality_report(self, avg_korean_quality: float, total_answers: int) -> None:
-        """한국어 품질 리포트 출력"""
-        print(f"\n딥러닝 학습 시스템:")
-        print(f"  학습된 샘플: {self.stats['learned']}개")
-        print(f"  딥러닝 활성화: {self.learning_system.real_system.real_learning_active if self.enable_learning else False}")
-        
-        if self.enable_learning:
-            try:
-                learning_stats = self.learning_system.get_learning_statistics()
-                print(f"  처리된 샘플: {learning_stats['samples_processed']}개")
-                print(f"  가중치 업데이트: {learning_stats['weights_updated']}회")
-                print(f"  GPU 메모리 사용: {learning_stats['gpu_memory_used_gb']:.2f}GB")
-                print(f"  총 학습 시간: {learning_stats['total_training_time']:.1f}초")
-                if learning_stats['average_loss'] > 0:
-                    print(f"  평균 손실: {learning_stats['average_loss']:.4f}")
-                print(f"  딥러닝 패턴: {learning_stats['learned_patterns_count']}개")
-                print(f"  도메인 지식: {learning_stats.get('domain_knowledge_count', learning_stats['learned_patterns_count'])}개")
-                
-                # 안전한 정확도 표시
-                try:
-                    current_accuracy = self.learning_system.get_current_accuracy()
-                    print(f"  현재 정확도: {current_accuracy:.2%}")
-                except:
-                    estimated_accuracy = min(0.6 + (self.stats['learned'] * 0.01), 0.85)
-                    print(f"  현재 정확도: {estimated_accuracy:.2%}")
-                    
-            except Exception as e:
-                print(f"  학습 시스템 통계 수집 오류: {str(e)[:50]}...")
-                print(f"  학습된 샘플: {self.stats['learned']}개")
-                print(f"  딥러닝 활성화: True")
-    
-    def _print_learning_stats(self) -> None:
-        """학습 통계 출력"""
-        pass  # _print_korean_quality_report에 통합됨
-    
-    def _print_mc_distribution(self, mc_answers: List[str], answer_distribution: Dict) -> None:
-        """객관식 분포 출력"""
-        if mc_answers:
-            print(f"\n객관식 답변 분포:")
-            for num in sorted(answer_distribution.keys()):
-                count = answer_distribution[num]
-                pct = self._safe_division(count, len(mc_answers)) * 100
-                print(f"  {num}번: {count}개 ({pct:.1f}%)")
-            
-            unique_answers = len(answer_distribution)
-            diversity_assessment = "우수" if unique_answers >= 4 else "양호" if unique_answers >= 3 else "개선 필요"
-            print(f"  답변 다양성: {diversity_assessment} ({unique_answers}/5개 번호 사용)")
-    
-    def _print_performance_analysis(self) -> None:
-        """성능 분석 출력"""
-        print(f"\n상세 성능 분석:")
-        
-        if self.stats['processing_times']:
-            min_time = min(self.stats['processing_times'])
-            max_time = max(self.stats['processing_times'])
-            median_time = np.median(self.stats['processing_times'])
-            print(f"  처리시간 - 최소: {min_time:.2f}초, 최대: {max_time:.2f}초")
-            print(f"  처리시간 - 평균: {np.mean(self.stats['processing_times']):.2f}초, 중앙값: {median_time:.2f}초")
-        
-        # 성공률 분석 - 안전한 나누기 적용
-        total = max(self.stats["total"], 1)
-        model_success_rate = self._safe_division(self.stats["model_generation_success"], total) * 100
-        reasoning_rate = self._safe_division(self.stats["reasoning_engine_usage"], total) * 100
-        cot_rate = self._safe_division(self.stats["cot_prompts_used"], total) * 100
-        learning_rate = self._safe_division(self.stats["learned"], total) * 100
-        
-        print(f"  성공률 - 모델: {model_success_rate:.1f}%, 추론: {reasoning_rate:.1f}%, CoT: {cot_rate:.1f}%, 학습: {learning_rate:.1f}%")
-        print(f"  고신뢰도 답변 비율: {self._safe_division(self.stats['high_confidence_answers'], total)*100:.1f}%")
-        
-        print(f"\n성능 트렌드 분석:")
-        if len(self.stats['processing_times']) >= 10:
-            early_times = self.stats['processing_times'][:10]
-            late_times = self.stats['processing_times'][-10:]
-            speed_change = np.mean(late_times) - np.mean(early_times)
-            speed_trend = "저하" if speed_change > 0 else "향상" if speed_change < 0 else "안정"
-            print(f"  처리속도 트렌드: {speed_trend} ({speed_change:+.2f}초)")
-        
-        model_success_early = self._safe_division(self.stats.get("early_model_success", 0), max(self.stats["total"] // 2, 1))
-        model_success_late = self._safe_division(self.stats["model_generation_success"], total)
-        success_change = model_success_late - model_success_early
-        success_trend = "향상" if success_change > 0 else "저하" if success_change < 0 else "안정"
-        print(f"  모델 성공률 트렌드: {success_trend} ({success_change:+.1%})")
-        print(f"  학습 진행: +{self.stats['learned']}개 샘플")
-    
-    def _create_report_dict(self, answers: List[str], questions_data: List[Dict], 
-                          answer_distribution: Dict, avg_korean_quality: float,
-                          avg_processing_time: float, korean_quality_scores: List[float],
-                          mc_quality_scores: List[float]) -> Dict:
-        """보고서 딕셔너리 생성 - 안전한 나누기 적용"""
-        high_quality_count = sum(1 for q in korean_quality_scores + mc_quality_scores if q > 0.7)
-        
+    def _get_results_summary(self) -> Dict:
+        """결과 요약"""
         total = max(self.stats["total"], 1)
         
         return {
             "success": True,
-            "total_questions": len(answers),
-            "mc_count": len([q for q in questions_data if q["is_mc"]]),
-            "subj_count": len([q for q in questions_data if not q["is_mc"]]),
-            "answer_distribution": answer_distribution,
-            "processing_stats": {
-                "model_success": self.stats["model_generation_success"],
-                "actual_llm_usage": self.stats["actual_llm_generations"],
-                "pattern_based": self.stats["pattern_based_answers"],
-                "high_confidence": self.stats["high_confidence_answers"],
-                "smart_hints": self.stats["smart_hints_used"],
-                "fallback_used": self.stats["fallback_used"],
-                "errors": self.stats["errors"],
-                "cache_hits": self.stats["cache_hits"],
-                "avg_processing_time": avg_processing_time,
-                "finetuned_usage": self.stats["finetuned_usage"],
-                "total_gpu_time": self.stats["total_gpu_time"],
-                "real_processing_count": self.stats["real_processing_count"],
-                "llm_success_rate": self._safe_division(self.stats.get("successful_llm_responses", 0), self.stats.get("forced_llm_attempts", 1))
-            },
-            "reasoning_stats": {
-                "reasoning_engine_usage": self.stats["reasoning_engine_usage"],
-                "cot_prompts_used": self.stats["cot_prompts_used"],
-                "reasoning_successful": self.stats["reasoning_successful"],
-                "reasoning_failed": self.stats["reasoning_failed"],
-                "hybrid_approach_used": self.stats["hybrid_approach_used"],
-                "reasoning_priority_answers": self.stats["reasoning_priority_answers"],
-                "model_override_reasoning": self.stats["model_override_reasoning"],
-                "cot_successful": self.stats["cot_successful"],
-                "cot_failed": self.stats["cot_failed"],
-                "verification_passed": self.stats["verification_passed"],
-                "verification_failed": self.stats["verification_failed"],
-                "avg_reasoning_time": np.mean(self.stats["reasoning_time"]) if self.stats["reasoning_time"] else 0,
-                "avg_cot_generation_time": np.mean(self.stats["cot_generation_time"]) if self.stats["cot_generation_time"] else 0,
-                "avg_reasoning_chain_length": np.mean(self.stats["reasoning_chain_lengths"]) if self.stats["reasoning_chain_lengths"] else 0
-            },
-            "korean_quality": {
-                "failures": self.stats["korean_failures"],
-                "fixes": self.stats["korean_fixes"],
-                "avg_score": avg_korean_quality,
-                "high_quality_count": high_quality_count
-            },
-            "learning_stats": {
-                "learned_samples": self.stats["learned"],
-                "deep_learning_active": self.learning_system.real_system.real_learning_active if self.enable_learning else False,
-                "accuracy": self.learning_system.get_current_accuracy() if self.enable_learning else 0
-            },
-            "model_info": {
-                "is_finetuned": self.model_handler.is_finetuned,
-                "finetuned_path": self.model_handler.finetuned_path,
-                "reasoning_engine_available": self.reasoning_engine is not None,
-                "learning_system_available": self.enable_learning,
-                "offline_mode": True
-            }
+            "total_questions": self.stats["total"],
+            "mc_count": self.stats["mc_count"],
+            "subj_count": self.stats["subj_count"],
+            "model_success_rate": (self.stats["model_success"] / total) * 100,
+            "avg_processing_time": sum(self.stats["processing_times"]) / len(self.stats["processing_times"]) if self.stats["processing_times"] else 0,
+            "answer_distribution": dict(self.stats["answer_distribution"]),
+            "total_time": time.time() - self.start_time
         }
     
-    def cleanup(self) -> None:
+    def cleanup(self):
         """리소스 정리"""
         try:
-            print(f"\n시스템 정리:")
-            total_time = time.time() - self.start_time
-            print(f"  총 처리 시간: {total_time:.1f}초 ({total_time/60:.1f}분)")
-            if self.stats["total"] > 0:
-                print(f"  사용 모델: {'파인튜닝된 모델' if self.model_handler.is_finetuned else '기본 모델'}, 추론 엔진: {'활성화' if self.reasoning_engine else '비활성화'}")
-                print(f"  총 GPU 사용시간: {self.stats['total_gpu_time']:.1f}초")
-                print(f"  오프라인 모드: 100% 지원")
+            print("\n시스템 정리 중...")
             
-            # 실제 딥러닝 학습 완료 표시
-            if self.enable_learning:
-                learning_stats = self.learning_system.get_learning_statistics()
-                print(f"실제 딥러닝 학습 완료:")
-                print(f"  - 학습 활성화: {learning_stats['deep_learning_active']}")
-                print(f"  - 처리된 샘플: {learning_stats['samples_processed']}개")
-                print(f"  - 가중치 업데이트: {learning_stats['weights_updated']}회")
-                print(f"  - GPU 메모리 사용: {learning_stats['gpu_memory_used_gb']:.2f}GB")
-                print(f"  - 총 학습 시간: {learning_stats['total_training_time']:.1f}초")
-                print(f"  - 평균 손실: {learning_stats['average_loss']:.4f}")
-                print(f"  - 딥러닝 패턴: {learning_stats['learned_patterns_count']}개")
-                print(f"  - 도메인 지식: {learning_stats.get('domain_knowledge_count', learning_stats['learned_patterns_count'])}개")
+            if hasattr(self, 'model_handler'):
+                self.model_handler.cleanup()
             
-            self.model_handler.cleanup()
-            self.data_processor.cleanup()
-            self.prompt_engineer.cleanup()
+            if hasattr(self, 'data_processor'):
+                self.data_processor.cleanup()
             
-            if self.reasoning_engine:
-                self.reasoning_engine.cleanup()
-            
-            if self.enable_learning:
-                self.learning_system.cleanup()
-            
-            self.answer_cache.clear()
-            self.pattern_analysis_cache.clear()
-            self.reasoning_cache.clear()
-            
-            if self.cuda_available:
-                torch.cuda.empty_cache()
             gc.collect()
-            
-            print("통합 AI 추론 시스템 정리 완료")
+            print("시스템 정리 완료")
             
         except Exception as e:
-            if self.verbose:
-                print(f"정리 중 오류: {e}")
+            print(f"정리 중 오류: {e}")
+
 
 def main():
     """메인 함수"""
-    cuda_available = torch.cuda.is_available()
-    
-    if cuda_available:
-        try:
-            gpu_info = torch.cuda.get_device_properties(0)
-            print(f"GPU: {gpu_info.name}")
-            print(f"메모리: {gpu_info.total_memory / (1024**3):.1f}GB")
-        except Exception as e:
-            print(f"GPU 정보 확인 실패: {e}")
-    else:
-        print("GPU 없음 - CPU 모드")
-    
-    test_file = "./test.csv"
-    submission_file = "./sample_submission.csv"
-    
-    for file_path in [test_file, submission_file]:
-        if not os.path.exists(file_path):
-            print(f"오류: {file_path} 파일 없음")
-            sys.exit(1)
-    
-    enable_learning = True
-    verbose = False
-    use_finetuned = check_local_model_path("./finetuned_model")
-    
-    if use_finetuned:
-        print("파인튜닝된 모델이 발견되었습니다")
+    print("실제 작동하는 금융보안 AI 시스템")
+    print("=" * 50)
     
     engine = None
     try:
-        engine = FinancialAIInference(
-            enable_learning=enable_learning, 
-            verbose=verbose,
-            use_finetuned=use_finetuned
-        )
-        results = engine.execute_inference(test_file, submission_file)
+        # AI 엔진 초기화
+        engine = FinancialAIInference(verbose=True)
+        
+        # 추론 실행
+        results = engine.execute_inference()
         
         if results["success"]:
-            print("\n성과 요약:")
-            processing_stats = results["processing_stats"]
-            reasoning_stats = results["reasoning_stats"]
-            korean_quality = results["korean_quality"]
-            
-            model_success_rate = engine._safe_division(processing_stats['model_success'], results['total_questions']) * 100
-            llm_usage_rate = engine._safe_division(processing_stats['actual_llm_usage'], results['total_questions']) * 100
-            
-            print(f"모델 성공률: {model_success_rate:.1f}%")
-            print(f"LLM 실제 사용률: {llm_usage_rate:.1f}%")
-            print(f"한국어 품질: {korean_quality['avg_score']:.2f}")
-            print(f"추론 엔진 활용률: {engine._safe_division(reasoning_stats['reasoning_engine_usage'], results['total_questions'])*100:.1f}%")
-            print(f"CoT 프롬프트 사용률: {engine._safe_division(reasoning_stats['cot_prompts_used'], results['total_questions'])*100:.1f}%")
-            print(f"학습 성과: {results['learning_stats']['learned_samples']}개 샘플")
-            print(f"총 GPU 사용시간: {processing_stats['total_gpu_time']:.1f}초")
-            print(f"오프라인 모드: {results['model_info']['offline_mode']}")
-            
-            if results["model_info"]["is_finetuned"]:
-                finetuned_rate = engine._safe_division(processing_stats['finetuned_usage'], results['total_questions']) * 100
-                print(f"파인튜닝 활용률: {finetuned_rate:.1f}%")
+            print(f"\n성공적으로 완료됨!")
+            print(f"모델 성공률: {results['model_success_rate']:.1f}%")
+            print(f"총 처리시간: {results['total_time']:.1f}초")
         
     except KeyboardInterrupt:
-        print("\n추론 중단")
+        print("\n추론 중단됨")
     except Exception as e:
         print(f"오류 발생: {e}")
         import traceback
@@ -1622,6 +289,7 @@ def main():
     finally:
         if engine:
             engine.cleanup()
+
 
 if __name__ == "__main__":
     main()
