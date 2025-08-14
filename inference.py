@@ -1027,7 +1027,7 @@ class FinancialAIInference:
         print("\n" + "="*60)
         print("통합 AI 추론 시스템 완료")
         print("="*60)
-        print(f"이 문항: {len(answers)}개")
+        print(f"총 문항: {len(answers)}개")
         print(f"평균 처리시간: {avg_processing_time:.2f}초/문항")
         
         model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
@@ -1115,7 +1115,7 @@ class FinancialAIInference:
             print(f"  처리된 샘플: {learning_stats['samples_processed']}개")
             print(f"  가중치 업데이트: {learning_stats['weights_updated']}회")
             print(f"  GPU 메모리 사용: {learning_stats['gpu_memory_used_gb']:.2f}GB")
-            print(f"  이 학습 시간: {learning_stats['total_training_time']:.1f}초")
+            print(f"  총 학습 시간: {learning_stats['total_training_time']:.1f}초")
             if learning_stats['average_loss'] > 0:
                 print(f"  평균 손실: {learning_stats['average_loss']:.4f}")
             print(f"  딥러닝 패턴: {learning_stats['learned_patterns_count']}개")
@@ -1144,7 +1144,7 @@ class FinancialAIInference:
     def _print_performance_analysis(self) -> None:
         """성능 분석 출력"""
         print(f"\n성능 분석:")
-        print(f"  이 GPU 사용시간: {self.stats['total_gpu_time']:.1f}초")
+        print(f"  총 GPU 사용시간: {self.stats['total_gpu_time']:.1f}초")
         print(f"  실제 처리 문항: {self.stats['real_processing_count']}개")
         
         if self.stats['processing_times']:
@@ -1227,14 +1227,14 @@ class FinancialAIInference:
         try:
             print(f"\n시스템 정리:")
             total_time = time.time() - self.start_time
-            print(f"  이 처리 시간: {total_time:.1f}초 ({total_time/60:.1f}분)")
+            print(f"  총 처리 시간: {total_time:.1f}초 ({total_time/60:.1f}분)")
             if self.stats["total"] > 0:
                 print(f"  평균 처리 속도: {total_time/self.stats['total']:.2f}초/문항")
             
             model_type = "파인튜닝된 모델" if self.model_handler.is_finetuned else "기본 모델"
             reasoning_status = "활성화" if self.reasoning_engine else "비활성화"
             print(f"  사용 모델: {model_type}, 추론 엔진: {reasoning_status}")
-            print(f"  이 GPU 사용시간: {self.stats['total_gpu_time']:.1f}초")
+            print(f"  총 GPU 사용시간: {self.stats['total_gpu_time']:.1f}초")
             print(f"  오프라인 모드: 100% 지원")
             
             self.model_handler.cleanup()
@@ -1310,7 +1310,7 @@ def main():
             print(f"추론 엔진 활용률: {reasoning_stats['reasoning_engine_usage']/results['total_questions']*100:.1f}%")
             print(f"CoT 프롬프트 사용률: {reasoning_stats['cot_prompts_used']/results['total_questions']*100:.1f}%")
             print(f"학습 성과: {results['learning_stats']['learned_samples']}개 샘플")
-            print(f"이 GPU 사용시간: {processing_stats['total_gpu_time']:.1f}초")
+            print(f"총 GPU 사용시간: {processing_stats['total_gpu_time']:.1f}초")
             print(f"오프라인 모드: {results['model_info']['offline_mode']}")
             
             if results["model_info"]["is_finetuned"]:
