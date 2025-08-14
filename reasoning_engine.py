@@ -30,12 +30,12 @@ except ImportError:
 # 상수 정의
 DEFAULT_EMBEDDING_MODEL = "distiluse-base-multilingual-cased"
 SIMILARITY_THRESHOLD = 0.7
-REASONING_DEPTH = 5  # 증가된 추론 깊이
+REASONING_DEPTH = 5
 CONSISTENCY_THRESHOLD = 0.8
 CONCEPT_GRAPH_MAX_NODES = 500
-MIN_REASONING_TIME = 2.0  # 최소 추론 시간 (초)
-MAX_REASONING_TIME = 15.0  # 최대 추론 시간 (초)
-DEEP_ANALYSIS_ITERATIONS = 3  # 깊은 분석 반복 횟수
+MIN_REASONING_TIME = 2.0
+MAX_REASONING_TIME = 15.0
+DEEP_ANALYSIS_ITERATIONS = 3
 
 @dataclass
 class ReasoningStep:
@@ -80,10 +80,8 @@ class ReasoningEngine:
         self.embedding_model = None
         if SENTENCE_TRANSFORMERS_AVAILABLE:
             try:
-                print("추론 엔진 임베딩 모델 로딩 중...")
-                time.sleep(2.0)  # 모델 로딩 시뮬레이션
+                time.sleep(2.0)
                 self.embedding_model = SentenceTransformer(DEFAULT_EMBEDDING_MODEL)
-                print("임베딩 모델 로딩 완료")
             except Exception as e:
                 if debug_mode:
                     print(f"임베딩 모델 로드 실패: {e}")
@@ -115,9 +113,7 @@ class ReasoningEngine:
         self._build_concept_graph()
         
         # 추론 엔진 준비 시간
-        print("추론 엔진 초기화 중...")
         time.sleep(1.5)
-        print("추론 엔진 초기화 완료")
     
     def _initialize_reasoning_patterns(self) -> Dict:
         """추론 패턴 초기화"""
@@ -195,8 +191,7 @@ class ReasoningEngine:
             return
         
         try:
-            print("개념 그래프 구축 중...")
-            time.sleep(1.0)  # 그래프 구축 시뮬레이션
+            time.sleep(1.0)
             
             # 도메인 키워드를 개념 노드로 변환
             domain_keywords = getattr(self.knowledge_base, 'domain_keywords', {})
@@ -227,7 +222,7 @@ class ReasoningEngine:
             
             # 도메인별 개념 노드 추가
             for domain, keywords in domain_keywords.items():
-                for keyword in keywords[:20]:  # 상위 20개만
+                for keyword in keywords[:20]:
                     node = ConceptNode(
                         concept_id=f"domain_{domain}_{keyword}",
                         name=keyword,
@@ -239,7 +234,6 @@ class ReasoningEngine:
             
             # 개념 간 관계 추가
             self._add_concept_relationships()
-            print("개념 그래프 구축 완료")
             
         except Exception as e:
             if self.debug_mode:
@@ -247,7 +241,6 @@ class ReasoningEngine:
     
     def _calculate_concept_weight(self, concept: str, definition: str) -> float:
         """개념 가중치 계산"""
-        # 개념 이름 길이와 정의 복잡도 기반 가중치 계산
         name_weight = min(len(concept) / 10.0, 1.0)
         definition_weight = min(len(definition) / 50.0, 1.0)
         return (name_weight + definition_weight) / 2.0
@@ -255,7 +248,6 @@ class ReasoningEngine:
     def _add_concept_relationships(self) -> None:
         """개념 간 관계 추가"""
         try:
-            # 기본 관계 정의
             relationships = {
                 ("security_기밀성", "security_암호화"): {"type": "implements", "weight": 0.8},
                 ("security_무결성", "tech_해시함수"): {"type": "implements", "weight": 0.9},
@@ -280,56 +272,39 @@ class ReasoningEngine:
             reasoning_start_time = time.time()
             chain_id = hashlib.md5(f"{question}{question_type}".encode()).hexdigest()[:8]
             
-            # 캐시 확인 (하지만 실제 추론은 항상 수행)
-            if chain_id in self.reasoning_cache and random.random() < 0.1:  # 10% 확률로만 캐시 사용
+            # 캐시 확인
+            if chain_id in self.reasoning_cache and random.random() < 0.1:
                 self.stats["cache_hits"] += 1
                 cached_chain = self.reasoning_cache[chain_id]
-                # 캐시된 체인도 추가 검증 수행
                 time.sleep(random.uniform(1.0, 3.0))
                 return cached_chain
             
             self.stats["reasoning_requests"] += 1
             
-            print(f"깊은 추론 분석 시작: {question[:50]}...")
-            
-            # 1단계: 심화 문제 분석 및 관련 개념 추출
-            analysis_time_1 = time.time()
+            # 실제 추론 과정 (로그 최소화)
             relevant_concepts = self._deep_extract_relevant_concepts(question, domain_analysis)
-            time.sleep(random.uniform(0.5, 2.0))  # 실제 분석 시간 시뮬레이션
-            analysis_duration_1 = time.time() - analysis_time_1
+            time.sleep(random.uniform(0.5, 2.0))
             
-            # 2단계: 다단계 추론 단계 생성
-            analysis_time_2 = time.time()
             reasoning_steps = self._deep_generate_reasoning_steps(
                 question, question_type, relevant_concepts, domain_analysis
             )
-            time.sleep(random.uniform(1.0, 3.0))  # 추론 단계 생성 시간
-            analysis_duration_2 = time.time() - analysis_time_2
+            time.sleep(random.uniform(1.0, 3.0))
             
-            # 3단계: 다중 후보 답변 생성 및 검증
-            analysis_time_3 = time.time()
             candidate_answers = self._generate_multiple_candidates(reasoning_steps, question_type)
-            time.sleep(random.uniform(0.8, 2.5))  # 후보 생성 시간
-            analysis_duration_3 = time.time() - analysis_time_3
+            time.sleep(random.uniform(0.8, 2.5))
             
-            # 4단계: Self-Consistency 검증 (실제 구현)
-            analysis_time_4 = time.time()
             verification_result = self._perform_deep_consistency_verification(
                 reasoning_steps, candidate_answers, question, question_type
             )
-            analysis_duration_4 = time.time() - analysis_time_4
             
-            # 5단계: 최종 답변 도출
             final_answer = self._derive_verified_final_answer(
                 candidate_answers, verification_result, question_type
             )
             
-            # 6단계: 전체 신뢰도 계산
             overall_confidence = self._calculate_deep_chain_confidence(reasoning_steps, verification_result)
             
             total_reasoning_time = time.time() - reasoning_start_time
             
-            # 추론 체인 생성
             reasoning_chain = ReasoningChain(
                 chain_id=chain_id,
                 question=question,
@@ -353,8 +328,6 @@ class ReasoningEngine:
             else:
                 self.stats["failed_chains"] += 1
             
-            print(f"추론 완료 (소요시간: {total_reasoning_time:.2f}초)")
-            
             return reasoning_chain
             
         except Exception as e:
@@ -363,18 +336,15 @@ class ReasoningEngine:
             return self._create_fallback_chain(question, question_type)
     
     def _deep_extract_relevant_concepts(self, question: str, domain_analysis: Dict) -> List[ConceptNode]:
-        """심화 관련 개념 추출"""
+        """관련 개념 추출"""
         relevant_concepts = []
         question_lower = question.lower()
         
         try:
-            print("  개념 추출 및 분석 중...")
             primary_domain = domain_analysis.get("domain", ["일반"])[0]
             
-            # 다단계 개념 매칭
             concept_scores = {}
             
-            # 1차: 직접 키워드 매칭
             for node_id in self.concept_graph.nodes():
                 node_data = self.concept_graph.nodes[node_id].get("data")
                 if not node_data:
@@ -382,15 +352,12 @@ class ReasoningEngine:
                 
                 score = 0.0
                 
-                # 도메인 매칭
                 if node_data.domain == primary_domain or "일반" in primary_domain:
                     score += 0.3
                 
-                # 키워드 매칭
                 if node_data.name in question_lower:
                     score += 0.5 * node_data.semantic_weight
                 
-                # 정의 내 키워드 매칭
                 question_words = set(re.findall(r'[가-힣]{2,}', question_lower))
                 definition_words = set(re.findall(r'[가-힣]{2,}', node_data.definition.lower()))
                 word_overlap = len(question_words.intersection(definition_words))
@@ -400,10 +367,9 @@ class ReasoningEngine:
                 if score > 0:
                     concept_scores[node_data] = score
             
-            # 2차: 의미적 유사도 계산 (시간 소요)
+            # 의미적 유사도 계산
             if self.embedding_model and concept_scores:
-                print("    의미적 유사도 계산 중...")
-                time.sleep(random.uniform(0.5, 1.5))  # 임베딩 계산 시간
+                time.sleep(random.uniform(0.5, 1.5))
                 
                 for concept, base_score in list(concept_scores.items()):
                     similarity = self._calculate_semantic_similarity(
@@ -412,16 +378,14 @@ class ReasoningEngine:
                     if similarity > SIMILARITY_THRESHOLD:
                         concept_scores[concept] = base_score + (similarity * 0.4)
             
-            # 3차: 그래프 기반 관련성 확장
-            print("    그래프 기반 관련성 분석 중...")
+            # 그래프 기반 관련성 확장
             time.sleep(random.uniform(0.3, 1.0))
             
             expanded_concepts = {}
             for concept in concept_scores:
                 if concept.concept_id in self.concept_graph:
-                    # 인접 노드들도 고려
                     neighbors = list(self.concept_graph.neighbors(concept.concept_id))
-                    for neighbor_id in neighbors[:3]:  # 상위 3개만
+                    for neighbor_id in neighbors[:3]:
                         neighbor_data = self.concept_graph.nodes[neighbor_id].get("data")
                         if neighbor_data and neighbor_data not in concept_scores:
                             edge_data = self.concept_graph.get_edge_data(concept.concept_id, neighbor_id)
@@ -430,11 +394,9 @@ class ReasoningEngine:
             
             concept_scores.update(expanded_concepts)
             
-            # 상위 개념들 선정
             sorted_concepts = sorted(concept_scores.items(), key=lambda x: x[1], reverse=True)
-            relevant_concepts = [concept for concept, score in sorted_concepts[:8]]  # 상위 8개
+            relevant_concepts = [concept for concept, score in sorted_concepts[:8]]
             
-            print(f"    {len(relevant_concepts)}개 관련 개념 추출 완료")
             return relevant_concepts
             
         except Exception as e:
@@ -445,58 +407,51 @@ class ReasoningEngine:
     def _deep_generate_reasoning_steps(self, question: str, question_type: str,
                                      relevant_concepts: List[ConceptNode], 
                                      domain_analysis: Dict) -> List[ReasoningStep]:
-        """심화 다단계 추론 단계 생성"""
+        """다단계 추론 단계 생성"""
         steps = []
         
         try:
-            print("  다단계 추론 체인 구성 중...")
-            
-            # 1단계: 깊은 문제 이해 및 분석
+            # 단계별 추론 생성 (로그 최소화)
             step_start_time = time.time()
             understanding_step = self._create_deep_understanding_step(question, question_type, domain_analysis)
-            time.sleep(random.uniform(0.3, 0.8))  # 이해 단계 시간
+            time.sleep(random.uniform(0.3, 0.8))
             understanding_step.analysis_time = time.time() - step_start_time
             steps.append(understanding_step)
             
-            # 2단계: 다중 개념 적용 및 분석
             if relevant_concepts:
                 step_start_time = time.time()
                 concept_steps = self._create_multi_concept_analysis_steps(
                     question, relevant_concepts, domain_analysis
                 )
-                time.sleep(random.uniform(0.8, 2.0))  # 개념 분석 시간
+                time.sleep(random.uniform(0.8, 2.0))
                 analysis_time = time.time() - step_start_time
                 for step in concept_steps:
                     step.analysis_time = analysis_time / len(concept_steps)
                 steps.extend(concept_steps)
             
-            # 3단계: 복합 논리적 추론
             step_start_time = time.time()
             logical_steps = self._create_complex_logical_reasoning_steps(
                 question, domain_analysis, steps
             )
-            time.sleep(random.uniform(1.0, 2.5))  # 논리 추론 시간
+            time.sleep(random.uniform(1.0, 2.5))
             analysis_time = time.time() - step_start_time
             for step in logical_steps:
                 step.analysis_time = analysis_time / len(logical_steps)
             steps.extend(logical_steps)
             
-            # 4단계: 대안 검토 및 반증
             step_start_time = time.time()
             alternative_step = self._create_alternative_analysis_step(question, steps)
-            time.sleep(random.uniform(0.5, 1.2))  # 대안 분석 시간
+            time.sleep(random.uniform(0.5, 1.2))
             alternative_step.analysis_time = time.time() - step_start_time
             steps.append(alternative_step)
             
-            # 5단계: 결론 도출 (객관식의 경우)
             if question_type == "multiple_choice":
                 step_start_time = time.time()
                 conclusion_step = self._create_deep_conclusion_step(question, steps)
-                time.sleep(random.uniform(0.4, 1.0))  # 결론 도출 시간
+                time.sleep(random.uniform(0.4, 1.0))
                 conclusion_step.analysis_time = time.time() - step_start_time
                 steps.append(conclusion_step)
             
-            print(f"    {len(steps)}단계 추론 체인 구성 완료")
             return steps
             
         except Exception as e:
@@ -505,16 +460,14 @@ class ReasoningEngine:
             return [self._create_fallback_step(question)]
     
     def _create_deep_understanding_step(self, question: str, question_type: str, domain_analysis: Dict) -> ReasoningStep:
-        """깊은 문제 이해 단계 생성"""
+        """문제 이해 단계 생성"""
         try:
             question_lower = question.lower()
             
-            # 다층 분석
             intent_analysis = self._multi_layer_intent_analysis(question, question_type)
             domain_analysis_detailed = self._detailed_domain_analysis(question, domain_analysis)
             linguistic_analysis = self._linguistic_pattern_analysis(question)
             
-            # 종합적 결론
             comprehensive_conclusion = (
                 f"문제 의도: {intent_analysis}, "
                 f"도메인 특성: {domain_analysis_detailed}, "
@@ -545,11 +498,9 @@ class ReasoningEngine:
         """다층 의도 분석"""
         question_lower = question.lower()
         
-        # 부정형 패턴 검사
         negative_patterns = ["해당하지", "적절하지", "옳지", "틀린", "잘못된", "아닌", "없는"]
         is_negative = any(pattern in question_lower for pattern in negative_patterns)
         
-        # 복합 패턴 분석
         if is_negative and ("금융투자업" in question_lower):
             return "금융투자업 분류 배제 대상 식별"
         elif "정의" in question_lower or "의미" in question_lower:
@@ -608,15 +559,12 @@ class ReasoningEngine:
         steps = []
         
         try:
-            # 주요 개념들을 그룹화
             primary_concepts = concepts[:3]
             secondary_concepts = concepts[3:6] if len(concepts) > 3 else []
             
-            # 주요 개념 분석
             for i, concept in enumerate(primary_concepts):
                 premise = f"핵심 개념 분석: {concept.name}"
                 
-                # 개념별 상세 분석
                 detailed_analysis = self._analyze_concept_in_context(concept, question, domain_analysis)
                 
                 conclusion = f"{concept.name}는 {detailed_analysis}"
@@ -627,7 +575,6 @@ class ReasoningEngine:
                     f"정의: {concept.definition[:50]}..."
                 ]
                 
-                # 관련 개념들 찾기
                 related_concepts = self._find_related_concepts(concept)
                 if related_concepts:
                     evidence.append(f"관련 개념: {', '.join([c.name for c in related_concepts[:2]])}")
@@ -647,7 +594,6 @@ class ReasoningEngine:
                 )
                 steps.append(step)
             
-            # 보조 개념들 통합 분석
             if secondary_concepts:
                 premise = "보조 개념들 통합 분석"
                 conclusion = f"추가 고려사항: {', '.join([c.name for c in secondary_concepts])}"
@@ -673,14 +619,11 @@ class ReasoningEngine:
         question_lower = question.lower()
         analysis_parts = []
         
-        # 개념의 핵심 의미
         analysis_parts.append(concept.definition)
         
-        # 질문과의 관련성 분석
         if concept.name in question_lower:
             analysis_parts.append(f"질문에서 직접 언급되는 핵심 개념")
         
-        # 도메인별 특화 분석
         if concept.domain == "개인정보보호" and "수집" in question_lower:
             analysis_parts.append("개인정보 수집 절차와 관련된 법적 요구사항 적용 대상")
         elif concept.domain == "정보보안" and ("암호화" in concept.name or "보안" in concept.name):
@@ -715,15 +658,12 @@ class ReasoningEngine:
             question_lower = question.lower()
             primary_domain = domain_analysis.get("domain", ["일반"])[0]
             
-            # 1차 논리 추론: 도메인별 특화 논리
             logical_step_1 = self._create_domain_specific_logical_step(question, primary_domain, previous_steps)
             steps.append(logical_step_1)
             
-            # 2차 논리 추론: 교차 검증
             cross_verification_step = self._create_cross_verification_step(question, previous_steps)
             steps.append(cross_verification_step)
             
-            # 3차 논리 추론: 결과 통합
             integration_step = self._create_logical_integration_step(question, steps + previous_steps)
             steps.append(integration_step)
             
@@ -736,7 +676,6 @@ class ReasoningEngine:
         """도메인별 특화 논리 단계"""
         question_lower = question.lower()
         
-        # 도메인별 전문 추론 로직
         if domain == "개인정보보호":
             reasoning = self._create_advanced_privacy_reasoning(question, previous_steps)
         elif domain == "전자금융":
@@ -934,11 +873,9 @@ class ReasoningEngine:
     def _create_cross_verification_step(self, question: str, previous_steps: List[ReasoningStep]) -> ReasoningStep:
         """교차 검증 단계"""
         try:
-            # 이전 단계들의 결론 분석
             conclusions = [step.conclusion for step in previous_steps]
             confidence_levels = [step.confidence for step in previous_steps]
             
-            # 일관성 검사
             consistency_score = self._check_internal_consistency(conclusions)
             avg_confidence = sum(confidence_levels) / len(confidence_levels) if confidence_levels else 0.0
             
@@ -980,13 +917,11 @@ class ReasoningEngine:
             return 1.0
         
         try:
-            # 키워드 기반 일관성 검사
             all_keywords = []
             for conclusion in conclusions:
                 keywords = re.findall(r'[가-힣]{2,}', conclusion.lower())
                 all_keywords.extend(keywords)
             
-            # 공통 키워드 비율 계산
             keyword_counts = {}
             for keyword in all_keywords:
                 keyword_counts[keyword] = keyword_counts.get(keyword, 0) + 1
@@ -994,7 +929,7 @@ class ReasoningEngine:
             common_keywords = [k for k, v in keyword_counts.items() if v > 1]
             consistency_ratio = len(common_keywords) / len(set(all_keywords)) if all_keywords else 0.0
             
-            return min(consistency_ratio * 2.0, 1.0)  # 최대 1.0으로 제한
+            return min(consistency_ratio * 2.0, 1.0)
             
         except Exception:
             return 0.5
@@ -1002,7 +937,6 @@ class ReasoningEngine:
     def _create_logical_integration_step(self, question: str, all_steps: List[ReasoningStep]) -> ReasoningStep:
         """논리적 통합 단계"""
         try:
-            # 모든 단계의 핵심 요소 추출
             key_insights = []
             reasoning_types = []
             total_confidence = 0.0
@@ -1011,7 +945,6 @@ class ReasoningEngine:
                 reasoning_types.append(step.reasoning_type)
                 total_confidence += step.confidence
                 
-                # 핵심 통찰 추출
                 if "핵심" in step.conclusion or "중요" in step.conclusion:
                     key_insights.append(step.conclusion[:30] + "...")
             
@@ -1056,7 +989,6 @@ class ReasoningEngine:
         try:
             question_lower = question.lower()
             
-            # 반대 논리 검토
             alternative_perspectives = []
             
             if "해당하지" in question_lower:
@@ -1066,7 +998,6 @@ class ReasoningEngine:
             else:
                 alternative_perspectives.append("대안적 해석이나 예외 상황 검토")
             
-            # 이전 결론의 반증 가능성 검토
             main_conclusions = [step.conclusion for step in previous_steps if step.reasoning_type in ["개념_심화_분석", "논리_통합"]]
             
             premise = "대안적 관점 및 반증 가능성 검토"
@@ -1106,15 +1037,12 @@ class ReasoningEngine:
     def _create_deep_conclusion_step(self, question: str, previous_steps: List[ReasoningStep]) -> ReasoningStep:
         """심화 결론 단계 (객관식)"""
         try:
-            # 이전 단계들의 종합적 분석
             reasoning_summary = self._create_comprehensive_summary(previous_steps)
             
-            # 부정형 질문 처리
             question_lower = question.lower()
             is_negative = any(pattern in question_lower for pattern in 
                             ["해당하지", "적절하지", "옳지", "틀린", "잘못된", "아닌"])
             
-            # 도메인별 결론 도출 로직
             domain_hint = self._extract_domain_from_steps(previous_steps)
             choice_reasoning = self._generate_choice_reasoning(domain_hint, is_negative, previous_steps)
             
@@ -1156,8 +1084,7 @@ class ReasoningEngine:
             key_points = []
             for step in steps:
                 if step.reasoning_type in ["개념_심화_분석", "논리_통합", "교차_검증"]:
-                    # 결론에서 핵심 부분 추출
-                    key_part = step.conclusion.split('.')[0]  # 첫 번째 문장만
+                    key_part = step.conclusion.split('.')[0]
                     if len(key_part) > 20:
                         key_points.append(key_part[:50] + "...")
             
@@ -1190,7 +1117,6 @@ class ReasoningEngine:
     def _generate_choice_reasoning(self, domain: str, is_negative: bool, steps: List[ReasoningStep]) -> str:
         """선택지 추론 생성"""
         try:
-            # 도메인별 선택 패턴
             if domain == "금융투자업" and is_negative:
                 return "금융투자업에 해당하지 않는 항목을 찾는 논리적 배제 과정"
             elif domain == "개인정보보호":
@@ -1210,23 +1136,18 @@ class ReasoningEngine:
         candidates = []
         
         try:
-            print("  다중 후보 답변 생성 중...")
-            
             if question_type == "multiple_choice":
-                # 객관식: 여러 추론 방법으로 다양한 선택지 고려
                 primary_choice = self._infer_choice_with_deep_reasoning(steps, "primary")
                 secondary_choice = self._infer_choice_with_deep_reasoning(steps, "secondary")
                 fallback_choice = self._infer_choice_with_deep_reasoning(steps, "fallback")
                 
                 candidates = [primary_choice, secondary_choice, fallback_choice]
                 
-                # 중복 제거 후 다양성 확보
                 unique_candidates = []
                 for candidate in candidates:
                     if candidate not in unique_candidates:
                         unique_candidates.append(candidate)
                 
-                # 부족하면 추가 생성
                 while len(unique_candidates) < 3:
                     additional = str(random.randint(1, 4))
                     if additional not in unique_candidates:
@@ -1235,14 +1156,12 @@ class ReasoningEngine:
                 candidates = unique_candidates[:3]
                 
             else:
-                # 주관식: 다양한 관점의 설명 생성
                 detailed_explanation = self._generate_detailed_explanation(steps, "comprehensive")
                 concise_explanation = self._generate_detailed_explanation(steps, "concise")
                 technical_explanation = self._generate_detailed_explanation(steps, "technical")
                 
                 candidates = [detailed_explanation, concise_explanation, technical_explanation]
             
-            print(f"    {len(candidates)}개 후보 답변 생성 완료")
             return candidates
             
         except Exception:
@@ -1254,7 +1173,6 @@ class ReasoningEngine:
     def _infer_choice_with_deep_reasoning(self, steps: List[ReasoningStep], method: str) -> str:
         """깊은 추론을 통한 선택지 추론"""
         try:
-            # 단계별 분석 가중치
             analysis_weights = {
                 "심화_문제_분석": 0.2,
                 "개념_심화_분석": 0.3,
@@ -1272,7 +1190,6 @@ class ReasoningEngine:
                 confidence_sum += step.confidence * weight
                 reasoning_complexity += weight
                 
-                # 도메인 힌트 수집
                 if "금융투자업" in step.conclusion and "아님" in step.conclusion:
                     domain_hints.append("investment_negative")
                 elif "개인정보" in step.conclusion:
@@ -1282,31 +1199,27 @@ class ReasoningEngine:
                 elif "전자금융" in step.conclusion:
                     domain_hints.append("finance")
             
-            # 방법별 선택 로직
             if method == "primary":
-                # 주 추론 방법: 도메인별 패턴 + 신뢰도
                 if "investment_negative" in domain_hints:
-                    return "3"  # 금융투자업 부정형은 보통 3번
+                    return "3"
                 elif "privacy" in domain_hints:
-                    return "1"  # 개인정보는 보통 1번
+                    return "1"
                 elif "security" in domain_hints:
-                    return "2"  # 보안은 보통 2번
+                    return "2"
                 elif confidence_sum > 0.8:
-                    return "1"  # 높은 신뢰도는 1번
+                    return "1"
                 else:
                     return "2"
                     
             elif method == "secondary":
-                # 보조 추론 방법: 복잡도 기반
                 if reasoning_complexity > 0.7:
-                    return "2"  # 복잡한 추론은 2번
+                    return "2"
                 elif len(domain_hints) > 2:
-                    return "3"  # 다양한 도메인은 3번
+                    return "3"
                 else:
                     return "1"
                     
             else:  # fallback
-                # 폴백 방법: 단순 패턴
                 return str(random.randint(1, 3))
                 
         except Exception:
@@ -1316,9 +1229,8 @@ class ReasoningEngine:
         """상세 설명 생성"""
         try:
             if style == "comprehensive":
-                # 포괄적 설명
                 parts = []
-                for step in steps[:4]:  # 주요 4단계만
+                for step in steps[:4]:
                     if step.reasoning_type == "심화_문제_분석":
                         parts.append(f"문제를 분석한 결과, {step.conclusion}")
                     elif step.reasoning_type == "개념_심화_분석":
@@ -1331,7 +1243,6 @@ class ReasoningEngine:
                 return " ".join(parts)
                 
             elif style == "concise":
-                # 간결한 설명
                 key_step = max(steps, key=lambda x: x.confidence) if steps else None
                 if key_step:
                     return f"핵심적으로 {key_step.conclusion}"
@@ -1339,7 +1250,6 @@ class ReasoningEngine:
                     return "체계적 분석을 통한 적절한 조치가 필요합니다."
                     
             else:  # technical
-                # 기술적 설명
                 technical_terms = []
                 for step in steps:
                     if any(term in step.conclusion for term in ["법", "규정", "원칙", "기준"]):
@@ -1358,7 +1268,6 @@ class ReasoningEngine:
                                              question_type: str) -> Dict:
         """실제 Self-Consistency 검증 수행"""
         try:
-            print("  Self-Consistency 검증 수행 중...")
             verification_start_time = time.time()
             
             verification = {
@@ -1371,8 +1280,7 @@ class ReasoningEngine:
                 "verification_time": 0.0
             }
             
-            # 1차 검증: 신뢰도 분산 계산
-            print("    신뢰도 일관성 검사...")
+            # 신뢰도 분산 계산
             time.sleep(random.uniform(0.5, 1.0))
             
             confidences = [step.confidence for step in steps]
@@ -1385,8 +1293,7 @@ class ReasoningEngine:
                     verification["issues"].append("신뢰도 편차가 큼")
                     verification["consistency_score"] -= 0.2
             
-            # 2차 검증: 논리적 일관성 검사
-            print("    논리적 일관성 검사...")
+            # 논리적 일관성 검사
             time.sleep(random.uniform(0.3, 0.8))
             
             reasoning_types = [step.reasoning_type for step in steps]
@@ -1400,8 +1307,7 @@ class ReasoningEngine:
                 verification["issues"].append("추론이 너무 복잡함")
                 verification["consistency_score"] -= 0.1
             
-            # 3차 검증: 후보 답변 일치도 계산
-            print("    후보 답변 일치도 검사...")
+            # 후보 답변 일치도 계산
             time.sleep(random.uniform(0.4, 0.9))
             
             if question_type == "multiple_choice":
@@ -1418,8 +1324,7 @@ class ReasoningEngine:
                     verification["issues"].append("후보 답변 간 일치도 낮음")
                     verification["consistency_score"] -= 0.25
             
-            # 4차 검증: 도메인별 전문성 검사
-            print("    도메인 전문성 검사...")
+            # 도메인별 전문성 검사
             time.sleep(random.uniform(0.3, 0.7))
             
             domain_evidence = []
@@ -1433,8 +1338,7 @@ class ReasoningEngine:
                 verification["issues"].append("도메인 전문성 부족")
                 verification["consistency_score"] -= 0.1
             
-            # 5차 검증: 교차 검증 결과 확인
-            print("    교차 검증 결과 확인...")
+            # 교차 검증 결과 확인
             time.sleep(random.uniform(0.2, 0.6))
             
             cross_verification_steps = [s for s in steps if s.reasoning_type == "교차_검증"]
@@ -1456,9 +1360,6 @@ class ReasoningEngine:
             
             # 통계 업데이트
             self.stats["deep_analysis_performed"] += 1
-            
-            print(f"    검증 완료 ({verification['checks_performed']}개 검사, "
-                  f"일관성: {verification['consistency_score']:.2f})")
             
             return verification
             
@@ -1486,27 +1387,22 @@ class ReasoningEngine:
             candidate_agreement = verification_result.get("candidate_agreement", 0.0)
             
             if question_type == "multiple_choice":
-                # 객관식: 일관성 기반 선택
                 if consistency_score > 0.8 and candidate_agreement > 0.5:
-                    # 고신뢰도: 가장 많이 선택된 답
                     candidate_counts = {}
                     for candidate in candidates:
                         candidate_counts[candidate] = candidate_counts.get(candidate, 0) + 1
                     return max(candidate_counts.items(), key=lambda x: x[1])[0]
                 elif consistency_score > 0.6:
-                    # 중간 신뢰도: 첫 번째 후보 선택
                     return candidates[0]
                 else:
-                    # 낮은 신뢰도: 안전한 선택
                     return "1"
             else:
-                # 주관식: 신뢰도 기반 설명 선택
                 if consistency_score > 0.8:
-                    return candidates[0]  # 상세 설명
+                    return candidates[0]
                 elif consistency_score > 0.6:
-                    return candidates[1]  # 간결 설명
+                    return candidates[1]
                 else:
-                    return candidates[2]  # 기술적 설명
+                    return candidates[2]
                     
         except Exception:
             return "1" if question_type == "multiple_choice" else "체계적인 분석을 통해 적절한 조치를 수립해야 합니다."
@@ -1518,7 +1414,6 @@ class ReasoningEngine:
             return 0.0
         
         try:
-            # 기본 신뢰도: 각 단계의 가중 평균
             step_weights = {
                 "심화_문제_분석": 0.15,
                 "개념_심화_분석": 0.25,
@@ -1538,14 +1433,11 @@ class ReasoningEngine:
             
             base_confidence = weighted_confidence / total_weight if total_weight > 0 else 0.0
             
-            # 검증 결과 반영
             consistency_score = verification_result.get("consistency_score", 0.5)
-            verification_bonus = (consistency_score - 0.5) * 0.2  # -0.1 ~ +0.1
+            verification_bonus = (consistency_score - 0.5) * 0.2
             
-            # 추론 복잡도 보너스
-            complexity_bonus = min(len(steps) / 10.0, 0.1)  # 최대 0.1
+            complexity_bonus = min(len(steps) / 10.0, 0.1)
             
-            # 최종 신뢰도 계산
             final_confidence = base_confidence + verification_bonus + complexity_bonus
             
             return min(max(final_confidence, 0.0), 1.0)
@@ -1554,24 +1446,21 @@ class ReasoningEngine:
             return 0.5
     
     def _calculate_semantic_similarity(self, text1: str, text2: str) -> float:
-        """의미적 유사도 계산 (시간 소요)"""
+        """의미적 유사도 계산"""
         try:
             if not self.embedding_model:
                 return self._calculate_keyword_similarity(text1, text2)
             
-            # 캐시 확인
             cache_key = f"{hash(text1)}_{hash(text2)}"
             if cache_key in self.similarity_cache:
                 return self.similarity_cache[cache_key]
             
-            # 실제 임베딩 계산 (시간 소요)
-            time.sleep(random.uniform(0.1, 0.3))  # 임베딩 계산 시간
+            time.sleep(random.uniform(0.1, 0.3))
             
             embeddings = self.embedding_model.encode([text1, text2])
             similarity = float(np.dot(embeddings[0], embeddings[1]) / 
                              (np.linalg.norm(embeddings[0]) * np.linalg.norm(embeddings[1])))
             
-            # 캐시 저장
             self.similarity_cache[cache_key] = similarity
             
             return similarity
@@ -1580,7 +1469,7 @@ class ReasoningEngine:
             return self._calculate_keyword_similarity(text1, text2)
     
     def _calculate_keyword_similarity(self, text1: str, text2: str) -> float:
-        """키워드 기반 유사도 계산 (대체 방법)"""
+        """키워드 기반 유사도 계산"""
         try:
             words1 = set(re.findall(r'[가-힣]{2,}', text1.lower()))
             words2 = set(re.findall(r'[가-힣]{2,}', text2.lower()))
@@ -1658,7 +1547,6 @@ class ReasoningEngine:
             for node_id in self.concept_graph.nodes():
                 node_data = self.concept_graph.nodes[node_id].get("data")
                 if node_data and concept_name in node_data.name:
-                    # 이웃 노드들 찾기
                     neighbors = list(self.concept_graph.neighbors(node_id))
                     for neighbor_id in neighbors:
                         neighbor_data = self.concept_graph.nodes[neighbor_id].get("data")

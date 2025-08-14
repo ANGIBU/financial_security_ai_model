@@ -5,7 +5,7 @@
 - 금융보안 객관식/주관식 문제 추론
 - reasoning_engine 기반 논리적 추론
 - Chain-of-Thought 다단계 추론 프로세스
-- 파인튜닝된 모델 지원
+- 파인튜닝 모델 지원
 - 학습 시스템 통합 관리
 - 한국어 답변 생성 및 검증
 - 오프라인 환경 대응
@@ -68,11 +68,11 @@ PROGRESS_INTERVAL = 50
 INTERIM_STATS_INTERVAL = 50
 
 # 실제 딥러닝 처리 시간 임계값
-MIN_PROCESSING_TIME_PER_QUESTION = 8.0  # 문항당 최소 8초
-MAX_PROCESSING_TIME_PER_QUESTION = 45.0  # 문항당 최대 45초
-DEEP_ANALYSIS_TIME_RATIO = 0.4  # 깊은 분석에 40% 시간 할당
-MODEL_INFERENCE_TIME_RATIO = 0.35  # 모델 추론에 35% 시간 할당
-LEARNING_UPDATE_TIME_RATIO = 0.25  # 학습 업데이트에 25% 시간 할당
+MIN_PROCESSING_TIME_PER_QUESTION = 8.0
+MAX_PROCESSING_TIME_PER_QUESTION = 45.0
+DEEP_ANALYSIS_TIME_RATIO = 0.4
+MODEL_INFERENCE_TIME_RATIO = 0.35
+LEARNING_UPDATE_TIME_RATIO = 0.25
 
 def print_progress_bar(current: int, total: int, prefix: str = '', suffix: str = '', 
                       length: int = 50, fill: str = '█', decimals: int = 1):
@@ -88,7 +88,6 @@ def check_local_model_path(model_path: str) -> bool:
     """로컬 모델 경로 존재 여부 확인"""
     if os.path.exists(model_path):
         required_files = ['config.json', 'pytorch_model.bin', 'tokenizer.json']
-        # 필수 파일 중 일부라도 있으면 로컬 모델로 인정
         return any(os.path.exists(os.path.join(model_path, f)) for f in required_files)
     return False
 
@@ -226,7 +225,7 @@ class FinancialAIInference:
         """향상된 폴백 템플릿 구축"""
         return {
             "사이버보안": [
-                "트로이 목마는 정상 프로그램으로 위장한 악성코드로, 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결과 시스템 리소스 사용 증가가 있습니다.",
+                "트로이목마는 정상 프로그램으로 위장한 악성코드로, 시스템을 원격으로 제어할 수 있게 합니다. 주요 탐지 지표로는 비정상적인 네트워크 연결과 시스템 리소스 사용 증가가 있습니다.",
                 "악성코드 탐지를 위해 실시간 모니터링과 행위 기반 분석 기술을 활용해야 합니다. 정기적인 보안 점검과 업데이트를 통해 위협에 대응해야 합니다.",
                 "사이버 공격에 대응하기 위해 침입탐지시스템과 방화벽 등 다층적 보안체계를 구축해야 합니다. 보안관제센터를 통한 24시간 모니터링이 필요합니다.",
                 "피싱과 스미싱 등 사회공학 공격에 대한 사용자 교육과 기술적 차단 조치가 필요합니다. 정기적인 보안교육을 통해 보안 의식을 제고해야 합니다."
@@ -427,7 +426,7 @@ class FinancialAIInference:
                 self.stats["cache_hits"] += 1
                 return self.answer_cache[cache_key]
             
-            # 실제 딥러닝 구조 분석 (간소화된 로그)
+            # 실제 딥러닝 구조 분석
             structure_start = time.time()
             structure = self.data_processor.analyze_question_structure(question)
             structure_time = time.time() - structure_start
@@ -476,7 +475,7 @@ class FinancialAIInference:
         
         total_processing_start = time.time()
         
-        # 1단계: 추론 엔진 우선 적용 (깊은 분석) - 간소화된 로그
+        # 1단계: 추론 엔진 우선 적용 (깊은 분석)
         reasoning_start = time.time()
         reasoning_answer, reasoning_confidence = self._apply_enhanced_reasoning_engine(
             question, structure, analysis
@@ -515,7 +514,7 @@ class FinancialAIInference:
         )
     
     def _apply_enhanced_reasoning_engine(self, question: str, structure: Dict, analysis: Dict) -> Tuple[Optional[str], float]:
-        """향상된 추론 엔진 적용 - 간소화된 로그"""
+        """향상된 추론 엔진 적용"""
         if not self.reasoning_engine:
             return None, 0.0
         
@@ -582,7 +581,7 @@ class FinancialAIInference:
     
     def _process_with_enhanced_cot_prompt(self, question: str, structure: Dict, analysis: Dict, 
                                         reasoning_answer: Optional[str], reasoning_confidence: float) -> str:
-        """향상된 CoT 프롬프트를 활용한 처리 - 간소화된 로그"""
+        """향상된 CoT 프롬프트를 활용한 처리"""
         
         try:
             # CoT 프롬프트 생성 및 사용 (실제 시간 소요)
@@ -741,7 +740,7 @@ class FinancialAIInference:
     
     def _perform_learning_update(self, question: str, answer: str, confidence: float, 
                                structure: Dict, analysis: Dict) -> None:
-        """실제 학습 업데이트 수행 - 간소화된 로그"""
+        """실제 학습 업데이트 수행"""
         if not self.enable_learning:
             return
         

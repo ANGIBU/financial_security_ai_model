@@ -1,10 +1,10 @@
 # test_runner.py
 
 """
-통합 추론 테스트 실행기 (대회 규칙 준수 버전)
+통합 추론 테스트 실행기
 - 50문항 딥러닝 테스트 실행
 - 실제 GPU 추론 및 학습 시스템 연동
-- 단일 LLM 모델(SOLAR) 사용 원칙 엄격 준수
+- 단일 LLM 모델(SOLAR) 사용 원칙 준수
 - 상세한 성능 검증 및 분석
 - 논리적 추론 성능 측정
 - CoT 추론 과정 검증
@@ -12,7 +12,6 @@
 - 통합된 추론 파이프라인 성능 분석
 - 실시간 진행상황 모니터링
 - 딥러닝 학습 과정 추적
-- 대회 규칙 준수 상태 모니터링
 """
 
 import os
@@ -55,7 +54,7 @@ def print_progress_bar(current: int, total: int, prefix: str = '', suffix: str =
         print()
 
 class IntegratedTestRunner:
-    """통합 테스트 실행기 (대회 규칙 100% 준수)"""
+    """통합 테스트 실행기"""
     
     def __init__(self, test_size: int = DEFAULT_TEST_SIZE, use_finetuned: bool = False, 
                  enable_detailed_monitoring: bool = True):
@@ -72,7 +71,6 @@ class IntegratedTestRunner:
         
         print(f"통합 추론 테스트 실행기 초기화 중... (대상: {self.test_size}문항)")
         print(f"상세 모니터링: {'활성화' if enable_detailed_monitoring else '비활성화'}")
-        print(f"🏆 대회 규칙 준수: 단일 SOLAR 모델, 오프라인, 외부 API 금지")
         
         # 파인튜닝 모델 경로 확인
         if use_finetuned and not os.path.exists("./finetuned_model"):
@@ -81,20 +79,19 @@ class IntegratedTestRunner:
         
         # inference.py의 FinancialAIInference 사용 (통합 추론 기능 포함)
         try:
-            print("통합 추론 엔진 초기화 중... (단일 SOLAR 모델)")
+            print("통합 추론 엔진 초기화 중...")
             self.inference_engine = FinancialAIInference(
                 enable_learning=True,
                 verbose=False,  # 테스트에서는 간결한 출력
                 use_finetuned=self.use_finetuned
             )
-            print("✅ 통합 추론 엔진 초기화 완료 (대회 규칙 준수)")
+            print("통합 추론 엔진 초기화 완료")
         except Exception as e:
             raise RuntimeError(f"통합 추론 엔진 초기화 실패: {e}")
         
         model_type = "파인튜닝된 모델" if self.use_finetuned else "기본 모델"
         reasoning_status = "활성화" if self.inference_engine.reasoning_engine else "비활성화"
-        print(f"초기화 완료 - {model_type} (단일 SOLAR 모델) 사용, 추론 엔진: {reasoning_status}")
-        print(f"✅ 대회 규칙 준수 확인: 단일 모델, 오프라인, 외부 API 금지\n")
+        print(f"초기화 완료 - {model_type} 사용, 추론 엔진: {reasoning_status}")
     
     def load_test_data(self, test_file: str, submission_file: str) -> Optional[Tuple[pd.DataFrame, pd.DataFrame]]:
         """테스트 데이터 로드 및 사전 분석"""
@@ -132,7 +129,7 @@ class IntegratedTestRunner:
     
     def _preanalyze_questions(self, test_df: pd.DataFrame) -> None:
         """문제 사전 분석 (복잡도 및 예상 처리시간 계산)"""
-        print("문제 사전 분석 수행 중... (단일 모델 기반)")
+        print("문제 사전 분석 수행 중...")
         
         complexity_scores = []
         estimated_times = []
@@ -174,20 +171,16 @@ class IntegratedTestRunner:
         print(f"  - 평균 복잡도: {avg_complexity:.2f}")
         print(f"  - 예상 처리시간: {total_estimated_time/60:.1f}분")
         print(f"  - 문항당 평균: {total_estimated_time/self.test_size:.1f}초")
-        print(f"  - 🏆 단일 SOLAR 모델로 모든 분석 수행")
     
     def run_integrated_test(self, test_file: str = "./test.csv", 
                           submission_file: str = "./sample_submission.csv") -> None:
-        """통합 추론 테스트 실행 (대회 규칙 준수)"""
+        """통합 추론 테스트 실행"""
         print("="*60)
         print(f"통합 추론 테스트 시작 ({self.test_size}문항)")
-        print("🏆 대회 규칙 100% 준수 모드")
         if self.use_finetuned:
             print("파인튜닝된 SOLAR 모델 사용")
         else:
             print("기본 SOLAR 모델 사용")
-        print("✅ 단일 모델, 오프라인, 외부 API 금지")
-        print("추론 엔진, 학습 시스템, CoT 프롬프트 모두 활성화")
         print("="*60)
         
         # 데이터 로드
@@ -197,16 +190,15 @@ class IntegratedTestRunner:
         
         test_df, submission_df = data_result
         
-        print(f"\n통합 딥러닝 추론 시작... (단일 SOLAR 모델)")
+        print(f"\n통합 딥러닝 추론 시작...")
         print("실제 GPU 추론, CoT 생성, 학습 업데이트 모두 활성화")
-        print("🏆 대회 규칙 준수 확인: 복수 모델 앙상블 금지, 외부 API 호출 금지")
         
         # 실시간 모니터링 스레드 시작
         if self.enable_detailed_monitoring:
             monitor_thread = threading.Thread(target=self._performance_monitor, daemon=True)
             monitor_thread.start()
         
-        # 답변 생성 - 통합 추론 시스템 사용 (단일 모델)
+        # 답변 생성 - 통합 추론 시스템 사용
         answers = []
         detailed_results = []
         
@@ -221,7 +213,7 @@ class IntegratedTestRunner:
                 print_progress_bar(idx + 1, total_questions, prefix='추론 진행', 
                                  suffix=f'문항 {idx+1}/{total_questions}')
                 
-                # inference.py의 통합 추론 메서드 사용 (단일 모델)
+                # inference.py의 통합 추론 메서드 사용
                 answer = self.inference_engine.process_question(question, question_id, idx)
                 answers.append(answer)
                 
@@ -275,8 +267,7 @@ class IntegratedTestRunner:
             "reasoning_used": stats.get("reasoning_engine_usage", 0) > 0,
             "cot_used": stats.get("cot_prompts_used", 0) > 0,
             "learning_updated": stats.get("learned", 0) > 0,
-            "confidence": "high" if stats.get("high_confidence_answers", 0) > 0 else "normal",
-            "single_model_compliance": True  # 단일 모델 준수
+            "confidence": "high" if stats.get("high_confidence_answers", 0) > 0 else "normal"
         }
         
         # 학습 시스템 정보
@@ -287,13 +278,6 @@ class IntegratedTestRunner:
                 "samples_processed": learning_stats.get("samples_processed", 0),
                 "gpu_memory_used": learning_stats.get("gpu_memory_used_gb", 0.0)
             })
-        
-        # 대회 규칙 준수 확인
-        detailed_result.update({
-            "external_api_calls": 0,  # 외부 API 호출 금지
-            "model_ensemble": False,  # 복수 모델 앙상블 금지
-            "offline_compatible": True  # 오프라인 환경 지원
-        })
         
         return detailed_result
     
@@ -312,10 +296,6 @@ class IntegratedTestRunner:
         print(f"  진행: {current}/{self.test_size} ({progress_pct:.1f}%)")
         print(f"  최근 {len(recent_results)}문항 평균: {avg_time:.2f}초/문항")
         print(f"  모델성공 {model_success_rate:.0f}%, 추론엔진 {reasoning_rate:.0f}%, CoT {cot_rate:.0f}%")
-        
-        # 대회 규칙 준수 확인
-        compliance_rate = np.mean([r["single_model_compliance"] for r in recent_results]) * 100
-        print(f"  🏆 대회 규칙 준수율: {compliance_rate:.0f}%")
         
         # 예상 완료 시간
         if current > 5:  # 충분한 샘플 후 예측
@@ -357,8 +337,7 @@ class IntegratedTestRunner:
             "reasoning_usage_rate": stats.get("reasoning_engine_usage", 0) / max(current_idx, 1),
             "cot_usage_rate": stats.get("cot_prompts_used", 0) / max(current_idx, 1),
             "learning_samples": stats.get("learned", 0),
-            "avg_processing_time": np.mean(stats.get("processing_times", [1.0])),
-            "single_model_compliance": stats.get("single_model_compliance", 100.0)
+            "avg_processing_time": np.mean(stats.get("processing_times", [1.0]))
         }
         
         self.performance_snapshots.append(snapshot)
@@ -368,7 +347,7 @@ class IntegratedTestRunner:
         total_time = time.time() - self.start_time
         
         print(f"\n" + "="*60)
-        print("통합 추론 테스트 완료 (대회 규칙 100% 준수)")
+        print("통합 추론 테스트 완료")
         print("="*60)
         
         # 기본 처리 정보
@@ -378,10 +357,7 @@ class IntegratedTestRunner:
         # 모델 정보
         model_type = "파인튜닝된 모델" if self.use_finetuned else "기본 모델"
         reasoning_status = "활성화" if self.inference_engine.reasoning_engine else "비활성화"
-        print(f"사용 모델: {model_type} (단일 SOLAR 모델), 추론 엔진: {reasoning_status}")
-        
-        # 대회 규칙 준수 확인
-        self._print_compliance_verification()
+        print(f"사용 모델: {model_type}, 추론 엔진: {reasoning_status}")
         
         # inference.py의 상세 통계 활용
         self._print_integrated_statistics()
@@ -397,21 +373,11 @@ class IntegratedTestRunner:
         print(f"\n결과 파일: {output_file}")
         print("="*60)
     
-    def _print_compliance_verification(self) -> None:
-        """대회 규칙 준수 검증 출력"""
-        print(f"\n🏆 대회 규칙 준수 검증:")
-        print(f"  ✅ 단일 LLM 모델: SOLAR 모델만 사용")
-        print(f"  ✅ 외부 API 호출: 0회 (완전 금지)")
-        print(f"  ✅ 복수 모델 앙상블: 사용 안함")
-        print(f"  ✅ 오프라인 환경: 100% 지원")
-        print(f"  ✅ 인터넷 의존성: 없음")
-        print(f"  ✅ 대회 규칙 전체 준수율: 100%")
-    
     def _print_integrated_statistics(self) -> None:
         """통합 통계 출력 (inference.py 통계 활용)"""
         stats = self.inference_engine.stats
         
-        print(f"\n🔥 통합 추론 성능 (단일 SOLAR 모델):")
+        print(f"\n통합 추론 성능:")
         print(f"  모델 생성 성공: {stats['model_generation_success']}/{stats['total']} ({stats['model_generation_success']/max(stats['total'],1)*100:.1f}%)")
         print(f"  추론 엔진 사용: {stats['reasoning_engine_usage']}/{stats['total']} ({stats['reasoning_engine_usage']/max(stats['total'],1)*100:.1f}%)")
         print(f"  CoT 프롬프트 사용: {stats['cot_prompts_used']}/{stats['total']} ({stats['cot_prompts_used']/max(stats['total'],1)*100:.1f}%)")
@@ -420,7 +386,7 @@ class IntegratedTestRunner:
         
         # 추론 엔진 상세 통계
         if self.inference_engine.reasoning_engine:
-            print(f"\n🧠 추론 엔진 상세 (단일 모델 기반):")
+            print(f"\n추론 엔진 상세:")
             print(f"  추론 성공: {stats['reasoning_successful']}회")
             print(f"  추론 실패: {stats['reasoning_failed']}회")
             print(f"  하이브리드 접근: {stats['hybrid_approach_used']}회")
@@ -438,11 +404,11 @@ class IntegratedTestRunner:
         # 파인튜닝 모델 통계
         if self.use_finetuned:
             finetuned_rate = stats['finetuned_usage'] / max(stats['total'], 1) * 100
-            print(f"\n⚡ 파인튜닝 SOLAR 모델 사용률: {finetuned_rate:.1f}%")
+            print(f"\n파인튜닝 모델 사용률: {finetuned_rate:.1f}%")
         
         # 학습 시스템 통계
         if self.inference_engine.enable_learning:
-            print(f"\n📚 딥러닝 학습 시스템 (단일 모델 연동):")
+            print(f"\n딥러닝 학습 시스템:")
             learning_stats = self.inference_engine.learning_system.get_learning_statistics()
             print(f"  학습된 샘플: {stats['learned']}개")
             print(f"  딥러닝 활성화: {learning_stats['deep_learning_active']}")
@@ -458,13 +424,13 @@ class IntegratedTestRunner:
         if stats['quality_scores']:
             avg_quality = np.mean(stats['quality_scores'])
             quality_level = "우수" if avg_quality > 0.8 else "양호" if avg_quality > 0.65 else "개선 필요"
-            print(f"\n🇰🇷 한국어 품질: {avg_quality:.2f} ({quality_level})")
+            print(f"\n한국어 품질: {avg_quality:.2f} ({quality_level})")
         
         # 답변 분포
         distribution = stats['answer_distribution']
         total_mc = sum(distribution.values())
         if total_mc > 0:
-            print(f"\n📊 객관식 답변 분포:")
+            print(f"\n객관식 답변 분포:")
             for ans in sorted(distribution.keys()):
                 count = distribution[ans]
                 if count > 0:
@@ -474,17 +440,13 @@ class IntegratedTestRunner:
             unique_answers = len([k for k, v in distribution.items() if v > 0])
             diversity = "우수" if unique_answers >= 4 else "양호" if unique_answers >= 3 else "개선 필요"
             print(f"  답변 다양성: {diversity} ({unique_answers}/5개 번호 사용)")
-        
-        # 단일 모델 준수율
-        compliance_rate = stats.get('single_model_compliance', 100.0)
-        print(f"\n🏆 단일 모델 준수율: {compliance_rate:.1f}%")
     
     def _analyze_detailed_results(self, detailed_results: List[Dict]) -> None:
         """상세 결과 분석"""
         if not detailed_results:
             return
         
-        print(f"\n📈 상세 성능 분석:")
+        print(f"\n상세 성능 분석:")
         
         # 처리시간 분석
         processing_times = [r["processing_time"] for r in detailed_results]
@@ -503,25 +465,13 @@ class IntegratedTestRunner:
         high_conf_rate = np.mean([r["confidence"] == "high" for r in detailed_results]) * 100
         print(f"  고신뢰도 답변 비율: {high_conf_rate:.1f}%")
         
-        # 대회 규칙 준수 분석
-        compliance_rate = np.mean([r["single_model_compliance"] for r in detailed_results]) * 100
-        api_calls = sum([r.get("external_api_calls", 0) for r in detailed_results])
-        ensemble_usage = any([r.get("model_ensemble", False) for r in detailed_results])
-        offline_compatibility = np.mean([r.get("offline_compatible", True) for r in detailed_results]) * 100
-        
-        print(f"\n🏆 대회 규칙 준수 상세 분석:")
-        print(f"  단일 모델 준수율: {compliance_rate:.1f}%")
-        print(f"  외부 API 호출 건수: {api_calls}건 (목표: 0건)")
-        print(f"  모델 앙상블 사용: {'예' if ensemble_usage else '아니오'} (목표: 아니오)")
-        print(f"  오프라인 호환성: {offline_compatibility:.1f}%")
-        
         # 딥러닝 학습 분석
         if any("deep_learning_active" in r for r in detailed_results):
             dl_active_rate = np.mean([r.get("deep_learning_active", False) for r in detailed_results]) * 100
             avg_samples = np.mean([r.get("samples_processed", 0) for r in detailed_results])
             avg_gpu_memory = np.mean([r.get("gpu_memory_used", 0.0) for r in detailed_results])
             
-            print(f"\n📚 딥러닝 학습 분석:")
+            print(f"\n딥러닝 학습 분석:")
             print(f"  딥러닝 활성화율: {dl_active_rate:.1f}%")
             print(f"  평균 처리 샘플: {avg_samples:.1f}개")
             print(f"  평균 GPU 메모리: {avg_gpu_memory:.2f}GB")
@@ -531,7 +481,7 @@ class IntegratedTestRunner:
         if len(self.performance_snapshots) < 2:
             return
         
-        print(f"\n📊 성능 트렌드 분석:")
+        print(f"\n성능 트렌드 분석:")
         
         # 처리속도 트렌드
         early_snapshot = self.performance_snapshots[0]
@@ -551,10 +501,6 @@ class IntegratedTestRunner:
         # 학습 진행상황
         learning_progress = late_snapshot["learning_samples"] - early_snapshot["learning_samples"]
         print(f"  학습 진행: +{learning_progress}개 샘플")
-        
-        # 대회 규칙 준수 트렌드
-        compliance_change = late_snapshot["single_model_compliance"] - early_snapshot["single_model_compliance"]
-        print(f"  대회 규칙 준수 트렌드: 안정 ({compliance_change:+.1f}%)")
     
     def get_integration_test_summary(self) -> Dict:
         """통합 테스트 요약"""
@@ -570,11 +516,7 @@ class IntegratedTestRunner:
             "CoT_사용률": f"{stats['cot_prompts_used']/stats['total']*100:.1f}%",
             "학습_샘플": stats['learned'],
             "폴백_사용률": f"{stats['fallback_used']/stats['total']*100:.1f}%",
-            "평균_처리시간": f"{np.mean(stats['processing_times']):.2f}초" if stats['processing_times'] else "N/A",
-            "단일_모델_준수": True,
-            "외부_API_호출": 0,
-            "모델_앙상블_사용": False,
-            "오프라인_호환성": True
+            "평균_처리시간": f"{np.mean(stats['processing_times']):.2f}초" if stats['processing_times'] else "N/A"
         }
         
         if self.use_finetuned:
@@ -588,9 +530,6 @@ class IntegratedTestRunner:
             summary["딥러닝_활성화"] = learning_stats['deep_learning_active']
             summary["GPU_메모리_사용"] = f"{learning_stats['gpu_memory_used_gb']:.1f}GB"
             summary["학습_정확도"] = f"{self.inference_engine.learning_system.get_current_accuracy():.1%}"
-        
-        # 대회 규칙 준수 요약
-        summary["대회_규칙_준수율"] = f"{stats.get('single_model_compliance', 100.0):.1f}%"
         
         return summary
     
@@ -606,7 +545,7 @@ class IntegratedTestRunner:
             # 성능 데이터 정리
             self.performance_snapshots.clear()
             
-            print("✅ 정리 완료 (대회 규칙 준수)")
+            print("정리 완료")
             
         except Exception as e:
             print(f"정리 중 오류: {e}")
@@ -645,9 +584,7 @@ def main():
             print("\n기본 모델 사용")
     
     print(f"통합 추론 테스트 실행기 시작 (Python {sys.version.split()[0]})")
-    print(f"🏆 대회 규칙 100% 준수 모드")
-    print(f"GPU 기반 딥러닝 추론 및 학습 시스템 활성화 (단일 SOLAR 모델)")
-    print(f"✅ 외부 API 호출 금지, 복수 모델 앙상블 금지, 완전 오프라인 지원")
+    print(f"GPU 기반 딥러닝 추론 및 학습 시스템 활성화")
     
     runner = None
     try:
@@ -660,25 +597,17 @@ def main():
         
         # 통합 성능 요약 출력
         summary = runner.get_integration_test_summary()
-        print(f"\n🎯 통합 테스트 성능 요약:")
+        print(f"\n통합 테스트 성능 요약:")
         for key, value in summary.items():
             print(f"  {key}: {value}")
         
         # 성공 여부 판단
         if summary.get("모델_성공률", "0%") == "0.0%":
-            print(f"\n⚠️  경고: 모델 생성 성공률이 0%입니다. 실제 GPU 추론이 작동하지 않을 수 있습니다.")
+            print(f"\n경고: 모델 생성 성공률이 0%입니다. 실제 GPU 추론이 작동하지 않을 수 있습니다.")
         elif float(summary.get("모델_성공률", "0%").rstrip("%")) > 70:
-            print(f"\n✅ 성공: 통합 추론 시스템이 정상 작동하고 있습니다.")
-            print(f"🏆 대회 규칙 준수: {summary.get('대회_규칙_준수율', '100.0%')}")
+            print(f"\n성공: 통합 추론 시스템이 정상 작동하고 있습니다.")
         else:
-            print(f"\n⚠️  주의: 모델 성공률이 낮습니다. 시스템 점검이 필요할 수 있습니다.")
-        
-        # 대회 규칙 준수 최종 확인
-        print(f"\n🏆 최종 대회 규칙 준수 확인:")
-        print(f"  ✅ 단일 모델 사용: {summary['단일_모델_준수']}")
-        print(f"  ✅ 외부 API 호출: {summary['외부_API_호출']}건")
-        print(f"  ✅ 모델 앙상블: {not summary['모델_앙상블_사용']}")
-        print(f"  ✅ 오프라인 호환성: {summary['오프라인_호환성']}")
+            print(f"\n주의: 모델 성공률이 낮습니다. 시스템 점검이 필요할 수 있습니다.")
         
     except KeyboardInterrupt:
         print("\n테스트 중단")
