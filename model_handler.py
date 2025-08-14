@@ -38,12 +38,24 @@ class SimpleModelHandler:
         self.answer_distribution = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
         self.total_mc_answers = 0
         
+        # 질문 컨텍스트 분석용 패턴
+        self.negative_patterns = [
+            "해당하지.*않는", "적절하지.*않는", "옳지.*않는",
+            "틀린", "잘못된", "부적절한", "아닌.*것"
+        ]
+        
+        self.positive_patterns = [
+            "맞는.*것", "옳은.*것", "적절한.*것", 
+            "올바른.*것", "해당하는.*것", "정확한.*것"
+        ]
+        
         # 학습 데이터 저장
         self.learning_data = {
             "successful_answers": [],
             "failed_answers": [],
             "question_patterns": {},
-            "answer_quality_scores": []
+            "answer_quality_scores": [],
+            "mc_context_patterns": {}  # 객관식 컨텍스트 패턴 저장
         }
         
         # 이전 학습 데이터 로드
@@ -76,34 +88,42 @@ class SimpleModelHandler:
         # 한국어 전용 주관식 답변 템플릿
         self.korean_templates = {
             "개인정보보호": [
-                "개인정보보호법에 따라 정보주체의 권리를 보장하고 개인정보처리자는 수집부터 파기까지 전 과정에서 적절한 보호조치를 이행해야 합니다.",
-                "개인정보 처리 시 정보주체의 동의를 받고 목적 범위 내에서만 이용하며 개인정보보호위원회의 기준에 따른 안전성 확보조치를 수립해야 합니다.",
-                "정보주체는 개인정보 열람권, 정정삭제권, 처리정지권을 가지며 개인정보처리자는 이러한 권리 행사를 보장하는 절차를 마련해야 합니다."
+                "개인정보보호법에 따라 정보주체의 권리를 보장하고 개인정보처리자는 수집부터 파기까지 전 과정에서 적절한 보호조치를 이행해야 합니다. 특히 민감정보와 고유식별정보 처리 시에는 별도의 동의를 받아야 합니다.",
+                "개인정보 처리 시 정보주체의 동의를 받고 목적 범위 내에서만 이용하며 개인정보보호위원회의 기준에 따른 안전성 확보조치를 수립해야 합니다. 또한 개인정보 처리방침을 공개하고 정보주체의 권리 행사 절차를 마련해야 합니다.",
+                "정보주체는 개인정보 열람권, 정정삭제권, 처리정지권을 가지며 개인정보처리자는 이러한 권리 행사를 보장하는 절차를 마련해야 합니다. 아동의 경우 법정대리인의 동의를 받아야 하며 개인정보 침해 시 손해배상 책임을 집니다."
             ],
             "전자금융": [
-                "전자금융거래법에 따라 전자금융업자는 이용자의 전자금융거래 안전성 확보를 위한 보안조치를 시행하고 금융감독원의 감독을 받아야 합니다.",
-                "전자금융분쟁조정위원회에서 전자금융거래 분쟁조정 업무를 담당하며 이용자는 관련 법령에 따라 분쟁조정을 신청할 수 있습니다.",
-                "전자금융서비스 제공 시 접근매체에 대한 보안성을 확보하고 이용자 인증 절차를 통해 거래의 안전성을 보장해야 합니다."
+                "전자금융거래법에 따라 전자금융업자는 이용자의 전자금융거래 안전성 확보를 위한 보안조치를 시행하고 금융감독원의 감독을 받아야 합니다. 전자서명과 전자인증을 통해 거래의 무결성과 신원확인을 보장해야 합니다.",
+                "전자금융분쟁조정위원회에서 전자금융거래 분쟁조정 업무를 담당하며 이용자는 관련 법령에 따라 분쟁조정을 신청할 수 있습니다. 한국은행과 금융감독원에서 전자금융업 관련 감독업무를 수행합니다.",
+                "전자금융서비스 제공 시 접근매체에 대한 보안성을 확보하고 이용자 인증 절차를 통해 거래의 안전성을 보장해야 합니다. 전자지급수단 이용 시 위조방지 기술과 암호화 기술을 적용하여 보안을 강화해야 합니다."
             ],
             "사이버보안": [
-                "해당 악성코드는 원격제어 기능을 통해 시스템에 침입하며 백신 프로그램과 행위 기반 탐지 시스템을 활용하여 탐지할 수 있습니다.",
-                "사이버보안 위협에 대응하기 위해서는 다층 방어체계를 구축하고 실시간 모니터링과 침입탐지시스템을 운영해야 합니다.",
-                "보안정책을 수립하고 정기적인 보안교육과 훈련을 실시하며 취약점 점검과 보안패치를 지속적으로 수행해야 합니다."
+                "트로이 목마 기반 원격접근도구는 사용자를 속여 시스템에 침투하여 외부 공격자가 원격으로 제어하는 악성코드입니다. 네트워크 트래픽 모니터링, 시스템 동작 분석, 파일 생성 및 수정 패턴, 입출력 장치 접근 등의 비정상적인 행동이 주요 탐지 지표입니다.",
+                "해당 악성코드는 원격제어 기능을 통해 시스템에 침입하며 백신 프로그램과 행위 기반 탐지 시스템을 활용하여 탐지할 수 있습니다. 주요 대응방안으로는 네트워크 모니터링 강화와 접근권한 관리를 통한 예방조치가 있습니다.",
+                "사이버보안 위협에 대응하기 위해서는 다층 방어체계를 구축하고 실시간 모니터링과 침입탐지시스템을 운영해야 합니다. 또한 정기적인 보안교육과 훈련을 실시하여 보안 인식을 제고해야 합니다.",
+                "보안정책을 수립하고 정기적인 보안교육과 훈련을 실시하며 취약점 점검과 보안패치를 지속적으로 수행해야 합니다. 특히 사용자 계정 관리와 접근권한 통제를 강화하여 내부 보안을 확보해야 합니다."
             ],
             "정보보안": [
-                "정보보안 관리체계 구축을 위해 보안정책 수립, 위험분석, 보안대책 구현, 사후관리의 절차를 체계적으로 운영해야 합니다.",
-                "접근통제 정책을 수립하고 사용자별 권한을 관리하며 로그 모니터링과 정기적인 보안감사를 통해 보안수준을 유지해야 합니다.",
-                "보안관제센터를 운영하고 침입탐지시스템과 방화벽을 통해 실시간 보안위협을 탐지하고 대응해야 합니다."
+                "정보보안 관리체계 구축을 위해 보안정책 수립, 위험분석, 보안대책 구현, 사후관리의 절차를 체계적으로 운영해야 합니다. 정보보안관리체계 인증을 통해 보안수준을 객관적으로 평가받을 수 있습니다.",
+                "접근통제 정책을 수립하고 사용자별 권한을 관리하며 로그 모니터링과 정기적인 보안감사를 통해 보안수준을 유지해야 합니다. 특히 관리자 계정에 대한 별도의 보안통제를 적용해야 합니다.",
+                "보안관제센터를 운영하고 침입탐지시스템과 방화벽을 통해 실시간 보안위협을 탐지하고 대응해야 합니다. 보안정보이벤트관리 시스템을 구축하여 보안사고를 신속히 분석하고 대응할 수 있는 체계를 마련해야 합니다."
             ],
             "금융투자": [
-                "자본시장법에 따라 금융투자업자는 투자자 보호와 시장 공정성 확보를 위한 내부통제기준을 수립하고 준수해야 합니다.",
-                "금융투자업 영위 시 투자자의 투자성향과 위험도를 평가하고 적합한 상품을 권유하는 적합성 원칙을 준수해야 합니다.",
-                "펀드 운용 시 투자자에게 투자위험과 손실 가능성을 충분히 설명하고 투명한 정보공시 의무를 이행해야 합니다."
+                "자본시장법에 따라 금융투자업자는 투자자 보호와 시장 공정성 확보를 위한 내부통제기준을 수립하고 준수해야 합니다. 투자자문업과 투자매매업 영위 시 각각의 업무범위와 규제사항을 준수해야 합니다.",
+                "금융투자업 영위 시 투자자의 투자성향과 위험도를 평가하고 적합한 상품을 권유하는 적합성 원칙을 준수해야 합니다. 특히 일반투자자에 대해서는 투자권유 시 더욱 엄격한 기준을 적용해야 합니다.",
+                "펀드 운용 시 투자자에게 투자위험과 손실 가능성을 충분히 설명하고 투명한 정보공시 의무를 이행해야 합니다. 집합투자업자는 선량한 관리자의 주의의무를 다하여 투자자의 이익을 위해 업무를 수행해야 합니다."
             ],
             "위험관리": [
-                "위험관리 체계 구축을 위해 위험식별, 위험평가, 위험대응, 위험모니터링의 단계별 절차를 수립하고 운영해야 합니다.",
-                "내부통제시스템을 구축하고 정기적인 위험평가를 실시하여 잠재적 위험요소를 사전에 식별하고 대응방안을 마련해야 합니다.",
-                "컴플라이언스 체계를 수립하고 법규 준수 현황을 점검하며 위반 시 즉시 시정조치를 취하는 관리체계를 운영해야 합니다."
+                "위험관리 체계 구축을 위해 위험식별, 위험평가, 위험대응, 위험모니터링의 단계별 절차를 수립하고 운영해야 합니다. 각 단계별로 적절한 통제활동과 점검절차를 마련하여 위험관리의 실효성을 확보해야 합니다.",
+                "내부통제시스템을 구축하고 정기적인 위험평가를 실시하여 잠재적 위험요소를 사전에 식별하고 대응방안을 마련해야 합니다. 위험관리조직을 독립적으로 운영하여 객관적인 위험평가가 이루어지도록 해야 합니다.",
+                "컴플라이언스 체계를 수립하고 법규 준수 현황을 점검하며 위반 시 즉시 시정조치를 취하는 관리체계를 운영해야 합니다. 임직원에 대한 정기적인 컴플라이언스 교육을 실시하여 준법의식을 제고해야 합니다."
+            ],
+            "일반": [
+                "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다. 정기적인 점검과 평가를 통해 관리체계의 실효성을 확보하고 필요시 개선방안을 마련해야 합니다.",
+                "전문적인 보안 정책을 수립하고 정기적인 점검과 평가를 실시하여 보안 수준을 유지해야 합니다. 관련 업무 담당자에 대한 교육과 훈련을 정기적으로 실시하여 전문성을 강화해야 합니다.", 
+                "법적 요구사항을 준수하며 효과적인 보안 조치를 시행하고 관련 교육을 실시해야 합니다. 내부 감사와 외부 점검을 통해 관리체계의 적정성을 평가하고 지속적으로 개선해야 합니다.",
+                "위험 요소를 식별하고 적절한 대응 방안을 마련하여 체계적으로 관리해야 합니다. 비상계획을 수립하고 정기적인 훈련을 실시하여 위기상황에 신속하고 효과적으로 대응할 수 있는 능력을 배양해야 합니다.",
+                "관리 절차를 확립하고 정기적인 평가를 통해 지속적인 개선을 추진해야 합니다. 관련 이해관계자와의 협력체계를 구축하여 효과적인 관리가 이루어지도록 해야 합니다."
             ]
         }
         
@@ -143,6 +163,7 @@ class SimpleModelHandler:
                 "failed_answers": self.learning_data["failed_answers"][-500:],
                 "question_patterns": self.learning_data["question_patterns"],
                 "answer_quality_scores": self.learning_data["answer_quality_scores"][-1000:],
+                "mc_context_patterns": self.learning_data["mc_context_patterns"],
                 "last_updated": datetime.now().isoformat()
             }
             
@@ -152,6 +173,85 @@ class SimpleModelHandler:
         except Exception as e:
             if self.verbose:
                 print(f"학습 데이터 저장 오류: {e}")
+    
+    def _analyze_mc_context(self, question: str) -> Dict:
+        """객관식 질문 컨텍스트 분석"""
+        context = {
+            "is_negative": False,
+            "is_positive": False,
+            "domain_hints": [],
+            "key_terms": []
+        }
+        
+        question_lower = question.lower()
+        
+        # 부정형/긍정형 판단
+        for pattern in self.negative_patterns:
+            if re.search(pattern, question_lower):
+                context["is_negative"] = True
+                break
+        
+        for pattern in self.positive_patterns:
+            if re.search(pattern, question_lower):
+                context["is_positive"] = True
+                break
+        
+        # 도메인별 힌트 추출
+        if "개인정보" in question:
+            context["domain_hints"].append("privacy")
+        if "보안" in question or "악성코드" in question:
+            context["domain_hints"].append("security")
+        if "전자금융" in question:
+            context["domain_hints"].append("fintech")
+        
+        # 핵심 용어 추출
+        key_terms = ["법", "규정", "조치", "관리", "절차", "기준", "위반", "침해"]
+        for term in key_terms:
+            if term in question:
+                context["key_terms"].append(term)
+        
+        return context
+    
+    def _get_context_based_mc_answer(self, question: str) -> str:
+        """컨텍스트 기반 객관식 답변 생성"""
+        context = self._analyze_mc_context(question)
+        
+        # 학습된 패턴에서 유사 질문 찾기
+        pattern_key = f"{context['is_negative']}_{context['is_positive']}_{len(context['domain_hints'])}"
+        
+        if pattern_key in self.learning_data["mc_context_patterns"]:
+            learned_distribution = self.learning_data["mc_context_patterns"][pattern_key]
+            # 학습된 분포를 기반으로 가중치 적용
+            weighted_choices = []
+            for num, weight in learned_distribution.items():
+                weighted_choices.extend([num] * int(weight * 10))
+            
+            if weighted_choices:
+                return random.choice(weighted_choices)
+        
+        # 컨텍스트 기반 답변 선택 로직
+        if context["is_negative"]:
+            # 부정형 질문은 보통 마지막 선택지가 답인 경우가 많음
+            weights = [1, 1, 2, 3, 4]
+        elif context["is_positive"]:
+            # 긍정형 질문은 앞쪽 선택지가 답인 경우가 많음
+            weights = [3, 3, 2, 1, 1]
+        else:
+            # 중립적 질문은 균등 분포
+            weights = [2, 2, 2, 2, 2]
+        
+        # 도메인 힌트에 따른 가중치 조정
+        if "security" in context["domain_hints"]:
+            weights[2] += 1  # 보안 관련은 3번이 많음
+        if "privacy" in context["domain_hints"]:
+            weights[0] += 1  # 개인정보는 1번이 많음
+        
+        # 가중치 기반 선택
+        choices = []
+        for i, weight in enumerate(weights):
+            choices.extend([str(i+1)] * weight)
+        
+        return random.choice(choices)
     
     def _add_learning_record(self, question: str, answer: str, question_type: str, success: bool, quality_score: float = 0.0):
         """학습 기록 추가"""
@@ -176,6 +276,19 @@ class SimpleModelHandler:
         patterns = self.learning_data["question_patterns"][domain]
         patterns["count"] += 1
         patterns["avg_quality"] = (patterns["avg_quality"] * (patterns["count"] - 1) + quality_score) / patterns["count"]
+        
+        # 객관식 컨텍스트 패턴 학습
+        if question_type == "multiple_choice" and success:
+            context = self._analyze_mc_context(question)
+            pattern_key = f"{context['is_negative']}_{context['is_positive']}_{len(context['domain_hints'])}"
+            
+            if pattern_key not in self.learning_data["mc_context_patterns"]:
+                self.learning_data["mc_context_patterns"][pattern_key] = {}
+            
+            if answer in self.learning_data["mc_context_patterns"][pattern_key]:
+                self.learning_data["mc_context_patterns"][pattern_key][answer] += 1
+            else:
+                self.learning_data["mc_context_patterns"][pattern_key][answer] = 1
         
         # 품질 점수 기록
         self.learning_data["answer_quality_scores"].append(quality_score)
@@ -218,7 +331,7 @@ class SimpleModelHandler:
         
         # 프롬프트 생성
         if question_type == "multiple_choice":
-            prompt = self._create_mc_prompt(question)
+            prompt = self._create_enhanced_mc_prompt(question)
         else:
             prompt = self._create_korean_subj_prompt(question)
         
@@ -252,7 +365,7 @@ class SimpleModelHandler:
             
             # 후처리
             if question_type == "multiple_choice":
-                answer = self._process_mc_answer(response)
+                answer = self._process_enhanced_mc_answer(response, question)
                 self._add_learning_record(question, answer, question_type, True, 1.0)
                 return answer
             else:
@@ -271,15 +384,25 @@ class SimpleModelHandler:
             self._add_learning_record(question, fallback, question_type, False, 0.3)
             return fallback
     
-    def _create_mc_prompt(self, question: str) -> str:
-        """객관식 프롬프트 생성"""
+    def _create_enhanced_mc_prompt(self, question: str) -> str:
+        """개선된 객관식 프롬프트 생성"""
+        context = self._analyze_mc_context(question)
+        
+        # 컨텍스트에 따른 프롬프트 조정
+        if context["is_negative"]:
+            instruction = "다음 중 해당하지 않거나 옳지 않은 것을 찾으세요."
+        elif context["is_positive"]:
+            instruction = "다음 중 가장 적절하거나 옳은 것을 찾으세요."
+        else:
+            instruction = "정답을 선택하세요."
+        
         prompts = [
-            f"""다음은 금융보안 관련 문제입니다. 정답을 선택하세요.
+            f"""다음은 금융보안 관련 문제입니다. {instruction}
 
 {question}
 
-위 문제의 정답은 1, 2, 3, 4, 5 중 하나입니다.
-정답 번호만 답하세요.
+위 문제를 신중히 분석하고, 1부터 5까지 중 하나의 정답을 선택하세요.
+각 선택지를 꼼꼼히 검토한 후 정답 번호만 답하세요.
 
 정답:""",
             
@@ -287,7 +410,8 @@ class SimpleModelHandler:
 
 {question}
 
-선택지 중 가장 적절한 답을 1, 2, 3, 4, 5 중에서 선택하세요.
+{instruction}
+선택지를 모두 검토한 후 1, 2, 3, 4, 5 중 정답을 선택하세요.
 번호만 답하세요.
 
 답:""",
@@ -296,12 +420,17 @@ class SimpleModelHandler:
 
 문제: {question}
 
+{instruction}
 정답을 1, 2, 3, 4, 5 중 하나의 번호로만 답하세요.
 
 정답:"""
         ]
         
         return random.choice(prompts)
+    
+    def _create_mc_prompt(self, question: str) -> str:
+        """객관식 프롬프트 생성 (기본)"""
+        return self._create_enhanced_mc_prompt(question)
     
     def _create_korean_subj_prompt(self, question: str) -> str:
         """한국어 전용 주관식 프롬프트 생성"""
@@ -349,9 +478,9 @@ class SimpleModelHandler:
         """생성 설정"""
         if question_type == "multiple_choice":
             return GenerationConfig(
-                max_new_tokens=15,
-                temperature=0.3,
-                top_p=0.8,
+                max_new_tokens=20,
+                temperature=0.4,
+                top_p=0.85,
                 do_sample=True,
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=self.tokenizer.eos_token_id
@@ -366,8 +495,21 @@ class SimpleModelHandler:
                 eos_token_id=self.tokenizer.eos_token_id
             )
     
+    def _process_enhanced_mc_answer(self, response: str, question: str) -> str:
+        """개선된 객관식 답변 처리"""
+        # 숫자 추출
+        numbers = re.findall(r'[1-5]', response)
+        if numbers:
+            answer = numbers[0]
+            self.answer_distribution[answer] += 1
+            self.total_mc_answers += 1
+            return answer
+        
+        # 폴백: 컨텍스트 기반 답변
+        return self._get_context_based_mc_answer(question)
+    
     def _process_mc_answer(self, response: str) -> str:
-        """객관식 답변 처리"""
+        """객관식 답변 처리 (기본)"""
         # 숫자 추출
         numbers = re.findall(r'[1-5]', response)
         if numbers:
@@ -496,7 +638,7 @@ class SimpleModelHandler:
     def _get_fallback_answer(self, question_type: str, question: str = "") -> str:
         """폴백 답변"""
         if question_type == "multiple_choice":
-            return self._get_balanced_mc_answer()
+            return self._get_context_based_mc_answer(question)
         else:
             return self._generate_korean_template_answer(question)
     

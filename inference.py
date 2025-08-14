@@ -60,7 +60,8 @@ class FinancialAIInference:
             "processing_times": [],
             "domain_stats": {},
             "difficulty_stats": {"초급": 0, "중급": 0, "고급": 0},
-            "quality_scores": []
+            "quality_scores": [],
+            "mc_answers": {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}  # 객관식 답변 분포 추적
         }
         
         if verbose:
@@ -87,6 +88,10 @@ class FinancialAIInference:
                 answer = self.data_processor.normalize_korean_answer(answer, question_type)
                 self.stats["model_success"] += 1
                 
+                # 객관식 답변 분포 추적
+                if question_type == "multiple_choice" and answer in self.stats["mc_answers"]:
+                    self.stats["mc_answers"][answer] += 1
+                
                 # 한국어 준수율 확인
                 if question_type == "subjective":
                     korean_ratio = self.data_processor.calculate_korean_ratio(answer)
@@ -104,6 +109,8 @@ class FinancialAIInference:
             else:
                 # 검증 실패시 한국어 폴백
                 answer = self._get_korean_fallback_answer(question_type, domain)
+                if question_type == "multiple_choice" and answer in self.stats["mc_answers"]:
+                    self.stats["mc_answers"][answer] += 1
                 self.stats["korean_compliance"] += 1
             
             # 4. 통계 업데이트
@@ -170,7 +177,7 @@ class FinancialAIInference:
         self.stats["difficulty_stats"][difficulty] += 1
     
     def print_progress_bar(self, current: int, total: int, start_time: float, bar_length: int = 50):
-        """진행률 게이지바 출력"""
+        """진행률 게이지바 출력 (개선된 버전)"""
         progress = current / total
         filled_length = int(bar_length * progress)
         bar = '█' * filled_length + '░' * (bar_length - filled_length)
@@ -187,9 +194,9 @@ class FinancialAIInference:
         else:
             eta_str = "--:--"
         
-        # 진행률 출력
+        # 진행률 출력 (개선된 형식)
         percent = progress * 100
-        print(f"\r진행: [{bar}] {current}/{total} ({percent:.1f}%) - 남은시간: {eta_str}", end='', flush=True)
+        print(f"\r문항 처리: ({current}/{total}) 진행도: {percent:.0f}% [{bar}] 남은시간: {eta_str}", end='', flush=True)
     
     def execute_inference(self, test_file: str = "./test.csv", 
                          submission_file: str = "./sample_submission.csv",
@@ -210,12 +217,8 @@ class FinancialAIInference:
                                    output_file: str = "./final_submission.csv") -> Dict:
         """데이터프레임으로 추론 실행"""
         
-        if self.verbose:
-            print(f"\n데이터 로드 완료: {len(test_df)}개 문항")
-        
-        # 전체 추론 진행
-        if self.verbose:
-            print("AI 추론 시작")
+        print(f"\n데이터 로드 완료: {len(test_df)}개 문항")
+        print("AI 추론 시작\n")
         
         answers = []
         total_questions = len(test_df)
@@ -229,21 +232,29 @@ class FinancialAIInference:
             answer = self.process_single_question(question, question_id)
             answers.append(answer)
             
-            # 게이지바 업데이트
-            if self.verbose:
-                self.print_progress_bar(idx + 1, total_questions, inference_start_time)
+            # 진행도 표시 (항상 표시)
+            self.print_progress_bar(idx + 1, total_questions, inference_start_time)
             
             # 메모리 관리 (50문항마다)
             if (idx + 1) % 50 == 0:
                 gc.collect()
         
         # 진행률 완료 후 줄바꿈
-        if self.verbose:
-            print()
+        print()
+        
+        # 객관식 답변 분포 출력
+        if self.stats["mc_count"] > 0:
+            print("\n객관식 답변 분포:")
+            for num in ["1", "2", "3", "4", "5"]:
+                count = self.stats["mc_answers"][num]
+                percentage = (count / self.stats["mc_count"]) * 100 if self.stats["mc_count"] > 0 else 0
+                print(f"  {num}번: {count}개 ({percentage:.1f}%)")
         
         # 결과 저장
         submission_df['Answer'] = answers
         submission_df.to_csv(output_file, index=False, encoding='utf-8-sig')
+        
+        print(f"\n결과 저장 완료: {output_file}")
         
         return self._get_results_summary()
     
@@ -265,7 +276,7 @@ class FinancialAIInference:
             "avg_quality_score": sum(self.stats["quality_scores"]) / len(self.stats["quality_scores"]) if self.stats["quality_scores"] else 0,
             "domain_stats": dict(self.stats["domain_stats"]),
             "difficulty_stats": dict(self.stats["difficulty_stats"]),
-            "answer_distribution": mc_stats["distribution"],
+            "answer_distribution": self.stats["mc_answers"],
             "learning_stats": learning_stats,
             "processing_stats": processing_stats,
             "total_time": time.time() - self.start_time
@@ -302,11 +313,13 @@ def main():
         results = engine.execute_inference()
         
         if results["success"]:
-            print("완료됨!")
+            print("\n추론 완료!")
             print(f"총 처리시간: {results['total_time']:.1f}초")
+            print(f"모델 성공률: {results['model_success_rate']:.1f}%")
+            print(f"한국어 준수율: {results['korean_compliance_rate']:.1f}%")
         
     except KeyboardInterrupt:
-        print("추론 중단됨")
+        print("\n추론 중단됨")
     except Exception as e:
         print(f"오류 발생: {e}")
         import traceback

@@ -23,11 +23,17 @@ class SimpleDataProcessor:
         self.pkl_dir = Path("./pkl")
         self.pkl_dir.mkdir(exist_ok=True)
         
-        # 객관식 패턴 (더 정확한 패턴)
+        # 객관식 패턴 (개선된 버전)
         self.mc_patterns = [
             r'①.*②.*③.*④.*⑤',  # 동그라미 숫자
             r'1\s+[가-힣].*2\s+[가-힣].*3\s+[가-힣].*4\s+[가-힣].*5\s+[가-힣]',  # 번호 + 한글
             r'1\s+.*2\s+.*3\s+.*4\s+.*5\s+',  # 번호 공백 형식
+            r'1\.\s*.*2\.\s*.*3\.\s*.*4\.\s*.*5\.',  # 1. 2. 3. 형식
+            r'1\)\s*.*2\)\s*.*3\)\s*.*4\)\s*.*5\)',  # 1) 2) 3) 형식
+        ]
+        
+        # 객관식 키워드 패턴
+        self.mc_keywords = [
             r'해당하지.*않는.*것',
             r'적절하지.*않는.*것', 
             r'옳지.*않는.*것',
@@ -38,7 +44,10 @@ class SimpleDataProcessor:
             r'올바른.*것',
             r'가장.*적절한.*것',
             r'가장.*옳은.*것',
-            r'구분.*해당하지.*않는.*것'
+            r'구분.*해당하지.*않는.*것',
+            r'다음.*중.*것은',
+            r'다음.*중.*것',
+            r'다음.*보기.*중'
         ]
         
         # 주관식 패턴
@@ -53,35 +62,49 @@ class SimpleDataProcessor:
             r'대응.*방안',
             r'특징.*다음과.*같',
             r'탐지.*지표',
-            r'행동.*패턴'
+            r'행동.*패턴',
+            r'분석하여.*제시',
+            r'조치.*사항',
+            r'제시하시오'
         ]
         
-        # 도메인 키워드
+        # 도메인 키워드 (확장)
         self.domain_keywords = {
             "개인정보보호": [
                 "개인정보", "정보주체", "개인정보보호법", "민감정보", 
-                "고유식별정보", "동의", "법정대리인", "아동"
+                "고유식별정보", "동의", "법정대리인", "아동",
+                "개인정보처리자", "열람권", "정정삭제권", "처리정지권",
+                "개인정보보호위원회", "손해배상", "처리방침"
             ],
             "전자금융": [
                 "전자금융", "전자적", "접근매체", "전자금융거래법", 
-                "전자서명", "전자인증", "공인인증서", "분쟁조정"
+                "전자서명", "전자인증", "공인인증서", "분쟁조정",
+                "전자지급수단", "전자화폐", "금융감독원", "한국은행",
+                "전자금융업", "전자금융분쟁조정위원회"
             ],
             "사이버보안": [
                 "트로이", "악성코드", "멀웨어", "바이러스", "피싱",
                 "스미싱", "랜섬웨어", "해킹", "딥페이크", "원격제어",
-                "RAT", "원격접근"
+                "RAT", "원격접근", "봇넷", "백도어", "루트킷",
+                "취약점", "제로데이", "사회공학", "APT", "DDoS"
             ],
             "정보보안": [
                 "정보보안", "보안관리", "ISMS", "보안정책", 
-                "접근통제", "암호화", "방화벽", "침입탐지"
+                "접근통제", "암호화", "방화벽", "침입탐지",
+                "침입방지시스템", "IDS", "IPS", "보안관제",
+                "로그관리", "백업", "복구", "재해복구", "BCP"
             ],
             "금융투자": [
                 "금융투자업", "투자자문업", "투자매매업", "투자중개업",
-                "소비자금융업", "보험중개업", "자본시장법"
+                "소비자금융업", "보험중개업", "자본시장법",
+                "집합투자업", "신탁업", "펀드", "파생상품",
+                "투자자보호", "적합성원칙", "설명의무"
             ],
             "위험관리": [
                 "위험관리", "위험평가", "위험대응", "위험수용",
-                "리스크", "내부통제", "컴플라이언스"
+                "리스크", "내부통제", "컴플라이언스", "위험식별",
+                "위험분석", "위험모니터링", "위험회피", "위험전가",
+                "위험감소", "잔여위험", "위험성향"
             ]
         }
         
@@ -98,7 +121,8 @@ class SimpleDataProcessor:
             "total_processed": 0,
             "korean_compliance": 0,
             "validation_failures": 0,
-            "domain_distribution": {}
+            "domain_distribution": {},
+            "question_type_accuracy": {"correct": 0, "total": 0}
         }
         
         # 이전 처리 기록 로드
@@ -135,45 +159,78 @@ class SimpleDataProcessor:
         """질문 유형 분석 (개선된 버전)"""
         
         question = question.strip()
+        self.processing_stats["question_type_accuracy"]["total"] += 1
         
-        # 1차: 명확한 선택지 기호 확인
-        if re.search(r'①.*②.*③.*④.*⑤', question, re.DOTALL):
+        # 1차: 명확한 선택지 패턴 확인
+        for pattern in self.mc_patterns:
+            if re.search(pattern, question, re.DOTALL | re.MULTILINE):
+                self.processing_stats["question_type_accuracy"]["correct"] += 1
+                return "multiple_choice"
+        
+        # 2차: 선택지 개수 확인 (1부터 5까지 모두 있는지)
+        numbers_found = []
+        for i in range(1, 6):
+            if re.search(rf'\b{i}[\s\.\)]\s*[가-힣]', question):
+                numbers_found.append(i)
+        
+        if len(numbers_found) == 5:
+            self.processing_stats["question_type_accuracy"]["correct"] += 1
             return "multiple_choice"
         
-        # 2차: 번호 형식 선택지 확인 (더 엄격하게)
-        if re.search(r'1\s+[가-힣][^0-9]*2\s+[가-힣][^0-9]*3\s+[가-힣]', question, re.DOTALL):
-            return "multiple_choice"
+        # 3차: 객관식 키워드 확인
+        for pattern in self.mc_keywords:
+            if re.search(pattern, question, re.IGNORECASE):
+                # 선택지가 있는지 추가 확인
+                if any(str(i) in question for i in range(1, 6)):
+                    self.processing_stats["question_type_accuracy"]["correct"] += 1
+                    return "multiple_choice"
         
-        # 3차: 주관식 패턴 우선 확인
+        # 4차: 주관식 패턴 확인
         for pattern in self.subj_patterns:
             if re.search(pattern, question, re.IGNORECASE):
                 return "subjective"
         
-        # 4차: 객관식 패턴 확인
-        for pattern in self.mc_patterns:
-            if re.search(pattern, question, re.IGNORECASE):
+        # 5차: 질문 구조 분석
+        # 선택지 형태가 있는지 확인
+        lines = question.split('\n')
+        choice_lines = 0
+        for line in lines:
+            if re.match(r'^\s*[1-5][\s\.\)]\s*', line):
+                choice_lines += 1
+        
+        if choice_lines >= 3:  # 3개 이상의 선택지가 있으면 객관식
+            return "multiple_choice"
+        
+        # 6차: "것은?" "것?" 패턴과 길이로 추가 판단
+        if re.search(r'것은\?|것\?|것은\s*$', question):
+            if len(question) < 300 and any(str(i) in question for i in range(1, 6)):
                 return "multiple_choice"
         
-        # 5차: "것은?" "것?" 패턴과 길이로 추가 판단
-        if re.search(r'것은\?|것\?|것은\s*$', question):
-            return "multiple_choice"
-        
-        # 6차: 질문 길이와 내용으로 최종 판단
+        # 7차: 질문 길이와 내용으로 최종 판단
         if len(question) < 200 and any(word in question for word in ["구분", "해당", "적절", "옳은", "올바른"]):
-            return "multiple_choice"
+            if any(str(i) in question for i in range(1, 6)):
+                return "multiple_choice"
         
         # 기본값: 주관식
         return "subjective"
     
     def extract_domain(self, question: str) -> str:
-        """도메인 추출"""
+        """도메인 추출 (개선)"""
         question_lower = question.lower()
         
         # 각 도메인별 키워드 매칭 점수 계산
         domain_scores = {}
         
         for domain, keywords in self.domain_keywords.items():
-            score = sum(1 for keyword in keywords if keyword in question_lower)
+            score = 0
+            for keyword in keywords:
+                if keyword.lower() in question_lower:
+                    # 핵심 키워드는 가중치 부여
+                    if keyword in ["개인정보보호법", "전자금융거래법", "자본시장법", "ISMS"]:
+                        score += 3
+                    else:
+                        score += 1
+            
             if score > 0:
                 domain_scores[domain] = score
         
@@ -286,7 +343,8 @@ class SimpleDataProcessor:
                 return False
             
             # 의미 있는 내용인지 확인
-            if not any(word in clean_answer for word in ["법", "규정", "조치", "관리", "보안", "방안", "절차", "기준"]):
+            meaningful_keywords = ["법", "규정", "조치", "관리", "보안", "방안", "절차", "기준", "정책", "체계", "시스템", "통제"]
+            if not any(word in clean_answer for word in meaningful_keywords):
                 self.processing_stats["validation_failures"] += 1
                 return False
             
@@ -305,21 +363,25 @@ class SimpleDataProcessor:
         """객관식 선택지 추출"""
         choices = []
         
-        # 번호 형식 선택지 찾기
+        # 다양한 형식의 선택지 패턴
         patterns = [
             r'(\d+)\s+([^0-9\n]+?)(?=\d+\s+|$)',
             r'(\d+)\)\s*([^0-9\n]+?)(?=\d+\)|$)',
+            r'(\d+)\.\s*([^0-9\n]+?)(?=\d+\.|$)',
             r'[①②③④⑤]\s*([^①②③④⑤\n]+?)(?=[①②③④⑤]|$)'
         ]
         
         for pattern in patterns:
-            matches = re.findall(pattern, question, re.MULTILINE)
-            if matches and len(matches) >= 3:
+            matches = re.findall(pattern, question, re.MULTILINE | re.DOTALL)
+            if matches:
                 if isinstance(matches[0], tuple):
                     choices = [match[1].strip() for match in matches]
                 else:
                     choices = [match.strip() for match in matches]
-                break
+                
+                # 5개 선택지가 모두 있는지 확인
+                if len(choices) >= 5:
+                    break
         
         return choices[:5]  # 최대 5개 선택지
     
@@ -332,7 +394,8 @@ class SimpleDataProcessor:
             "isms", "pims", "sbom", "원격제어", "침입탐지", 
             "트로이", "멀웨어", "랜섬웨어", "딥페이크", "피싱",
             "접근매체", "전자서명", "개인정보보호법", "자본시장법",
-            "rat", "원격접근", "탐지지표"
+            "rat", "원격접근", "탐지지표", "apt", "ddos",
+            "ids", "ips", "bcp", "drp", "isms-p"
         ]
         
         term_count = sum(1 for term in technical_terms if term in question_lower)
@@ -341,9 +404,9 @@ class SimpleDataProcessor:
         length = len(question)
         
         # 난이도 계산
-        if term_count >= 2 or length > 200:
+        if term_count >= 3 or length > 300:
             return "고급"
-        elif term_count >= 1 or length > 100:
+        elif term_count >= 1 or length > 150:
             return "중급"
         else:
             return "초급"
@@ -393,7 +456,8 @@ class SimpleDataProcessor:
             "total_processed": self.processing_stats["total_processed"],
             "korean_compliance_rate": (self.processing_stats["korean_compliance"] / total) * 100,
             "validation_failure_rate": (self.processing_stats["validation_failures"] / total) * 100,
-            "domain_distribution": dict(self.processing_stats["domain_distribution"])
+            "domain_distribution": dict(self.processing_stats["domain_distribution"]),
+            "question_type_accuracy": self.processing_stats["question_type_accuracy"]
         }
     
     def get_korean_requirements(self) -> Dict:
