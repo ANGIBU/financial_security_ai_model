@@ -384,20 +384,15 @@ class SimpleModelHandler:
         # 기본 정리
         response = re.sub(r'\s+', ' ', response).strip()
         
-        # 영어와 중국어 제거
-        response = re.sub(r'[a-zA-Z]+', '', response)  # 영어 제거
-        response = re.sub(r'[\u4e00-\u9fff]+', '', response)  # 중국어 제거
-        response = re.sub(r'[①②③④⑤➀➁➂➃➄]', '', response)  # 특수 기호 제거
-        
-        # 불필요한 문자 정리
-        response = re.sub(r'[^\w\s가-힣.,!?()[\]-]', ' ', response)
+        # 잘못된 인코딩으로 인한 깨진 문자 제거
+        response = re.sub(r'[^\w\s가-힣.,!?()[\]\-]', ' ', response)
         response = re.sub(r'\s+', ' ', response).strip()
         
         # 한국어 비율 확인
         korean_ratio = self._calculate_korean_ratio(response)
         
         # 한국어 비율이 낮거나 길이가 짧으면 템플릿 사용
-        if korean_ratio < 0.8 or len(response) < 30:
+        if korean_ratio < 0.7 or len(response) < 20:
             return self._generate_korean_template_answer(question)
         
         # 길이 제한

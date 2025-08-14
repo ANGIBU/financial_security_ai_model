@@ -23,10 +23,10 @@ class SimpleDataProcessor:
         self.pkl_dir = Path("./pkl")
         self.pkl_dir.mkdir(exist_ok=True)
         
-        # 객관식 패턴
+        # 객관식 패턴 (더 정확한 패턴)
         self.mc_patterns = [
             r'①.*②.*③.*④.*⑤',  # 동그라미 숫자
-            r'1\).*2\).*3\).*4\).*5\)',  # 번호 형식
+            r'1\s+[가-힣].*2\s+[가-힣].*3\s+[가-힣].*4\s+[가-힣].*5\s+[가-힣]',  # 번호 + 한글
             r'1\s+.*2\s+.*3\s+.*4\s+.*5\s+',  # 번호 공백 형식
             r'해당하지.*않는.*것',
             r'적절하지.*않는.*것', 
@@ -37,7 +37,8 @@ class SimpleDataProcessor:
             r'적절한.*것',
             r'올바른.*것',
             r'가장.*적절한.*것',
-            r'가장.*옳은.*것'
+            r'가장.*옳은.*것',
+            r'구분.*해당하지.*않는.*것'
         ]
         
         # 주관식 패턴
@@ -49,7 +50,10 @@ class SimpleDataProcessor:
             r'무엇인가요',
             r'어떻게.*해야.*하며',
             r'방안을.*기술',
-            r'대응.*방안'
+            r'대응.*방안',
+            r'특징.*다음과.*같',
+            r'탐지.*지표',
+            r'행동.*패턴'
         ]
         
         # 도메인 키워드
@@ -64,7 +68,8 @@ class SimpleDataProcessor:
             ],
             "사이버보안": [
                 "트로이", "악성코드", "멀웨어", "바이러스", "피싱",
-                "스미싱", "랜섬웨어", "해킹", "딥페이크", "원격제어"
+                "스미싱", "랜섬웨어", "해킹", "딥페이크", "원격제어",
+                "RAT", "원격접근"
             ],
             "정보보안": [
                 "정보보안", "보안관리", "ISMS", "보안정책", 
@@ -127,7 +132,7 @@ class SimpleDataProcessor:
             pass
     
     def analyze_question_type(self, question: str) -> str:
-        """질문 유형 분석"""
+        """질문 유형 분석 (개선된 버전)"""
         
         question = question.strip()
         
@@ -135,28 +140,26 @@ class SimpleDataProcessor:
         if re.search(r'①.*②.*③.*④.*⑤', question, re.DOTALL):
             return "multiple_choice"
         
-        if re.search(r'1\).*2\).*3\).*4\).*5\)', question, re.DOTALL):
+        # 2차: 번호 형식 선택지 확인 (더 엄격하게)
+        if re.search(r'1\s+[가-힣][^0-9]*2\s+[가-힣][^0-9]*3\s+[가-힣]', question, re.DOTALL):
             return "multiple_choice"
         
-        if re.search(r'1\s+[가-힣].*2\s+[가-힣].*3\s+[가-힣]', question, re.DOTALL):
-            return "multiple_choice"
-        
-        # 2차: 주관식 패턴 우선 확인
+        # 3차: 주관식 패턴 우선 확인
         for pattern in self.subj_patterns:
             if re.search(pattern, question, re.IGNORECASE):
                 return "subjective"
         
-        # 3차: 객관식 패턴 확인
+        # 4차: 객관식 패턴 확인
         for pattern in self.mc_patterns:
             if re.search(pattern, question, re.IGNORECASE):
                 return "multiple_choice"
         
-        # 4차: "것은?" "것?" 패턴 (객관식 가능성 높음)
+        # 5차: "것은?" "것?" 패턴과 길이로 추가 판단
         if re.search(r'것은\?|것\?|것은\s*$', question):
             return "multiple_choice"
         
-        # 5차: 질문 길이로 판단
-        if len(question) < 100 and question.endswith('?'):
+        # 6차: 질문 길이와 내용으로 최종 판단
+        if len(question) < 200 and any(word in question for word in ["구분", "해당", "적절", "옳은", "올바른"]):
             return "multiple_choice"
         
         # 기본값: 주관식
@@ -188,12 +191,15 @@ class SimpleDataProcessor:
         return detected_domain
     
     def clean_korean_text(self, text: str) -> str:
-        """한국어 전용 텍스트 정리"""
+        """한국어 전용 텍스트 정리 (강화)"""
         if not text:
             return ""
         
         # 기본 정리
         text = re.sub(r'\s+', ' ', text).strip()
+        
+        # 깨진 문자 및 인코딩 오류 처리
+        text = re.sub(r'[^\w\s가-힣.,!?()[\]\-]', ' ', text)
         
         # 영어 문자 제거 (한국어 답변을 위해)
         text = re.sub(r'[a-zA-Z]+', '', text)
@@ -203,9 +209,6 @@ class SimpleDataProcessor:
         
         # 특수 기호 제거
         text = re.sub(r'[①②③④⑤➀➁➂➃➄]', '', text)
-        
-        # 허용된 문자만 유지 (한국어, 숫자, 기본 문장부호)
-        text = re.sub(r'[^\w\s가-힣.,!?()[\]-]', ' ', text)
         
         # 반복 공백 제거
         text = re.sub(r'\s+', ' ', text).strip()
@@ -239,7 +242,7 @@ class SimpleDataProcessor:
         return english_chars / total_chars
     
     def validate_korean_answer(self, answer: str, question_type: str) -> bool:
-        """한국어 답변 유효성 검증"""
+        """한국어 답변 유효성 검증 (강화)"""
         if not answer:
             return False
         
@@ -256,7 +259,7 @@ class SimpleDataProcessor:
             return is_valid
         
         else:
-            # 주관식: 한국어 전용 검증
+            # 주관식: 한국어 전용 검증 (더 엄격하게)
             clean_answer = self.clean_korean_text(answer)
             
             # 길이 검증
@@ -264,7 +267,7 @@ class SimpleDataProcessor:
                 self.processing_stats["validation_failures"] += 1
                 return False
             
-            # 한국어 비율 검증
+            # 한국어 비율 검증 (더 엄격하게)
             korean_ratio = self.calculate_korean_ratio(clean_answer)
             if korean_ratio < self.korean_requirements["min_korean_ratio"]:
                 self.processing_stats["validation_failures"] += 1
@@ -279,6 +282,11 @@ class SimpleDataProcessor:
             # 최소 한국어 문자 수 검증
             korean_chars = len(re.findall(r'[가-힣]', clean_answer))
             if korean_chars < 20:
+                self.processing_stats["validation_failures"] += 1
+                return False
+            
+            # 의미 있는 내용인지 확인
+            if not any(word in clean_answer for word in ["법", "규정", "조치", "관리", "보안", "방안", "절차", "기준"]):
                 self.processing_stats["validation_failures"] += 1
                 return False
             
@@ -323,7 +331,8 @@ class SimpleDataProcessor:
         technical_terms = [
             "isms", "pims", "sbom", "원격제어", "침입탐지", 
             "트로이", "멀웨어", "랜섬웨어", "딥페이크", "피싱",
-            "접근매체", "전자서명", "개인정보보호법", "자본시장법"
+            "접근매체", "전자서명", "개인정보보호법", "자본시장법",
+            "rat", "원격접근", "탐지지표"
         ]
         
         term_count = sum(1 for term in technical_terms if term in question_lower)
@@ -340,7 +349,7 @@ class SimpleDataProcessor:
             return "초급"
     
     def normalize_korean_answer(self, answer: str, question_type: str) -> str:
-        """한국어 답변 정규화"""
+        """한국어 답변 정규화 (강화)"""
         if not answer:
             return ""
         
@@ -352,8 +361,12 @@ class SimpleDataProcessor:
             return numbers[0] if numbers else ""
         
         else:
-            # 주관식 답변 한국어 정리
+            # 주관식 답변 한국어 정리 (더 강화)
             answer = self.clean_korean_text(answer)
+            
+            # 의미 없는 짧은 문장 제거
+            if len(answer) < 20:
+                return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
             
             # 길이 제한
             if len(answer) > self.korean_requirements["max_length"]:

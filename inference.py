@@ -292,7 +292,6 @@ class FinancialAIInference:
 
 def main():
     """메인 함수"""
-    print("AI 시스템 실행")
     
     engine = None
     try:
@@ -304,8 +303,6 @@ def main():
         
         if results["success"]:
             print("완료됨!")
-            print(f"모델 성공률: {results['model_success_rate']:.1f}%")
-            print(f"한국어 준수율: {results['korean_compliance_rate']:.1f}%")
             print(f"총 처리시간: {results['total_time']:.1f}초")
         
     except KeyboardInterrupt:

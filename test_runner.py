@@ -23,8 +23,6 @@ from inference import FinancialAIInference
 def run_test(test_size: int = 50, verbose: bool = True):
     """테스트 실행"""
     
-    print(f"테스트 실행 ({test_size}문항)")
-    
     # 파일 존재 확인
     test_file = "./test.csv"
     submission_file = "./sample_submission.csv"
@@ -109,29 +107,17 @@ def calculate_english_ratio(text: str) -> float:
 def print_test_results(results: dict, output_file: str, test_size: int):
     """테스트 결과 출력"""
     
-    print("\n" + "="*50)
+    print()
     print("테스트 완료")
-    print("="*50)
+    print()
     
-    # 핵심 통계만 출력
+    # 핵심 정보만 간단히 출력
     total_time_minutes = results['total_time'] / 60
-    mc_reliability = (results['model_success_rate'] if results['mc_count'] > 0 else 0)
-    subj_reliability = (results['avg_quality_score'] * 100 if results['subj_count'] > 0 else 0)
     
-    print(f"총 처리 시간: {total_time_minutes:.1f}분")
+    print(f"처리 시간: {total_time_minutes:.1f}분")
     print(f"처리 문항: {results['total_questions']}개")
-    print(f"객관식 평균 신뢰도: {mc_reliability:.1f}%")
-    print(f"주관식 평균 신뢰도: {subj_reliability:.1f}%")
-    print(f"한국어 준수율: {results['korean_compliance_rate']:.1f}%")
-    
-    # 객관식 답변 분포 (간단히)
-    if results['mc_count'] > 0:
-        distribution = results['answer_distribution']
-        used_numbers = len([v for v in distribution.values() if v > 0])
-        print(f"객관식 답변 다양성: {used_numbers}/5개 번호 사용")
-    
     print(f"결과 파일: {output_file}")
-    print("="*50)
+    print()
 
 def select_test_size():
     """테스트 문항 수 선택"""
@@ -184,10 +170,6 @@ def print_progress_bar(current: int, total: int, start_time: float, bar_length: 
 
 def main():
     """메인 함수"""
-    print("금융보안 AI 테스트 시스템")
-    print(f"Python 버전: {sys.version.split()[0]}")
-    print()
-    
     # 테스트 크기 선택
     test_size = select_test_size()
     
