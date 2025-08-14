@@ -1,10 +1,10 @@
 # test_runner.py
 
 """
-간단한 테스트 실행기
-- 복잡성 제거
-- 실제 성능 측정
-- 명확한 결과 출력
+테스트 실행기
+- 시스템 테스트 실행
+- 성능 측정 및 분석
+- 결과 검증
 """
 
 import os
@@ -72,7 +72,7 @@ def run_test(test_size: int = 50, verbose: bool = True):
             )
         
         # 결과 분석
-        print_test_results(results, output_file)
+        print_test_results(results, output_file, test_size)
         
         return True
         
@@ -86,18 +86,33 @@ def run_test(test_size: int = 50, verbose: bool = True):
         if engine:
             engine.cleanup()
 
-def print_test_results(results: dict, output_file: str):
+def print_test_results(results: dict, output_file: str, test_size: int):
     """테스트 결과 출력"""
     
     print("\n" + "=" * 60)
     print("테스트 결과 분석")
     print("=" * 60)
     
+    # 기본 통계
     print(f"처리 완료: {results['total_questions']}문항")
     print(f"객관식: {results['mc_count']}개, 주관식: {results['subj_count']}개")
     print(f"모델 성공률: {results['model_success_rate']:.1f}%")
     print(f"평균 처리시간: {results['avg_processing_time']:.2f}초/문항")
     print(f"총 소요시간: {results['total_time']:.1f}초")
+    
+    # 도메인별 분포
+    if results['domain_stats']:
+        print(f"\n도메인별 처리 현황:")
+        for domain, count in results['domain_stats'].items():
+            pct = (count / results['total_questions']) * 100
+            print(f"  {domain}: {count}개 ({pct:.1f}%)")
+    
+    # 난이도별 분포
+    if results['difficulty_stats']:
+        print(f"\n난이도별 처리 현황:")
+        for difficulty, count in results['difficulty_stats'].items():
+            pct = (count / results['total_questions']) * 100
+            print(f"  {difficulty}: {count}개 ({pct:.1f}%)")
     
     # 객관식 답변 분포 분석
     distribution = results['answer_distribution']
@@ -112,70 +127,145 @@ def print_test_results(results: dict, output_file: str):
         
         # 다양성 평가
         used_numbers = len([v for v in distribution.values() if v > 0])
-        if used_numbers >= 4:
-            diversity_status = "✅ 우수"
-        elif used_numbers >= 3:
-            diversity_status = "⚠️ 양호"
+        diversity_score = calculate_diversity_score(distribution, total_mc)
+        
+        if used_numbers >= 4 and diversity_score > 0.8:
+            diversity_status = "우수"
+        elif used_numbers >= 3 and diversity_score > 0.6:
+            diversity_status = "양호"
         else:
-            diversity_status = "❌ 개선필요"
+            diversity_status = "개선필요"
         
         print(f"  답변 다양성: {diversity_status} ({used_numbers}/5개 번호 사용)")
+        print(f"  다양성 점수: {diversity_score:.2f}")
     
     # 성능 평가
     print(f"\n성능 평가:")
-    if results['model_success_rate'] >= 70:
-        print("✅ 모델 성능: 우수")
-    elif results['model_success_rate'] >= 50:
-        print("⚠️ 모델 성능: 양호")
-    else:
-        print("❌ 모델 성능: 개선필요")
     
-    if results['avg_processing_time'] <= 15:
-        print("✅ 처리 속도: 우수")
-    elif results['avg_processing_time'] <= 30:
-        print("⚠️ 처리 속도: 양호") 
+    # 모델 성능
+    if results['model_success_rate'] >= 80:
+        model_grade = "A"
+    elif results['model_success_rate'] >= 60:
+        model_grade = "B"
+    elif results['model_success_rate'] >= 40:
+        model_grade = "C"
     else:
-        print("❌ 처리 속도: 개선필요")
+        model_grade = "D"
+    
+    print(f"모델 성능: {model_grade}등급 ({results['model_success_rate']:.1f}%)")
+    
+    # 처리 속도
+    if results['avg_processing_time'] <= 10:
+        speed_grade = "A"
+    elif results['avg_processing_time'] <= 20:
+        speed_grade = "B"
+    elif results['avg_processing_time'] <= 30:
+        speed_grade = "C"
+    else:
+        speed_grade = "D"
+    
+    print(f"처리 속도: {speed_grade}등급 ({results['avg_processing_time']:.2f}초/문항)")
+    
+    # 시간 효율성
+    expected_time = test_size * 30  # 30초/문항 기준
+    efficiency = (expected_time / results['total_time']) * 100
+    print(f"시간 효율성: {efficiency:.1f}%")
     
     print(f"\n결과 파일: {output_file}")
     
     # 파일 내용 검증
+    validate_output_file(output_file, results)
+
+def calculate_diversity_score(distribution: dict, total: int) -> float:
+    """다양성 점수 계산"""
+    if total == 0:
+        return 0.0
+    
+    # 이상적인 분포: 각 번호가 20%씩
+    ideal_ratio = 0.2
+    actual_ratios = [distribution[str(i)] / total for i in range(1, 6)]
+    
+    # 편차 계산
+    deviations = [abs(ratio - ideal_ratio) for ratio in actual_ratios]
+    avg_deviation = sum(deviations) / len(deviations)
+    
+    # 점수 계산 (편차가 작을수록 높은 점수)
+    diversity_score = max(0, 1 - (avg_deviation / ideal_ratio))
+    
+    return diversity_score
+
+def validate_output_file(output_file: str, results: dict):
+    """출력 파일 검증"""
     try:
         import pandas as pd
         result_df = pd.read_csv(output_file)
         
+        print(f"\n파일 검증:")
+        print(f"  총 답변 수: {len(result_df)}개")
+        
+        # 답변 형식 검증
         mc_answers = 0
         subj_answers = 0
-        same_answers = 0
+        invalid_answers = 0
         
         for answer in result_df['Answer']:
-            if str(answer).strip() in ['1', '2', '3', '4', '5']:
+            answer_str = str(answer).strip()
+            if answer_str in ['1', '2', '3', '4', '5']:
                 mc_answers += 1
-            else:
+            elif len(answer_str) > 10:
                 subj_answers += 1
+            else:
+                invalid_answers += 1
         
-        print(f"\n파일 검증:")
         print(f"  객관식 답변: {mc_answers}개")
         print(f"  주관식 답변: {subj_answers}개")
         
-        # 기존 문제와 비교
+        if invalid_answers > 0:
+            print(f"  유효하지 않은 답변: {invalid_answers}개")
+        
+        # 예상 비율과 비교
+        expected_mc = results['mc_count']
+        expected_subj = results['subj_count']
+        
+        mc_accuracy = (mc_answers / expected_mc * 100) if expected_mc > 0 else 0
+        subj_accuracy = (subj_answers / expected_subj * 100) if expected_subj > 0 else 0
+        
+        print(f"  객관식 정확도: {mc_accuracy:.1f}%")
+        print(f"  주관식 정확도: {subj_accuracy:.1f}%")
+        
+        # 품질 평가
         if mc_answers > 0:
-            # 모든 답변이 1번인지 확인
-            ones_count = sum(1 for answer in result_df['Answer'] if str(answer).strip() == '1')
-            if ones_count == mc_answers:
-                print("❌ 문제: 모든 객관식이 1번으로 고정됨")
-            else:
-                print("✅ 개선: 객관식 답변이 다양함")
+            # 객관식 분포 확인
+            mc_dist = {}
+            for answer in result_df['Answer']:
+                if str(answer).strip() in ['1', '2', '3', '4', '5']:
+                    key = str(answer).strip()
+                    mc_dist[key] = mc_dist.get(key, 0) + 1
+            
+            # 편향 확인
+            if len(mc_dist) == 1:
+                print("  경고: 모든 객관식 답변이 동일한 번호")
+            elif len(mc_dist) >= 4:
+                print("  객관식 답변 분포 양호")
         
         if subj_answers > 0:
-            # 동일한 템플릿 답변 확인
-            template_answer = "체계적인 관리 방안을 수립하고 지속적인 개선을 수행해야 합니다."
-            template_count = sum(1 for answer in result_df['Answer'] if str(answer).strip() == template_answer)
+            # 주관식 답변 길이 확인
+            subj_lengths = []
+            for answer in result_df['Answer']:
+                answer_str = str(answer).strip()
+                if len(answer_str) > 10:
+                    subj_lengths.append(len(answer_str))
             
-            if template_count == subj_answers:
-                print("❌ 문제: 모든 주관식이 동일한 템플릿")
-            else:
-                print("✅ 개선: 주관식 답변이 다양함")
+            if subj_lengths:
+                avg_length = sum(subj_lengths) / len(subj_lengths)
+                print(f"  주관식 평균 길이: {avg_length:.0f}자")
+                
+                if avg_length < 20:
+                    print("  경고: 주관식 답변이 너무 짧음")
+                elif avg_length > 500:
+                    print("  경고: 주관식 답변이 너무 김")
+                else:
+                    print("  주관식 답변 길이 적절")
         
     except Exception as e:
         print(f"파일 검증 오류: {e}")
@@ -191,7 +281,7 @@ def main():
     args = parser.parse_args()
     
     # 테스트 크기 제한
-    test_size = max(1, min(args.size, 500))
+    test_size = max(1, min(args.size, 515))
     
     print(f"Python 버전: {sys.version.split()[0]}")
     print(f"테스트 크기: {test_size}문항")
@@ -199,9 +289,9 @@ def main():
     success = run_test(test_size, args.verbose)
     
     if success:
-        print("\n🎉 테스트 완료!")
+        print("\n테스트 완료!")
     else:
-        print("\n❌ 테스트 실패")
+        print("\n테스트 실패")
         sys.exit(1)
 
 if __name__ == "__main__":

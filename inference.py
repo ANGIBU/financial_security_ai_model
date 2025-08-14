@@ -1,11 +1,10 @@
 # inference.py
 
 """
-실제 작동하는 핵심 추론 시스템
-- 복잡성 완전 제거
-- 실제 LLM 모델 실행 보장  
-- 정확한 문제 분류
-- 다양한 답변 생성
+금융보안 AI 추론 시스템
+- 문제 분류 및 처리
+- 모델 추론 실행
+- 결과 생성 및 저장
 """
 
 import os
@@ -25,24 +24,28 @@ current_dir = Path(__file__).parent.absolute()
 # 로컬 모듈 import
 from model_handler import SimpleModelHandler
 from data_processor import SimpleDataProcessor
+from knowledge_base import FinancialSecurityKnowledgeBase
 
 class FinancialAIInference:
-    """실제 작동하는 금융보안 AI 추론 시스템"""
+    """금융보안 AI 추론 시스템"""
     
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
         self.start_time = time.time()
         
         print("=" * 50)
-        print("실제 작동하는 AI 추론 시스템 시작")
+        print("금융보안 AI 추론 시스템 초기화")
         print("=" * 50)
         
         # 컴포넌트 초기화
-        print("1/2 모델 핸들러 초기화...")
+        print("1/3 모델 핸들러 초기화...")
         self.model_handler = SimpleModelHandler(verbose=verbose)
         
-        print("2/2 데이터 프로세서 초기화...")
+        print("2/3 데이터 프로세서 초기화...")
         self.data_processor = SimpleDataProcessor()
+        
+        print("3/3 지식베이스 초기화...")
+        self.knowledge_base = FinancialSecurityKnowledgeBase()
         
         # 통계
         self.stats = {
@@ -51,7 +54,8 @@ class FinancialAIInference:
             "subj_count": 0,
             "model_success": 0,
             "processing_times": [],
-            "answer_distribution": {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
+            "domain_stats": {},
+            "difficulty_stats": {"초급": 0, "중급": 0, "고급": 0}
         }
         
         print("초기화 완료")
@@ -61,64 +65,48 @@ class FinancialAIInference:
         start_time = time.time()
         
         try:
-            # 1. 질문 유형 분석
+            # 1. 질문 분석
             question_type = self.data_processor.analyze_question_type(question)
+            domain = self.data_processor.extract_domain(question)
+            difficulty = self.data_processor.analyze_question_difficulty(question)
+            
+            # 지식베이스 분석
+            kb_analysis = self.knowledge_base.analyze_question(question)
             
             if self.verbose:
-                print(f"질문 {question_id}: {question_type}")
+                print(f"질문 {question_id}: {question_type}, {domain}, {difficulty}")
             
-            # 2. 실제 AI 모델로 답변 생성
+            # 2. AI 모델로 답변 생성
             answer = self.model_handler.generate_answer(question, question_type)
             
-            # 3. 답변 검증
+            # 3. 답변 검증 및 정규화
             if self.data_processor.validate_answer(answer, question_type):
+                answer = self.data_processor.normalize_answer(answer, question_type)
                 self.stats["model_success"] += 1
             else:
                 # 검증 실패시 폴백
-                answer = self._get_fallback_answer(question_type)
+                answer = self._get_fallback_answer(question_type, domain)
             
             # 4. 통계 업데이트
-            self._update_stats(question_type, answer, time.time() - start_time)
+            self._update_stats(question_type, domain, difficulty, time.time() - start_time)
             
             return answer
             
         except Exception as e:
             if self.verbose:
                 print(f"오류 발생: {e}")
-            return self._get_fallback_answer("multiple_choice")
+            return self._get_fallback_answer("multiple_choice", "일반")
     
-    def _get_fallback_answer(self, question_type: str) -> str:
-        """폴백 답변 - 다양성 보장"""
+    def _get_fallback_answer(self, question_type: str, domain: str) -> str:
+        """폴백 답변"""
         if question_type == "multiple_choice":
-            import random
-            # 균등 분포를 위한 가중치
-            weights = [1, 1, 1, 1, 1]  # 1~5번 균등
-            
-            # 현재까지의 분포 확인하여 조정
-            total_mc = sum(self.stats["answer_distribution"].values())
-            if total_mc > 10:
-                for i in range(1, 6):
-                    current_count = self.stats["answer_distribution"][str(i)]
-                    target_ratio = total_mc / 5
-                    if current_count < target_ratio * 0.5:
-                        weights[i-1] = 3  # 부족한 번호에 가중치
-            
-            answer = str(random.choices([1, 2, 3, 4, 5], weights=weights)[0])
-            self.stats["answer_distribution"][answer] += 1
-            return answer
+            # 모델 핸들러의 균등 분포 답변 사용
+            return self.model_handler._get_balanced_mc_answer()
         else:
-            # 주관식 다양한 템플릿
-            templates = [
-                "관련 법령에 따라 체계적인 보안 관리 체계를 구축하고 지속적인 모니터링을 수행해야 합니다.",
-                "해당 분야의 전문적인 보안 정책을 수립하고 정기적인 점검과 개선을 실시해야 합니다.", 
-                "법적 요구사항을 준수하며 효과적인 보안 조치를 시행하고 사용자 교육을 강화해야 합니다.",
-                "위험 요소를 사전에 식별하고 적절한 대응 방안을 마련하여 체계적으로 관리해야 합니다.",
-                "보안 관리 절차를 확립하고 정기적인 평가를 통해 지속적인 개선을 추진해야 합니다."
-            ]
-            import random
-            return random.choice(templates)
+            # 지식베이스의 도메인별 템플릿 사용
+            return self.knowledge_base.get_subjective_template(domain)
     
-    def _update_stats(self, question_type: str, answer: str, processing_time: float):
+    def _update_stats(self, question_type: str, domain: str, difficulty: str, processing_time: float):
         """통계 업데이트"""
         self.stats["total"] += 1
         self.stats["processing_times"].append(processing_time)
@@ -127,6 +115,12 @@ class FinancialAIInference:
             self.stats["mc_count"] += 1
         else:
             self.stats["subj_count"] += 1
+        
+        # 도메인 통계
+        self.stats["domain_stats"][domain] = self.stats["domain_stats"].get(domain, 0) + 1
+        
+        # 난이도 통계
+        self.stats["difficulty_stats"][difficulty] += 1
     
     def execute_inference(self, test_file: str = "./test.csv", 
                          submission_file: str = "./sample_submission.csv",
@@ -157,15 +151,21 @@ class FinancialAIInference:
             # 진행률 표시
             if (idx + 1) % 10 == 0 or idx == 0:
                 progress = (idx + 1) / total_questions * 100
-                print(f"진행: {idx+1}/{total_questions} ({progress:.1f}%)")
+                elapsed = time.time() - self.start_time
+                eta = (elapsed / (idx + 1)) * (total_questions - idx - 1) if idx > 0 else 0
+                print(f"진행: {idx+1}/{total_questions} ({progress:.1f}%) - 남은시간: {eta/60:.1f}분")
             
             # 실제 추론 수행
             answer = self.process_single_question(question, question_id)
             answers.append(answer)
             
-            # 중간 통계 (50문항마다)
-            if (idx + 1) % 50 == 0:
+            # 중간 통계 (100문항마다)
+            if (idx + 1) % 100 == 0:
                 self._print_interim_stats()
+            
+            # 메모리 관리 (50문항마다)
+            if (idx + 1) % 50 == 0:
+                gc.collect()
         
         # 결과 저장
         submission_df['Answer'] = answers
@@ -187,10 +187,10 @@ class FinancialAIInference:
         
         print(f"  중간 통계: 모델성공률 {model_success_rate:.1f}%, 평균처리시간 {avg_time:.2f}초")
         
-        # 답변 분포
-        mc_total = sum(self.stats["answer_distribution"].values())
-        if mc_total > 0:
-            dist = [f"{k}:{v}" for k, v in self.stats["answer_distribution"].items() if v > 0]
+        # 모델 답변 분포
+        mc_stats = self.model_handler.get_answer_stats()
+        if mc_stats["total_mc"] > 0:
+            dist = [f"{k}:{v}" for k, v in mc_stats["distribution"].items() if v > 0]
             print(f"  객관식 분포: {', '.join(dist)}")
     
     def _print_final_results(self, output_file: str):
@@ -213,25 +213,38 @@ class FinancialAIInference:
             print(f"모델 성공률: {success_rate:.1f}%")
             print(f"평균 처리시간: {avg_time:.2f}초/문항")
         
-        # 객관식 답변 분포
-        print(f"\n객관식 답변 분포:")
-        mc_total = sum(self.stats["answer_distribution"].values())
-        for num in range(1, 6):
-            count = self.stats["answer_distribution"][str(num)]
-            if mc_total > 0:
-                pct = (count / mc_total) * 100
-                print(f"  {num}번: {count}개 ({pct:.1f}%)")
+        # 도메인별 분포
+        print(f"\n도메인별 분포:")
+        for domain, count in self.stats["domain_stats"].items():
+            pct = (count / self.stats["total"]) * 100
+            print(f"  {domain}: {count}개 ({pct:.1f}%)")
         
-        # 다양성 평가
-        used_answers = len([v for v in self.stats["answer_distribution"].values() if v > 0])
-        diversity = "우수" if used_answers >= 4 else "양호" if used_answers >= 3 else "개선필요"
-        print(f"  답변 다양성: {diversity} ({used_answers}/5개 번호 사용)")
+        # 난이도별 분포
+        print(f"\n난이도별 분포:")
+        for difficulty, count in self.stats["difficulty_stats"].items():
+            pct = (count / self.stats["total"]) * 100
+            print(f"  {difficulty}: {count}개 ({pct:.1f}%)")
+        
+        # 객관식 답변 분포
+        mc_stats = self.model_handler.get_answer_stats()
+        if mc_stats["total_mc"] > 0:
+            print(f"\n객관식 답변 분포:")
+            for num in range(1, 6):
+                count = mc_stats["distribution"][str(num)]
+                pct = (count / mc_stats["total_mc"]) * 100
+                print(f"  {num}번: {count}개 ({pct:.1f}%)")
+            
+            # 다양성 평가
+            used_answers = len([v for v in mc_stats["distribution"].values() if v > 0])
+            diversity = "우수" if used_answers >= 4 else "양호" if used_answers >= 3 else "개선필요"
+            print(f"  답변 다양성: {diversity} ({used_answers}/5개 번호 사용)")
         
         print(f"\n결과 파일: {output_file}")
     
     def _get_results_summary(self) -> Dict:
         """결과 요약"""
         total = max(self.stats["total"], 1)
+        mc_stats = self.model_handler.get_answer_stats()
         
         return {
             "success": True,
@@ -240,7 +253,9 @@ class FinancialAIInference:
             "subj_count": self.stats["subj_count"],
             "model_success_rate": (self.stats["model_success"] / total) * 100,
             "avg_processing_time": sum(self.stats["processing_times"]) / len(self.stats["processing_times"]) if self.stats["processing_times"] else 0,
-            "answer_distribution": dict(self.stats["answer_distribution"]),
+            "domain_stats": dict(self.stats["domain_stats"]),
+            "difficulty_stats": dict(self.stats["difficulty_stats"]),
+            "answer_distribution": mc_stats["distribution"],
             "total_time": time.time() - self.start_time
         }
     
@@ -255,6 +270,9 @@ class FinancialAIInference:
             if hasattr(self, 'data_processor'):
                 self.data_processor.cleanup()
             
+            if hasattr(self, 'knowledge_base'):
+                self.knowledge_base.cleanup()
+            
             gc.collect()
             print("시스템 정리 완료")
             
@@ -264,7 +282,7 @@ class FinancialAIInference:
 
 def main():
     """메인 함수"""
-    print("실제 작동하는 금융보안 AI 시스템")
+    print("금융보안 AI 시스템")
     print("=" * 50)
     
     engine = None
@@ -276,7 +294,7 @@ def main():
         results = engine.execute_inference()
         
         if results["success"]:
-            print(f"\n성공적으로 완료됨!")
+            print(f"\n완료됨!")
             print(f"모델 성공률: {results['model_success_rate']:.1f}%")
             print(f"총 처리시간: {results['total_time']:.1f}초")
         
