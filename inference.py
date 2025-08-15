@@ -290,7 +290,6 @@ class FinancialAIInference:
         """데이터프레임으로 추론 실행"""
         
         print(f"\n데이터 로드 완료: {len(test_df)}개 문항")
-        print("AI 추론 시작\n")
         
         answers = []
         total_questions = len(test_df)

@@ -5,14 +5,10 @@
 - 시스템 테스트 실행
 - 성능 측정 및 분석
 - 결과 검증
-- 한국어 준수율 검증
 """
 
 import os
 import sys
-import time
-import re
-import pandas as pd
 from pathlib import Path
 
 # 현재 디렉토리 설정
@@ -20,45 +16,6 @@ current_dir = Path(__file__).parent.absolute()
 sys.path.append(str(current_dir))
 
 from inference import FinancialAIInference
-
-def analyze_test_data(test_file: str):
-    """테스트 데이터 분석"""
-    try:
-        test_df = pd.read_csv(test_file)
-        
-        choice_analysis = {}
-        for idx, row in test_df.iterrows():
-            question = row['Question']
-            question_id = row['ID']
-            
-            # 선택지 개수 분석
-            lines = question.split('\n')
-            choice_numbers = []
-            for line in lines:
-                match = re.match(r'^(\d+)\s+', line.strip())
-                if match:
-                    choice_numbers.append(int(match.group(1)))
-            
-            if choice_numbers:
-                max_choice = max(choice_numbers)
-                choice_count = len(choice_numbers)
-                choice_analysis[question_id] = {
-                    "max_choice": max_choice,
-                    "choice_count": choice_count,
-                    "is_mc": True
-                }
-            else:
-                choice_analysis[question_id] = {
-                    "max_choice": 0,
-                    "choice_count": 0,
-                    "is_mc": False
-                }
-        
-        return choice_analysis
-        
-    except Exception as e:
-        print(f"테스트 데이터 분석 오류: {e}")
-        return {}
 
 def run_test(test_size: int = 50, verbose: bool = True):
     """테스트 실행"""
@@ -72,9 +29,6 @@ def run_test(test_size: int = 50, verbose: bool = True):
             print(f"오류: {file_path} 파일이 없습니다")
             return False
     
-    # 테스트 데이터 분석 (내부 처리용)
-    choice_analysis = analyze_test_data(test_file)
-    
     engine = None
     try:
         # AI 엔진 초기화
@@ -82,6 +36,7 @@ def run_test(test_size: int = 50, verbose: bool = True):
         engine = FinancialAIInference(verbose=False)  # 초기화시 verbose=False로 설정
         
         # 테스트 데이터 준비
+        import pandas as pd
         test_df = pd.read_csv(test_file)
         submission_df = pd.read_csv(submission_file)
         
@@ -121,217 +76,6 @@ def run_test(test_size: int = 50, verbose: bool = True):
         if engine:
             engine.cleanup()
 
-def validate_answers_with_choice_analysis(output_file: str, test_df: pd.DataFrame, choice_analysis: dict):
-    """선택지 분석을 포함한 답변 유효성 검증"""
-    try:
-        # 결과 파일이 존재하는지 확인
-        if not os.path.exists(output_file):
-            print(f"\n결과 파일을 찾을 수 없습니다: {output_file}")
-            return
-        
-        result_df = pd.read_csv(output_file)
-        
-        print(f"\n답변 검증 결과:")
-        
-        # 객관식/주관식별 분류
-        mc_results = []
-        subj_results = []
-        range_errors = []
-        
-        for idx, row in result_df.iterrows():
-            answer = str(row['Answer']).strip()
-            question_id = row['ID']
-            
-            # 원본 질문 정보 가져오기
-            if question_id in choice_analysis:
-                analysis = choice_analysis[question_id]
-                
-                if analysis["is_mc"]:
-                    # 객관식 검증
-                    max_choice = analysis["max_choice"]
-                    
-                    if answer.isdigit():
-                        answer_num = int(answer)
-                        if 1 <= answer_num <= max_choice:
-                            mc_results.append({
-                                "id": question_id,
-                                "answer": answer,
-                                "max_choice": max_choice,
-                                "valid": True
-                            })
-                        else:
-                            # 범위 오류
-                            mc_results.append({
-                                "id": question_id,
-                                "answer": answer,
-                                "max_choice": max_choice,
-                                "valid": False
-                            })
-                            range_errors.append({
-                                "id": question_id,
-                                "answer": answer,
-                                "max_choice": max_choice,
-                                "error": f"{answer}번 선택 (최대 {max_choice}번)"
-                            })
-                    else:
-                        # 숫자가 아닌 답변
-                        mc_results.append({
-                            "id": question_id,
-                            "answer": answer,
-                            "max_choice": max_choice,
-                            "valid": False
-                        })
-                        range_errors.append({
-                            "id": question_id,
-                            "answer": answer,
-                            "max_choice": max_choice,
-                            "error": f"숫자가 아님: '{answer}'"
-                        })
-                
-                else:
-                    # 주관식 검증
-                    korean_ratio = calculate_korean_ratio(answer)
-                    english_ratio = calculate_english_ratio(answer)
-                    
-                    is_valid = (korean_ratio >= 0.8 and 
-                               english_ratio <= 0.1 and 
-                               len(answer) >= 30)
-                    
-                    subj_results.append({
-                        "id": question_id,
-                        "valid": is_valid,
-                        "korean_ratio": korean_ratio,
-                        "english_ratio": english_ratio,
-                        "length": len(answer)
-                    })
-        
-        # 객관식 결과 출력
-        if mc_results:
-            valid_mc = [r for r in mc_results if r["valid"]]
-            invalid_mc = [r for r in mc_results if not r["valid"]]
-            
-            print(f"  객관식 문항: {len(mc_results)}개")
-            print(f"    정상 답변: {len(valid_mc)}개 ({len(valid_mc)/len(mc_results)*100:.1f}%)")
-            print(f"    오류 답변: {len(invalid_mc)}개 ({len(invalid_mc)/len(mc_results)*100:.1f}%)")
-            
-            # 선택지별 분포
-            choice_distribution = {}
-            for result in valid_mc:
-                max_choice = result["max_choice"]
-                if max_choice not in choice_distribution:
-                    choice_distribution[max_choice] = {}
-                
-                answer = result["answer"]
-                choice_distribution[max_choice][answer] = choice_distribution[max_choice].get(answer, 0) + 1
-            
-            for choice_count in sorted(choice_distribution.keys()):
-                total_for_range = sum(choice_distribution[choice_count].values())
-                print(f"    {choice_count}개 선택지 문항 ({total_for_range}개):")
-                for num in range(1, choice_count + 1):
-                    count = choice_distribution[choice_count].get(str(num), 0)
-                    percentage = (count / total_for_range) * 100 if total_for_range > 0 else 0
-                    print(f"      {num}번: {count}개 ({percentage:.1f}%)")
-        
-        # 주관식 결과 출력
-        if subj_results:
-            valid_subj = [r for r in subj_results if r["valid"]]
-            invalid_subj = [r for r in subj_results if not r["valid"]]
-            
-            print(f"  주관식 문항: {len(subj_results)}개")
-            print(f"    한국어 적합: {len(valid_subj)}개 ({len(valid_subj)/len(subj_results)*100:.1f}%)")
-            print(f"    한국어 부적합: {len(invalid_subj)}개 ({len(invalid_subj)/len(subj_results)*100:.1f}%)")
-            
-            if invalid_subj:
-                print("    부적합 상세:")
-                for result in invalid_subj[:3]:  # 최대 3개만 표시
-                    print(f"      {result['id']}: 한국어 {result['korean_ratio']*100:.0f}%, "
-                          f"영어 {result['english_ratio']*100:.0f}%, 길이 {result['length']}자")
-        
-        # 범위 오류 상세 출력
-        if range_errors:
-            print(f"  선택지 범위 오류: {len(range_errors)}개")
-            for error in range_errors:
-                print(f"    {error['id']}: {error['error']}")
-        
-    except Exception as e:
-        print(f"답변 검증 오류: {e}")
-
-def validate_answers(output_file: str):
-    """답변 유효성 검증 (기본 버전)"""
-    try:
-        import pandas as pd
-        result_df = pd.read_csv(output_file)
-        
-        # 객관식 답변 검증
-        mc_answers = []
-        subj_answers = []
-        
-        for idx, row in result_df.iterrows():
-            answer = str(row['Answer']).strip()
-            
-            # 객관식 답변 (1-5 숫자)
-            if answer in ['1', '2', '3', '4', '5']:
-                mc_answers.append(answer)
-            else:
-                # 주관식 답변 검증
-                korean_ratio = calculate_korean_ratio(answer)
-                english_ratio = calculate_english_ratio(answer)
-                
-                if korean_ratio >= 0.8 and english_ratio <= 0.1:
-                    subj_answers.append((row['ID'], "적합", f"한국어 {korean_ratio*100:.0f}%"))
-                else:
-                    subj_answers.append((row['ID'], "부적합", f"한국어 {korean_ratio*100:.0f}%, 영어 {english_ratio*100:.0f}%"))
-        
-        # 객관식 분포 출력
-        if mc_answers:
-            print(f"객관식 문항: {len(mc_answers)}개")
-            for num in ['1', '2', '3', '4', '5']:
-                count = mc_answers.count(num)
-                percentage = (count / len(mc_answers)) * 100 if mc_answers else 0
-                print(f"  {num}번: {count}개 ({percentage:.1f}%)")
-        
-        # 주관식 검증 결과
-        if subj_answers:
-            print(f"\n주관식 문항: {len(subj_answers)}개")
-            suitable_count = sum(1 for _, status, _ in subj_answers if status == "적합")
-            print(f"  한국어 적합: {suitable_count}개 ({suitable_count/len(subj_answers)*100:.1f}%)")
-            
-            # 부적합 답변 상세
-            unsuitable = [item for item in subj_answers if item[1] == "부적합"]
-            if unsuitable:
-                print("  부적합 답변:")
-                for id, status, detail in unsuitable[:5]:  # 최대 5개만 표시
-                    print(f"    {id}: {detail}")
-        
-    except Exception as e:
-        print(f"답변 검증 오류: {e}")
-
-def calculate_korean_ratio(text: str) -> float:
-    """한국어 비율 계산"""
-    if not text:
-        return 0.0
-    
-    korean_chars = len(re.findall(r'[가-힣]', text))
-    total_chars = len(re.sub(r'[^\w가-힣]', '', text))
-    
-    if total_chars == 0:
-        return 0.0
-    
-    return korean_chars / total_chars
-
-def calculate_english_ratio(text: str) -> float:
-    """영어 비율 계산"""
-    if not text:
-        return 0.0
-    
-    english_chars = len(re.findall(r'[a-zA-Z]', text))
-    total_chars = len(re.sub(r'[^\w가-힣]', '', text))
-    
-    if total_chars == 0:
-        return 0.0
-    
-    return english_chars / total_chars
-
 def print_test_results(results: dict, output_file: str, test_size: int):
     """테스트 결과 출력"""
 
@@ -350,7 +94,7 @@ def select_test_size():
     print("\n테스트할 문항 수를 선택하세요:")
     print("1. 5문항 (빠른 테스트)")
     print("2. 10문항 (기본 테스트)")
-    print("3. 50문항 (전체 테스트)")
+    print("3. 50문항 (정밀 테스트)")
     print()
     
     while True:
