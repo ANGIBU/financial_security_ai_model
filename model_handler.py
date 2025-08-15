@@ -6,7 +6,7 @@ LLM 모델 핸들러
 - 답변 생성
 - 프롬프트 처리
 - 학습 데이터 저장
-- 질문 의도 기반 답변 생성 강화
+- 질문 의도 기반 답변 생성
 """
 
 import torch
@@ -35,7 +35,7 @@ class SimpleModelHandler:
         self.pkl_dir = Path("./pkl")
         self.pkl_dir.mkdir(exist_ok=True)
         
-        # 답변 분포 추적 (실제 데이터 기반 최적화)
+        # 답변 분포 추적
         self.answer_distributions = {
             3: {"1": 0, "2": 0, "3": 0},
             4: {"1": 0, "2": 0, "3": 0, "4": 0},
@@ -43,7 +43,7 @@ class SimpleModelHandler:
         }
         self.mc_answer_counts = {3: 0, 4: 0, 5: 0}
         
-        # 실제 데이터 기반 객관식 패턴 분석
+        # 객관식 패턴 분석
         self.mc_context_patterns = {
             "negative_keywords": [
                 "해당하지.*않는", "적절하지.*않는", "옳지.*않는",
@@ -57,7 +57,7 @@ class SimpleModelHandler:
             "domain_specific_patterns": {
                 "금융투자": {
                     "keywords": ["금융투자업", "투자자문업", "투자매매업", "투자중개업", "소비자금융업", "보험중개업"],
-                    "common_answers": ["1", "5"]  # 실제 패턴 분석 결과
+                    "common_answers": ["1", "5"]
                 },
                 "위험관리": {
                     "keywords": ["위험관리", "위험수용", "위험대응", "수행인력", "재해복구"],
@@ -78,7 +78,7 @@ class SimpleModelHandler:
             }
         }
         
-        # 의도별 특화 프롬프트 패턴 (대폭 강화)
+        # 의도별 특화 프롬프트 패턴
         self.intent_specific_prompts = {
             "기관_묻기": [
                 "다음 질문에서 요구하는 특정 기관명을 정확히 답변하세요. 전자금융분쟁조정위원회, 개인정보보호위원회, 금융감독원 등 구체적인 기관명을 포함해야 합니다.",
@@ -101,7 +101,7 @@ class SimpleModelHandler:
                 "식별 가능한 신호와 징후를 구체적으로 설명하세요. 원격 접속 흔적, 의심스러운 프로세스, 레지스트리 변경 등을 포함하세요.",
                 "모니터링과 탐지에 활용할 수 있는 지표를 제시하세요. 실시간 모니터링과 사후 분석에 사용할 수 있는 지표들을 설명하세요."
             ],
-            "방안_묣기": [
+            "방안_묻기": [
                 "구체적인 대응 방안과 해결책을 제시하세요. 기술적 대응방안과 관리적 대응방안을 모두 포함하세요.",
                 "실무적이고 실행 가능한 방안들을 중심으로 답변하세요. 딥페이크 기술 악용 대비 방안, 금융권 보안 강화 방안 등을 구체적으로 제시하세요.",
                 "체계적인 관리 방안을 단계별로 설명하세요. 예방, 탐지, 대응, 복구 단계별 방안을 제시하세요.",
@@ -138,7 +138,7 @@ class SimpleModelHandler:
             ]
         }
         
-        # 학습 데이터 저장 (강화)
+        # 학습 데이터 저장
         self.learning_data = {
             "successful_answers": [],
             "failed_answers": [],
@@ -146,28 +146,28 @@ class SimpleModelHandler:
             "answer_quality_scores": [],
             "mc_context_patterns": {},
             "choice_range_errors": [],
-            "intent_based_answers": {},  # 의도별 성공 답변 저장
-            "domain_specific_learning": {},  # 도메인별 학습 패턴
-            "intent_prompt_effectiveness": {},  # 의도별 프롬프트 효과성
-            "high_quality_templates": {},  # 고품질 템플릿
-            "mc_accuracy_by_domain": {},  # 도메인별 객관식 정확도
-            "negative_vs_positive_patterns": {},  # 부정형 vs 긍정형 패턴 학습
-            "choice_distribution_learning": {}  # 선택지 분포 학습
+            "intent_based_answers": {},
+            "domain_specific_learning": {},
+            "intent_prompt_effectiveness": {},
+            "high_quality_templates": {},
+            "mc_accuracy_by_domain": {},
+            "negative_vs_positive_patterns": {},
+            "choice_distribution_learning": {}
         }
         
         # 이전 학습 데이터 로드
         self._load_learning_data()
         
-        # 성능 최적화 설정 (실제 데이터 기반)
+        # 성능 최적화 설정
         self.optimization_config = {
-            "intent_confidence_threshold": 0.6,  # 의도 신뢰도 임계값
-            "quality_threshold": 0.7,            # 품질 임계값
-            "korean_ratio_threshold": 0.8,       # 한국어 비율 임계값
-            "max_retry_attempts": 2,              # 최대 재시도 횟수
-            "template_preference": True,          # 템플릿 우선 사용
-            "adaptive_prompt": True,              # 적응형 프롬프트 사용
-            "mc_context_weighting": True,         # 객관식 문맥 가중치 사용
-            "domain_specific_optimization": True  # 도메인별 최적화
+            "intent_confidence_threshold": 0.6,
+            "quality_threshold": 0.7,
+            "korean_ratio_threshold": 0.8,
+            "max_retry_attempts": 2,
+            "template_preference": True,
+            "adaptive_prompt": True,
+            "mc_context_weighting": True,
+            "domain_specific_optimization": True
         }
         
         if verbose:
@@ -194,7 +194,7 @@ class SimpleModelHandler:
         
         self.model.eval()
         
-        # 한국어 전용 주관식 답변 템플릿 (실제 데이터 기반 강화)
+        # 한국어 전용 주관식 답변 템플릿
         self.korean_templates = {
             "개인정보보호": {
                 "기관_묻기": [
@@ -342,8 +342,7 @@ class SimpleModelHandler:
                 print(f"학습 데이터 저장 오류: {e}")
     
     def _extract_choice_count(self, question: str) -> int:
-        """질문에서 선택지 개수 추출 (실제 데이터 기반 개선)"""
-        # 실제 데이터 패턴: "1 소비자금융업\n2 투자자문업\n3 투자매매업"
+        """질문에서 선택지 개수 추출"""
         lines = question.split('\n')
         choice_numbers = []
         
@@ -361,15 +360,15 @@ class SimpleModelHandler:
             return max(choice_numbers)
         
         # 폴백: 기본 패턴으로 확인
-        for i in range(5, 2, -1):  # 5개부터 3개까지 확인
+        for i in range(5, 2, -1):
             pattern = r'1\s.*' + '.*'.join([f'{j}\s' for j in range(2, i+1)])
             if re.search(pattern, question, re.DOTALL):
                 return i
         
-        return 5  # 기본값
+        return 5
     
     def _analyze_mc_context(self, question: str, domain: str = "일반") -> Dict:
-        """객관식 질문 컨텍스트 분석 (실제 데이터 기반 대폭 강화)"""
+        """객관식 질문 컨텍스트 분석"""
         context = {
             "is_negative": False,
             "is_positive": False,
@@ -383,7 +382,7 @@ class SimpleModelHandler:
         
         question_lower = question.lower()
         
-        # 부정형/긍정형 판단 (실제 패턴 기반)
+        # 부정형/긍정형 판단
         for pattern in self.mc_context_patterns["negative_keywords"]:
             if re.search(pattern, question_lower):
                 context["is_negative"] = True
@@ -394,7 +393,7 @@ class SimpleModelHandler:
                 context["is_positive"] = True
                 break
         
-        # 도메인별 특화 분석 (실제 데이터 분포 기반)
+        # 도메인별 특화 분석
         if domain in self.mc_context_patterns["domain_specific_patterns"]:
             domain_info = self.mc_context_patterns["domain_specific_patterns"][domain]
             
@@ -407,7 +406,7 @@ class SimpleModelHandler:
                 context["likely_answers"] = domain_info["common_answers"]
                 context["confidence_score"] = min(keyword_matches / len(domain_info["keywords"]), 1.0)
         
-        # 핵심 용어 추출 (도메인별 특화)
+        # 핵심 용어 추출
         domain_terms = {
             "금융투자": ["구분", "업무", "금융투자업", "해당하지"],
             "위험관리": ["요소", "계획", "위험", "적절하지"],
@@ -425,10 +424,10 @@ class SimpleModelHandler:
         return context
     
     def _get_context_based_mc_answer(self, question: str, max_choice: int, domain: str = "일반") -> str:
-        """컨텍스트 기반 객관식 답변 생성 (실제 데이터 기반 대폭 강화)"""
+        """컨텍스트 기반 객관식 답변 생성"""
         context = self._analyze_mc_context(question, domain)
         
-        # 1차: 도메인별 학습된 패턴 적용
+        # 도메인별 학습된 패턴 적용
         if context["likely_answers"] and context["confidence_score"] > 0.3:
             # 신뢰도가 높은 경우 학습된 패턴 사용
             valid_answers = [ans for ans in context["likely_answers"] 
@@ -436,20 +435,15 @@ class SimpleModelHandler:
             if valid_answers:
                 return random.choice(valid_answers)
         
-        # 2차: 부정형/긍정형 패턴 기반 선택
+        # 부정형/긍정형 패턴 기반 선택
         if context["is_negative"]:
-            # 부정형 질문 - 실제 데이터 분석 결과
             if domain == "금융투자" and max_choice == 5:
-                # "해당하지 않는 것" - 보험중개업(5번)이 답인 경우가 많음
-                weights = [1, 1, 1, 1, 4]
+                weights = [1, 1, 1, 1, 4]  # 보험중개업(5번)
             elif domain == "위험관리" and max_choice == 5:
-                # "적절하지 않은 것" - 위험수용(2번)이 답인 경우가 많음
-                weights = [1, 4, 1, 1, 1]
+                weights = [1, 4, 1, 1, 1]  # 위험수용(2번)
             elif domain == "정보보안" and max_choice == 4:
-                # "옳지 않은 것" - 개인정보 파기 절차(3번)가 답인 경우가 많음
-                weights = [1, 1, 4, 1]
+                weights = [1, 1, 4, 1]  # 개인정보 파기 절차(3번)
             else:
-                # 일반적인 부정형 - 마지막이나 4번에 가중치
                 if max_choice == 5:
                     weights = [1, 1, 2, 3, 4]
                 elif max_choice == 4:
@@ -458,18 +452,13 @@ class SimpleModelHandler:
                     weights = [1, 1, 2]
                     
         elif context["is_positive"]:
-            # 긍정형 질문 - 실제 데이터 분석 결과
             if domain == "개인정보보호":
-                # "가장 중요한 요소" - 경영진의 참여(2번)가 답인 경우가 많음
-                weights = [1, 4, 2, 1, 1] if max_choice >= 5 else [1, 4, 2, 1]
+                weights = [1, 4, 2, 1, 1] if max_choice >= 5 else [1, 4, 2, 1]  # 경영진의 참여(2번)
             elif domain == "전자금융":
-                # "요구할 수 있는 경우" - 통화신용정책 관련(4번)이 답인 경우가 많음
-                weights = [1, 1, 1, 4, 1] if max_choice >= 5 else [1, 1, 1, 4]
+                weights = [1, 1, 1, 4, 1] if max_choice >= 5 else [1, 1, 1, 4]  # 통화신용정책 관련(4번)
             elif domain == "사이버보안":
-                # "가장 적절한 것" - 다양한 분포
                 weights = [2, 1, 2, 1, 2] if max_choice >= 5 else [2, 1, 2, 1]
             else:
-                # 일반적인 긍정형 - 앞쪽 선택지에 가중치
                 if max_choice == 5:
                     weights = [3, 3, 2, 1, 1]
                 elif max_choice == 4:
@@ -477,16 +466,16 @@ class SimpleModelHandler:
                 else:
                     weights = [3, 2, 1]
         else:
-            # 중립적 질문 - 균등 분포에 약간의 변화
+            # 중립적 질문
             weights = [2] * max_choice
             
             # 도메인별 추가 가중치
             if domain == "사이버보안" and max_choice >= 3:
-                weights[2] += 1  # 보안 관련은 3번이 많음
+                weights[2] += 1
             elif domain == "개인정보보호" and max_choice >= 2:
-                weights[1] += 1  # 개인정보는 2번이 많음
+                weights[1] += 1
             elif domain == "전자금융" and max_choice >= 4:
-                weights[3] += 1  # 전자금융은 4번이 많음
+                weights[3] += 1
         
         # 학습된 컨텍스트 패턴 적용
         pattern_key = f"{context['is_negative']}_{context['is_positive']}_{domain}_{max_choice}"
@@ -498,7 +487,7 @@ class SimpleModelHandler:
                 if num.isdigit() and 1 <= int(num) <= max_choice:
                     idx = int(num) - 1
                     if idx < len(weights):
-                        weights[idx] += int(weight * 2)  # 학습된 패턴에 높은 가중치
+                        weights[idx] += int(weight * 2)
         
         # 가중치 기반 선택
         choices = []
@@ -530,26 +519,24 @@ class SimpleModelHandler:
         self.learning_data["mc_accuracy_by_domain"][domain]["total"] += 1
     
     def _create_intent_aware_prompt(self, question: str, intent_analysis: Dict) -> str:
-        """의도 인식 기반 프롬프트 생성 (강화)"""
+        """의도 인식 기반 프롬프트 생성"""
         primary_intent = intent_analysis.get("primary_intent", "일반")
         answer_type = intent_analysis.get("answer_type_required", "설명형")
         domain = self._detect_domain(question)
         context_hints = intent_analysis.get("context_hints", [])
         intent_confidence = intent_analysis.get("intent_confidence", 0.0)
         
-        # 의도별 특화 프롬프트 선택 (강화)
+        # 의도별 특화 프롬프트 선택
         if primary_intent in self.intent_specific_prompts:
-            # 높은 신뢰도일 때는 더 구체적인 프롬프트 사용
             if intent_confidence > 0.7:
                 available_prompts = self.intent_specific_prompts[primary_intent]
                 intent_instruction = random.choice(available_prompts)
             else:
-                # 신뢰도가 낮을 때는 기본 프롬프트 사용
                 intent_instruction = "다음 질문에 정확하고 상세하게 답변하세요."
         else:
             intent_instruction = "다음 질문에 정확하고 상세하게 답변하세요."
         
-        # 답변 유형별 추가 지침 (강화)
+        # 답변 유형별 추가 지침
         type_guidance = ""
         if answer_type == "기관명":
             type_guidance = "구체적인 기관명이나 조직명을 반드시 포함하여 답변하세요. 해당 기관의 정확한 명칭과 소속을 명시하세요."
@@ -677,10 +664,10 @@ class SimpleModelHandler:
         return selected_prompt
     
     def _add_learning_record(self, question: str, answer: str, question_type: str, success: bool, max_choice: int = 5, quality_score: float = 0.0, intent_analysis: Dict = None):
-        """학습 기록 추가 (강화)"""
+        """학습 기록 추가"""
         record = {
-            "question": question[:200],  # 질문 요약
-            "answer": answer[:300],      # 답변 요약
+            "question": question[:200],
+            "answer": answer[:300],
             "type": question_type,
             "max_choice": max_choice,
             "timestamp": datetime.now().isoformat(),
@@ -690,7 +677,7 @@ class SimpleModelHandler:
         if success:
             self.learning_data["successful_answers"].append(record)
             
-            # 의도별 성공 답변 저장 (강화)
+            # 의도별 성공 답변 저장
             if intent_analysis and question_type == "subjective":
                 primary_intent = intent_analysis.get("primary_intent", "일반")
                 if primary_intent not in self.learning_data["intent_based_answers"]:
@@ -789,9 +776,9 @@ class SimpleModelHandler:
                 print(f"워밍업 실패: {e}")
     
     def generate_answer(self, question: str, question_type: str, max_choice: int = 5, intent_analysis: Dict = None) -> str:
-        """답변 생성 (대폭 강화)"""
+        """답변 생성"""
         
-        # 도메인 감지 (실제 데이터 기반)
+        # 도메인 감지
         domain = self._detect_domain(question)
         
         # 프롬프트 생성
@@ -865,7 +852,7 @@ class SimpleModelHandler:
             return fallback
     
     def _create_enhanced_mc_prompt(self, question: str, max_choice: int, domain: str = "일반") -> str:
-        """개선된 객관식 프롬프트 생성 (실제 데이터 기반)"""
+        """객관식 프롬프트 생성"""
         context = self._analyze_mc_context(question, domain)
         
         # 선택지 범위 명시
@@ -926,7 +913,7 @@ class SimpleModelHandler:
         return random.choice(prompts)
     
     def _create_korean_subj_prompt(self, question: str, domain: str = "일반") -> str:
-        """한국어 전용 주관식 프롬프트 생성 (도메인 특화)"""
+        """한국어 전용 주관식 프롬프트 생성"""
         
         prompts = [
             f"""금융보안 전문가로서 다음 {domain} 분야 질문에 대해 한국어로만 정확한 답변을 작성하세요.
@@ -967,19 +954,19 @@ class SimpleModelHandler:
         return random.choice(prompts)
     
     def _get_generation_config(self, question_type: str) -> GenerationConfig:
-        """생성 설정 (최적화)"""
+        """생성 설정"""
         if question_type == "multiple_choice":
             return GenerationConfig(
-                max_new_tokens=15,  # 객관식은 더 짧게
-                temperature=0.3,    # 더 확정적으로
-                top_p=0.8,         # 더 집중적으로
+                max_new_tokens=15,
+                temperature=0.3,
+                top_p=0.8,
                 do_sample=True,
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=self.tokenizer.eos_token_id
             )
         else:
             return GenerationConfig(
-                max_new_tokens=350,  # 주관식은 더 길게
+                max_new_tokens=350,
                 temperature=0.6,
                 top_p=0.9,
                 do_sample=True,
@@ -988,7 +975,7 @@ class SimpleModelHandler:
             )
     
     def _process_enhanced_mc_answer(self, response: str, question: str, max_choice: int, domain: str = "일반") -> str:
-        """개선된 객관식 답변 처리 (실제 데이터 기반)"""
+        """객관식 답변 처리"""
         # 숫자 추출 (선택지 범위 내에서만)
         numbers = re.findall(r'[1-9]', response)
         for num in numbers:
@@ -1003,7 +990,7 @@ class SimpleModelHandler:
         return self._get_context_based_mc_answer(question, max_choice, domain)
     
     def _process_intent_aware_subj_answer(self, response: str, question: str, intent_analysis: Dict = None) -> str:
-        """의도 인식 기반 주관식 답변 처리 (강화)"""
+        """의도 인식 기반 주관식 답변 처리"""
         # 기본 정리
         response = re.sub(r'\s+', ' ', response).strip()
         
@@ -1014,7 +1001,7 @@ class SimpleModelHandler:
         # 한국어 비율 확인
         korean_ratio = self._calculate_korean_ratio(response)
         
-        # 의도별 답변 검증 (강화)
+        # 의도별 답변 검증
         is_intent_match = True
         if intent_analysis:
             primary_intent = intent_analysis.get("primary_intent", "일반")
@@ -1057,10 +1044,10 @@ class SimpleModelHandler:
         return response
     
     def _generate_intent_based_template_answer(self, question: str, intent_analysis: Dict = None) -> str:
-        """의도 기반 템플릿 답변 생성 (강화)"""
+        """의도 기반 템플릿 답변 생성"""
         domain = self._detect_domain(question)
         
-        # 의도별 템플릿 선택 (강화)
+        # 의도별 템플릿 선택
         if intent_analysis:
             primary_intent = intent_analysis.get("primary_intent", "일반")
             answer_type = intent_analysis.get("answer_type_required", "설명형")
@@ -1097,7 +1084,6 @@ class SimpleModelHandler:
                 if "일반" in self.korean_templates[domain]:
                     templates = self.korean_templates[domain]["일반"]
                 else:
-                    # dict의 첫 번째 값 사용
                     templates = list(self.korean_templates[domain].values())[0]
             else:
                 templates = self.korean_templates[domain]
@@ -1108,7 +1094,7 @@ class SimpleModelHandler:
         return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
     
     def _calculate_answer_quality(self, answer: str, question: str, intent_analysis: Dict = None) -> float:
-        """답변 품질 점수 계산 (강화)"""
+        """답변 품질 점수 계산"""
         if not answer:
             return 0.0
         
@@ -1139,20 +1125,20 @@ class SimpleModelHandler:
         if found_keywords > 0:
             score += min(found_keywords / len(domain_keywords), 1.0) * 0.15
         
-        # 의도 일치성 (30%) - 강화
+        # 의도 일치성 (30%)
         if intent_analysis:
             answer_type = intent_analysis.get("answer_type_required", "설명형")
             if self._check_intent_match(answer, answer_type):
                 score += 0.3
             else:
-                score += 0.1  # 의도 불일치시 감점
+                score += 0.1
         else:
-            score += 0.2  # 의도 분석이 없는 경우 기본 점수
+            score += 0.2
         
         return min(score, 1.0)
     
     def _check_intent_match(self, answer: str, answer_type: str) -> bool:
-        """의도 일치성 확인 (강화)"""
+        """의도 일치성 확인"""
         answer_lower = answer.lower()
         
         if answer_type == "기관명":
@@ -1180,10 +1166,10 @@ class SimpleModelHandler:
             definition_keywords = ["정의", "개념", "의미", "뜻", "용어"]
             return any(keyword in answer_lower for keyword in definition_keywords)
         
-        return True  # 기본적으로 통과
+        return True
     
     def _get_domain_keywords(self, question: str) -> List[str]:
-        """도메인별 키워드 반환 (실제 데이터 기반)"""
+        """도메인별 키워드 반환"""
         question_lower = question.lower()
         
         if "개인정보" in question_lower:
@@ -1223,17 +1209,16 @@ class SimpleModelHandler:
         return str(random.randint(1, max_choice))
     
     def _get_fallback_answer(self, question_type: str, question: str = "", max_choice: int = 5, intent_analysis: Dict = None, domain: str = "일반") -> str:
-        """폴백 답변 (도메인 고려)"""
+        """폴백 답변"""
         if question_type == "multiple_choice":
             return self._get_context_based_mc_answer(question, max_choice, domain)
         else:
             return self._generate_intent_based_template_answer(question, intent_analysis)
     
     def _detect_domain(self, question: str) -> str:
-        """도메인 감지 (실제 데이터 기반)"""
+        """도메인 감지"""
         question_lower = question.lower()
         
-        # 실제 데이터 분포 기반 우선순위 적용
         if any(word in question_lower for word in ["개인정보", "정보주체", "만 14세", "법정대리인"]):
             return "개인정보보호"
         elif any(word in question_lower for word in ["트로이", "악성코드", "RAT", "원격제어", "딥페이크", "SBOM"]):
@@ -1258,7 +1243,7 @@ class SimpleModelHandler:
         }
     
     def get_learning_stats(self) -> Dict:
-        """학습 통계 (강화)"""
+        """학습 통계"""
         return {
             "successful_count": len(self.learning_data["successful_answers"]),
             "failed_count": len(self.learning_data["failed_answers"]),

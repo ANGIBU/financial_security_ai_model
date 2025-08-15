@@ -4,9 +4,9 @@
 금융보안 지식베이스
 - 도메인별 키워드 분류
 - 전문 용어 처리
-- 한국어 전용 답변 템플릿 제공 (품질 개선)
+- 한국어 전용 답변 템플릿 제공
 - 대회 규칙 준수 검증
-- 질문 의도별 지식 제공 강화
+- 질문 의도별 지식 제공
 """
 
 import pickle
@@ -25,7 +25,7 @@ class FinancialSecurityKnowledgeBase:
         self.pkl_dir = Path("./pkl")
         self.pkl_dir.mkdir(exist_ok=True)
         
-        # 도메인별 키워드 (실제 데이터 분석 기반 대폭 확장)
+        # 도메인별 키워드
         self.domain_keywords = {
             "개인정보보호": [
                 "개인정보", "정보주체", "개인정보보호법", "민감정보", 
@@ -85,7 +85,7 @@ class FinancialSecurityKnowledgeBase:
             ]
         }
         
-        # 객관식 질문 패턴 (실제 데이터 기반)
+        # 객관식 질문 패턴
         self.mc_patterns = [
             "해당하지.*않는.*것",
             "적절하지.*않는.*것", 
@@ -102,7 +102,7 @@ class FinancialSecurityKnowledgeBase:
             "어떤.*것인가"
         ]
         
-        # 한국어 전용 주관식 답변 템플릿 (실제 데이터 기반 대폭 강화)
+        # 한국어 전용 주관식 답변 템플릿
         self.korean_subjective_templates = {
             "사이버보안": {
                 "특징_묻기": [
@@ -236,7 +236,7 @@ class FinancialSecurityKnowledgeBase:
             }
         }
         
-        # 한국어 전용 금융 전문 용어 사전 (실제 데이터 기반 확장)
+        # 한국어 전용 금융 전문 용어 사전
         self.korean_financial_terms = {
             "정보보안관리체계": "조직의 정보자산을 보호하기 위한 종합적인 관리체계",
             "개인정보관리체계": "개인정보의 안전한 처리를 위한 체계적 관리방안",
@@ -255,7 +255,7 @@ class FinancialSecurityKnowledgeBase:
             "딥페이크": "인공지능을 이용하여 가짜 영상이나 음성을 제작하는 기술"
         }
         
-        # 기관별 구체적 정보 (실제 데이터 기반 강화)
+        # 기관별 구체적 정보
         self.institution_database = {
             "전자금융분쟁조정": {
                 "기관명": "전자금융분쟁조정위원회",
@@ -293,57 +293,57 @@ class FinancialSecurityKnowledgeBase:
             }
         }
         
-        # 실제 데이터 기반 객관식 정답 패턴 (강화)
+        # 객관식 정답 패턴
         self.mc_answer_patterns = {
             "금융투자_해당하지않는": {
                 "question_keywords": ["금융투자업", "구분", "해당하지 않는"],
                 "choices": ["소비자금융업", "투자자문업", "투자매매업", "투자중개업", "보험중개업"],
-                "correct_answer": "5",  # 보험중개업
+                "correct_answer": "5",
                 "explanation": "금융투자업의 구분에는 소비자금융업, 투자자문업, 투자매매업, 투자중개업이 포함되며, 보험중개업은 해당하지 않습니다."
             },
             "위험관리_적절하지않은": {
                 "question_keywords": ["위험 관리", "계획 수립", "적절하지 않은"],
                 "choices": ["수행인력", "위험 수용", "위험 대응 전략", "대상", "기간"],
-                "correct_answer": "2",  # 위험 수용
+                "correct_answer": "2",
                 "explanation": "위험 관리 계획 수립 시 수행인력, 위험 대응 전략 선정, 대상, 기간을 고려해야 하며, 위험 수용은 적절하지 않습니다."
             },
             "개인정보_중요한요소": {
                 "question_keywords": ["정책 수립", "가장 중요한 요소"],
                 "choices": ["정보보호 정책 제개정", "경영진의 참여", "최고책임자 지정", "자원 할당"],
-                "correct_answer": "2",  # 경영진의 참여
+                "correct_answer": "2",
                 "explanation": "관리체계 수립 및 운영의 정책 수립 단계에서 가장 중요한 요소는 경영진의 참여입니다."
             },
             "전자금융_요구경우": {
                 "question_keywords": ["한국은행", "자료제출", "요구할 수 있는 경우"],
                 "choices": ["보안 강화", "통계조사", "경영 실적", "통화신용정책"],
-                "correct_answer": "4",  # 통화신용정책의 수행 및 지급결제제도의 원활한 운영
+                "correct_answer": "4",
                 "explanation": "한국은행이 금융통화위원회의 요청에 따라 자료제출을 요구할 수 있는 경우는 통화신용정책의 수행 및 지급결제제도의 원활한 운영을 위해서입니다."
             },
             "개인정보_법정대리인": {
                 "question_keywords": ["만 14세 미만", "아동", "개인정보", "절차"],
                 "choices": ["학교의 동의", "법정대리인의 동의", "본인의 동의", "친구의 동의"],
-                "correct_answer": "2",  # 법정대리인의 동의
+                "correct_answer": "2",
                 "explanation": "개인정보보호법 제22조의2에 따라 만 14세 미만 아동의 개인정보를 처리하기 위해서는 법정대리인의 동의를 받아야 합니다."
             },
             "사이버보안_SBOM": {
                 "question_keywords": ["SBOM", "활용", "이유", "적절한"],
                 "choices": ["접근 제어", "투명성", "개인정보 보호", "다양성", "소프트웨어 공급망"],
-                "correct_answer": "5",  # 소프트웨어 공급망 보안
+                "correct_answer": "5",
                 "explanation": "금융권에서 SBOM을 활용하는 이유는 소프트웨어 공급망 보안을 강화하기 위해서입니다."
             },
             "정보보안_재해복구": {
                 "question_keywords": ["재해 복구", "계획 수립", "옳지 않은"],
                 "choices": ["복구 절차", "비상연락체계", "개인정보 파기", "복구 목표시간"],
-                "correct_answer": "3",  # 개인정보 파기 절차
+                "correct_answer": "3",
                 "explanation": "재해 복구 계획 수립 시 복구 절차, 비상연락체계, 복구 목표시간 정의가 필요하며, 개인정보 파기 절차는 옳지 않습니다."
             }
         }
         
-        # 템플릿 품질 평가 기준 (신규)
+        # 템플릿 품질 평가 기준
         self.template_quality_criteria = {
-            "length_range": (50, 400),  # 적절한 길이 범위
-            "korean_ratio_min": 0.9,   # 최소 한국어 비율
-            "structure_keywords": ["법", "규정", "조치", "관리", "절차", "기준"],  # 구조적 키워드
+            "length_range": (50, 400),
+            "korean_ratio_min": 0.9,
+            "structure_keywords": ["법", "규정", "조치", "관리", "절차", "기준"],
             "intent_keywords": {
                 "기관_묻기": ["위원회", "기관", "담당", "업무"],
                 "특징_묻기": ["특징", "특성", "성질", "기능"],
@@ -364,11 +364,11 @@ class FinancialSecurityKnowledgeBase:
                 "law_references": 0,
                 "technical_terms": 0
             },
-            "intent_analysis_history": {},  # 의도 분석 이력
-            "template_usage_stats": {},     # 템플릿 사용 통계
-            "template_effectiveness": {},   # 템플릿 효과성
-            "mc_pattern_accuracy": {},      # 객관식 패턴 정확도
-            "institution_question_accuracy": {}  # 기관 질문 정확도
+            "intent_analysis_history": {},
+            "template_usage_stats": {},
+            "template_effectiveness": {},
+            "mc_pattern_accuracy": {},
+            "institution_question_accuracy": {}
         }
         
         # 이전 분석 이력 로드
@@ -396,7 +396,7 @@ class FinancialSecurityKnowledgeBase:
                 "last_updated": datetime.now().isoformat()
             }
             
-            # 최근 1000개 패턴만 저장 (대회 환경 고려)
+            # 최근 1000개 패턴만 저장
             save_data["question_patterns"] = save_data["question_patterns"][-1000:]
             
             with open(history_file, 'wb') as f:
@@ -405,10 +405,10 @@ class FinancialSecurityKnowledgeBase:
             pass
     
     def analyze_question(self, question: str) -> Dict:
-        """질문 분석 (실제 데이터 기반 강화)"""
+        """질문 분석"""
         question_lower = question.lower()
         
-        # 도메인 찾기 (실제 데이터 분포 기반)
+        # 도메인 찾기
         detected_domains = []
         domain_scores = {}
         
@@ -442,10 +442,10 @@ class FinancialSecurityKnowledgeBase:
         # 대회 규칙 준수 확인
         compliance_check = self._check_competition_compliance(question)
         
-        # 기관 관련 질문인지 확인 (강화)
+        # 기관 관련 질문인지 확인
         institution_info = self._check_institution_question(question)
         
-        # 객관식 패턴 매칭 (실제 데이터 기반)
+        # 객관식 패턴 매칭
         mc_pattern_info = self._analyze_mc_pattern(question)
         
         # 분석 결과 저장
@@ -455,8 +455,8 @@ class FinancialSecurityKnowledgeBase:
             "technical_level": self._determine_technical_level(complexity, korean_terms),
             "korean_technical_terms": korean_terms,
             "compliance": compliance_check,
-            "institution_info": institution_info,  # 기관 정보 추가
-            "mc_pattern_info": mc_pattern_info     # 객관식 패턴 정보 추가
+            "institution_info": institution_info,
+            "mc_pattern_info": mc_pattern_info
         }
         
         # 이력에 추가
@@ -465,7 +465,7 @@ class FinancialSecurityKnowledgeBase:
         return analysis_result
     
     def _analyze_mc_pattern(self, question: str) -> Dict:
-        """객관식 패턴 분석 (실제 데이터 기반 신규)"""
+        """객관식 패턴 분석"""
         question_lower = question.lower()
         
         pattern_info = {
@@ -481,7 +481,7 @@ class FinancialSecurityKnowledgeBase:
             keyword_matches = sum(1 for keyword in pattern_data["question_keywords"] 
                                 if keyword in question_lower)
             
-            if keyword_matches >= 2:  # 2개 이상 키워드 매칭
+            if keyword_matches >= 2:
                 pattern_info["is_mc_question"] = True
                 pattern_info["pattern_type"] = pattern_key
                 pattern_info["likely_answer"] = pattern_data["correct_answer"]
@@ -492,7 +492,7 @@ class FinancialSecurityKnowledgeBase:
         return pattern_info
     
     def _check_institution_question(self, question: str) -> Dict:
-        """기관 관련 질문 확인 (실제 데이터 기반 강화)"""
+        """기관 관련 질문 확인"""
         question_lower = question.lower()
         
         institution_info = {
@@ -503,7 +503,7 @@ class FinancialSecurityKnowledgeBase:
             "question_pattern": None
         }
         
-        # 실제 데이터 기반 기관 질문 패턴 확인
+        # 기관 질문 패턴 확인
         institution_patterns = [
             "기관.*기술하세요", "기관.*설명하세요", "어떤.*기관", "어느.*기관",
             "조정.*신청.*기관", "분쟁.*조정.*기관", "신청.*수.*있는.*기관",
@@ -526,7 +526,7 @@ class FinancialSecurityKnowledgeBase:
             institution_info["confidence"] = min(pattern_matches / 2, 1.0)
             institution_info["question_pattern"] = matched_pattern
             
-            # 실제 데이터 기반 분야별 기관 확인
+            # 분야별 기관 확인
             for institution_key, institution_data in self.institution_database.items():
                 if "관련질문패턴" in institution_data:
                     pattern_score = sum(1 for pattern in institution_data["관련질문패턴"] 
@@ -558,9 +558,9 @@ class FinancialSecurityKnowledgeBase:
     def _check_competition_compliance(self, question: str) -> Dict:
         """대회 규칙 준수 확인"""
         compliance = {
-            "korean_content": True,  # 한국어 질문인지
-            "appropriate_domain": True,  # 적절한 도메인인지
-            "no_external_dependency": True  # 외부 의존성 없는지
+            "korean_content": True,
+            "appropriate_domain": True,
+            "no_external_dependency": True
         }
         
         # 한국어 비율 확인
@@ -582,7 +582,7 @@ class FinancialSecurityKnowledgeBase:
         return compliance
     
     def _add_to_analysis_history(self, question: str, analysis: Dict):
-        """분석 이력에 추가 (강화)"""
+        """분석 이력에 추가"""
         # 도메인 빈도 업데이트
         for domain in analysis["domain"]:
             self.analysis_history["domain_frequency"][domain] = \
@@ -603,7 +603,7 @@ class FinancialSecurityKnowledgeBase:
         if len(analysis["korean_technical_terms"]) > 0:
             self.analysis_history["compliance_check"]["technical_terms"] += 1
         
-        # 기관 질문 이력 추가 (강화)
+        # 기관 질문 이력 추가
         if analysis["institution_info"]["is_institution_question"]:
             institution_type = analysis["institution_info"]["institution_type"]
             if institution_type:
@@ -644,7 +644,7 @@ class FinancialSecurityKnowledgeBase:
         self.analysis_history["question_patterns"].append(pattern)
     
     def get_korean_subjective_template(self, domain: str, intent_type: str = "일반") -> str:
-        """한국어 주관식 답변 템플릿 반환 (실제 데이터 기반 품질 강화)"""
+        """한국어 주관식 답변 템플릿 반환"""
         
         # 템플릿 사용 통계 업데이트
         template_key = f"{domain}_{intent_type}"
@@ -671,7 +671,7 @@ class FinancialSecurityKnowledgeBase:
             # 일반 템플릿 사용
             templates = self.korean_subjective_templates["일반"]["일반"]
         
-        # 품질 기반 템플릿 선택 (신규)
+        # 품질 기반 템플릿 선택
         if isinstance(templates, list) and len(templates) > 1:
             # 템플릿 품질 평가 후 선택
             quality_scores = []
@@ -681,12 +681,12 @@ class FinancialSecurityKnowledgeBase:
             
             # 상위 품질 템플릿 중에서 선택
             quality_scores.sort(key=lambda x: x[1], reverse=True)
-            top_templates = [t for t, q in quality_scores[:3]]  # 상위 3개
+            top_templates = [t for t, q in quality_scores[:3]]
             selected_template = random.choice(top_templates)
         else:
             selected_template = random.choice(templates) if isinstance(templates, list) else templates
         
-        # 한국어 전용 검증 (대회 규칙 준수)
+        # 한국어 전용 검증
         import re
         selected_template = re.sub(r'[a-zA-Z]+', '', selected_template)
         selected_template = re.sub(r'\s+', ' ', selected_template).strip()
@@ -711,7 +711,7 @@ class FinancialSecurityKnowledgeBase:
         return selected_template
     
     def _evaluate_template_quality(self, template: str, intent_type: str) -> float:
-        """템플릿 품질 평가 (신규)"""
+        """템플릿 품질 평가"""
         score = 0.0
         
         # 길이 적절성 (25%)
@@ -745,12 +745,12 @@ class FinancialSecurityKnowledgeBase:
             found_intent = sum(1 for keyword in intent_keywords if keyword in template)
             score += min(found_intent / len(intent_keywords), 1.0) * 0.25
         else:
-            score += 0.15  # 의도 키워드가 없는 경우 기본 점수
+            score += 0.15
         
         return min(score, 1.0)
     
     def get_institution_specific_answer(self, institution_type: str) -> str:
-        """기관별 구체적 답변 반환 (실제 데이터 기반 강화)"""
+        """기관별 구체적 답변 반환"""
         if institution_type in self.institution_database:
             info = self.institution_database[institution_type]
             
@@ -770,7 +770,7 @@ class FinancialSecurityKnowledgeBase:
         return "관련 법령에 따라 해당 분야의 전문 기관에서 업무를 담당하고 있습니다."
     
     def get_mc_pattern_answer(self, question: str) -> str:
-        """객관식 패턴 기반 답변 반환 (실제 데이터 기반 신규)"""
+        """객관식 패턴 기반 답변 반환"""
         mc_pattern_info = self._analyze_mc_pattern(question)
         
         if mc_pattern_info["is_mc_question"] and mc_pattern_info["confidence"] > 0.5:
@@ -779,7 +779,7 @@ class FinancialSecurityKnowledgeBase:
         return None
     
     def get_subjective_template(self, domain: str, intent_type: str = "일반") -> str:
-        """주관식 답변 템플릿 반환 (한국어 전용)"""
+        """주관식 답변 템플릿 반환"""
         return self.get_korean_subjective_template(domain, intent_type)
     
     def _calculate_complexity(self, question: str) -> float:
@@ -819,7 +819,7 @@ class FinancialSecurityKnowledgeBase:
             return "초급"
     
     def get_domain_specific_guidance(self, domain: str) -> Dict:
-        """도메인별 지침 반환 (실제 데이터 기반 강화)"""
+        """도메인별 지침 반환"""
         guidance = {
             "개인정보보호": {
                 "key_laws": ["개인정보보호법", "정보통신망법"],
@@ -888,7 +888,7 @@ class FinancialSecurityKnowledgeBase:
         })
     
     def get_analysis_statistics(self) -> Dict:
-        """분석 통계 반환 (강화)"""
+        """분석 통계 반환"""
         return {
             "domain_frequency": dict(self.analysis_history["domain_frequency"]),
             "complexity_distribution": dict(self.analysis_history["complexity_distribution"]),
@@ -923,7 +923,7 @@ class FinancialSecurityKnowledgeBase:
             english_ratio = english_chars / total_chars
             compliance["korean_only"] = english_ratio < 0.1
         
-        # 외부 의존성 확인 (URL, 외부 서비스 언급 등)
+        # 외부 의존성 확인
         external_indicators = ["http", "www", "api", "service", "cloud"]
         compliance["no_external_api"] = not any(indicator in answer.lower() for indicator in external_indicators)
         
@@ -936,7 +936,7 @@ class FinancialSecurityKnowledgeBase:
         return compliance
     
     def get_high_quality_template(self, domain: str, intent_type: str, min_quality: float = 0.8) -> str:
-        """고품질 템플릿 반환 (신규)"""
+        """고품질 템플릿 반환"""
         template_key = f"{domain}_{intent_type}"
         
         # 효과성이 검증된 템플릿 우선 사용

@@ -3,8 +3,8 @@
 """
 테스트 실행기
 - 시스템 테스트 실행
-- 의도 일치 성공률 명확 표시
-- 핵심 성능 지표만 출력
+- 의도 일치 성공률 표시
+- 핵심 성능 지표 출력
 """
 
 import os
@@ -18,7 +18,7 @@ sys.path.append(str(current_dir))
 from inference import FinancialAIInference
 
 def run_test(test_size: int = 50, verbose: bool = True):
-    """테스트 실행 (실제 데이터 기반 강화)"""
+    """테스트 실행"""
     
     # 파일 존재 확인
     test_file = "./test.csv"
@@ -33,7 +33,7 @@ def run_test(test_size: int = 50, verbose: bool = True):
     try:
         # AI 엔진 초기화
         print("\n시스템 초기화 중...")
-        engine = FinancialAIInference(verbose=False)  # 최소 출력을 위해 False
+        engine = FinancialAIInference(verbose=False)
         
         # 테스트 데이터 준비
         import pandas as pd
@@ -62,7 +62,7 @@ def run_test(test_size: int = 50, verbose: bool = True):
                 output_file
             )
         
-        # 결과 분석 (실제 데이터 기반 강화)
+        # 결과 분석
         print_enhanced_results(results, output_file, test_size)
         
         return True
@@ -78,14 +78,14 @@ def run_test(test_size: int = 50, verbose: bool = True):
             engine.cleanup()
 
 def print_enhanced_results(results: dict, output_file: str, test_size: int):
-    """실제 데이터 기반 핵심 성과 지표 출력"""
+    """핵심 성과 지표 출력"""
 
     total_time_minutes = results['total_time'] / 60
     print(f"\n=== 테스트 완료 ({test_size}개 문항) ===")
     print(f"처리 시간: {total_time_minutes:.1f}분")
     print(f"처리 문항: {results['total_questions']}개")
     
-    # 1. 객관식 성능 (전체 성능의 86% 결정)
+    # 객관식 성능
     mc_count = results.get('mc_count', 0)
     mc_success_rate = results.get('model_success_rate', 0)
     mc_context_accuracy = results.get('mc_context_accuracy_rate', 0)
@@ -104,7 +104,7 @@ def print_enhanced_results(results: dict, output_file: str, test_size: int):
         for domain, rate in mc_domain_rates.items():
             print(f"  - {domain}: {rate:.1f}%")
     
-    # 2. 주관식 성능 (품질 중심)
+    # 주관식 성능
     subj_count = results.get('subj_count', 0)
     intent_success_rate = results.get('intent_match_success_rate', 0)
     korean_compliance = results.get('korean_compliance_rate', 0)
@@ -119,7 +119,7 @@ def print_enhanced_results(results: dict, output_file: str, test_size: int):
     else:
         print("주관식 문항 없음")
     
-    # 3. 특화 기능 성능
+    # 특화 기능 성능
     institution_count = results.get('institution_questions_count', 0)
     institution_accuracy = results.get('institution_answer_accuracy', 0)
     template_usage = results.get('template_usage_rate', 0)
@@ -130,7 +130,7 @@ def print_enhanced_results(results: dict, output_file: str, test_size: int):
         print(f"기관 답변 정확도: {institution_accuracy}개 성공")
     print(f"템플릿 활용률: {template_usage:.1f}%")
     
-    # 4. 최적화 성과
+    # 최적화 성과
     quality_improvements = results.get('quality_improvement_count', 0)
     fallback_avoidance = results.get('fallback_avoidance_rate', 0)
     korean_enhancements = results.get('korean_enhancement_count', 0)
@@ -140,7 +140,7 @@ def print_enhanced_results(results: dict, output_file: str, test_size: int):
     print(f"폴백 회피율: {fallback_avoidance:.1f}%")
     print(f"한국어 강화: {korean_enhancements}회")
     
-    # 5. 오류 분석
+    # 오류 분석
     choice_errors = results.get('choice_range_error_rate', 0)
     validation_errors = results.get('validation_error_rate', 0)
     
@@ -151,7 +151,7 @@ def print_enhanced_results(results: dict, output_file: str, test_size: int):
         if validation_errors > 0:
             print(f"검증 실패율: {validation_errors:.1f}%")
     
-    # 6. 도메인별 성과 요약
+    # 도메인별 성과 요약
     domain_stats = results.get('domain_stats', {})
     if domain_stats:
         print(f"\n=== 도메인별 분포 ===")
@@ -160,7 +160,7 @@ def print_enhanced_results(results: dict, output_file: str, test_size: int):
             print(f"{domain}: {count}개 ({percentage:.1f}%)")
 
 def estimate_final_performance(results: dict) -> float:
-    """최종 성능 예측 (실제 데이터 기반)"""
+    """최종 성능 예측"""
     
     # 객관식 성과 (가중치 86%)
     mc_weight = 0.86
@@ -184,7 +184,7 @@ def estimate_final_performance(results: dict) -> float:
     return total_score
 
 def suggest_improvements(results: dict):
-    """개선 제안 (실제 데이터 기반)"""
+    """개선 제안"""
     print(f"\n=== 성능 개선 제안 ===")
     
     mc_context = results.get('mc_context_accuracy_rate', 0)
@@ -285,7 +285,7 @@ def main():
     test_size = select_test_size()
     
     print(f"\n선택된 테스트: {test_size}문항")
-    print("실제 데이터 기반 최적화된 AI 추론 시스템을 테스트합니다...")
+    print("AI 추론 시스템을 테스트합니다...")
     
     success = run_test(test_size, verbose=True)
     
