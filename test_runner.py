@@ -3,8 +3,8 @@
 """
 테스트 실행기
 - 시스템 테스트 실행
-- 의도 일치 성공률 명확 표시
-- 핵심 성능 지표만 출력
+- 성능 측정 및 분석
+- 결과 검증
 """
 
 import os
@@ -33,7 +33,7 @@ def run_test(test_size: int = 50, verbose: bool = True):
     try:
         # AI 엔진 초기화
         print("\n시스템 초기화 중...")
-        engine = FinancialAIInference(verbose=False)  # 최소 출력을 위해 False
+        engine = FinancialAIInference(verbose=False)  # 초기화시 verbose=False로 설정
         
         # 테스트 데이터 준비
         import pandas as pd
@@ -45,7 +45,9 @@ def run_test(test_size: int = 50, verbose: bool = True):
             test_df = test_df.head(test_size)
             temp_submission = submission_df.head(test_size).copy()
             
+            # 통일된 출력 파일명
             output_file = "./test_result.csv"
+                
             results = engine.execute_inference_with_data(
                 test_df, 
                 temp_submission, 
@@ -59,8 +61,8 @@ def run_test(test_size: int = 50, verbose: bool = True):
                 output_file
             )
         
-        # 결과 분석 (간소화)
-        print_simplified_results(results, output_file, test_size)
+        # 결과 분석
+        print_test_results(results, output_file, test_size)
         
         return True
         
@@ -74,60 +76,18 @@ def run_test(test_size: int = 50, verbose: bool = True):
         if engine:
             engine.cleanup()
 
-def print_simplified_results(results: dict, output_file: str, test_size: int):
-    """핵심 3개 지표만 출력 (정확한 계산)"""
+def print_test_results(results: dict, output_file: str, test_size: int):
+    """테스트 결과 출력"""
 
-    # 기본 정보
+    print("테스트 완료")
+    
+    # 기본 정보만 출력
     total_time_minutes = results['total_time'] / 60
-    print(f"처리 시간: {total_time_minutes:.1f}분")
-    print(f"처리 문항: {results['total_questions']}개")
     
-    # 의도 일치 성공률 정확한 계산
-    subj_count = results.get('subj_count', 0)
-    intent_analysis_total = results.get('processing_stats', {}).get('intent_analysis_accuracy', {}).get('total', 0)
-    intent_analysis_correct = results.get('processing_stats', {}).get('intent_analysis_accuracy', {}).get('correct', 0)
-    intent_match_success = results.get('processing_stats', {}).get('intent_match_accuracy', {}).get('correct', 0)
-    intent_match_total = results.get('processing_stats', {}).get('intent_match_accuracy', {}).get('total', 0)
-    
-    if subj_count > 0 and intent_match_total > 0:
-        precise_intent_rate = (intent_match_success / intent_match_total) * 100
-        print(f"의도 일치 성공률: {precise_intent_rate:.1f}%")
-    else:
-        print(f"의도 일치 성공률: 0.0% (주관식 문항 없음)")
-
-def estimate_performance_score(results: dict) -> float:
-    """성능 점수 예측"""
-    # 간단한 점수 예측 공식
-    model_success = results.get('model_success_rate', 0) / 100
-    korean_compliance = results.get('korean_compliance_rate', 0) / 100
-    intent_success = results.get('intent_match_success_rate', 0) / 100
-    
-    # 가중 평균으로 점수 계산
-    predicted_score = (model_success * 0.3 + 
-                      korean_compliance * 0.3 + 
-                      intent_success * 0.4)
-    
-    return predicted_score
-
-def suggest_improvements(results: dict):
-    """개선 제안"""
-    print(f"\n=== 개선 제안 ===")
-    
-    intent_rate = results.get('intent_match_success_rate', 0)
-    if intent_rate < 60:
-        print("- 의도 일치 성공률이 낮습니다. 질문 의도 분석 정확도를 높여야 합니다.")
-    
-    model_rate = results.get('model_success_rate', 0)
-    if model_rate < 90:
-        print("- 모델 성공률이 낮습니다. 프롬프트 최적화가 필요합니다.")
-    
-    validation_error = results.get('validation_error_rate', 0)
-    if validation_error > 5:
-        print("- 검증 오류가 많습니다. 답변 검증 로직을 개선해야 합니다.")
-    
-    choice_error = results.get('choice_range_error_rate', 0)
-    if choice_error > 2:
-        print("- 선택지 범위 오류가 있습니다. 객관식 답변 처리를 개선해야 합니다.")
+    print(f"\n기본 정보:")
+    print(f"  처리 시간: {total_time_minutes:.1f}분")
+    print(f"  처리 문항: {results['total_questions']}개")
+    print(f"  결과 파일: {output_file}")
 
 def select_test_size():
     """테스트 문항 수 선택"""
@@ -135,12 +95,11 @@ def select_test_size():
     print("1. 5문항 (빠른 테스트)")
     print("2. 10문항 (기본 테스트)")
     print("3. 50문항 (정밀 테스트)")
-    print("4. 100문항 (성능 테스트)")
     print()
     
     while True:
         try:
-            choice = input("선택 (1-4): ").strip()
+            choice = input("선택 (1-3): ").strip()
             
             if choice == "1":
                 return 5
@@ -148,10 +107,8 @@ def select_test_size():
                 return 10
             elif choice == "3":
                 return 50
-            elif choice == "4":
-                return 100
             else:
-                print("잘못된 선택입니다. 1, 2, 3, 4 중 하나를 입력하세요.")
+                print("잘못된 선택입니다. 1, 2, 3 중 하나를 입력하세요.")
                 
         except KeyboardInterrupt:
             print("\n프로그램을 종료합니다.")
@@ -165,12 +122,12 @@ def main():
     test_size = select_test_size()
     
     print(f"\n선택된 테스트: {test_size}문항")
-    print("의도 일치 성공률 분석을 시작합니다...")
+    print("한국어 전용 답변 모드로 실행됩니다.")
     
     success = run_test(test_size, verbose=True)
     
     if success:
-        print(f"\n테스트 완료 - 결과 파일: ./test_result.csv")
+        print("\n테스트가 완료되었습니다.")
     else:
         print("\n테스트 실패")
         sys.exit(1)
