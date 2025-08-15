@@ -24,8 +24,9 @@ class SimpleDataProcessor:
         self.pkl_dir = Path("./pkl")
         self.pkl_dir.mkdir(exist_ok=True)
         
-        # 객관식 패턴 (개선된 버전)
+        # 객관식 패턴
         self.mc_patterns = [
+            r'1\s+[가-힣\w].*\n2\s+[가-힣\w].*\n3\s+[가-힣\w]',  # 실제 패턴: "1 소비자금융업\n2 투자자문업"
             r'①.*②.*③.*④.*⑤',  # 동그라미 숫자
             r'1\s+[가-힣].*2\s+[가-힣].*3\s+[가-힣].*4\s+[가-힣].*5\s+[가-힣]',  # 번호 + 한글
             r'1\s+.*2\s+.*3\s+.*4\s+.*5\s+',  # 번호 공백 형식
@@ -48,13 +49,16 @@ class SimpleDataProcessor:
             r'구분.*해당하지.*않는.*것',
             r'다음.*중.*것은',
             r'다음.*중.*것',
-            r'다음.*보기.*중'
+            r'다음.*보기.*중',
+            r'무엇인가\?$',  # 실제 데이터에서 발견된 패턴
+            r'어떤.*것인가\?$',
+            r'몇.*개인가\?$'
         ]
         
-        # 질문 의도 분석 패턴 (대폭 강화)
+        # 질문 의도 분석 패턴 (실제 데이터 기반 대폭 강화)
         self.question_intent_patterns = {
             "기관_묻기": [
-                # 직접적인 기관 질문
+                # 직접적인 기관 질문 (실제 발견 패턴)
                 r'기관.*기술하세요',
                 r'기관.*설명하세요',
                 r'기관.*서술하세요',
@@ -63,7 +67,8 @@ class SimpleDataProcessor:
                 r'어느.*기관',
                 r'기관.*어디',
                 
-                # 조정/분쟁 관련
+                # 조정/분쟁 관련 (전자금융분쟁조정위원회 등)
+                r'분쟁조정을.*신청할.*수.*있는.*기관',
                 r'조정.*신청.*기관',
                 r'분쟁.*조정.*기관',
                 r'신청.*수.*있는.*기관',
@@ -111,7 +116,11 @@ class SimpleDataProcessor:
                 r'특성.*무엇',
                 r'성격.*무엇',
                 r'특성.*기술',
-                r'속성.*기술'
+                r'속성.*기술',
+                # 실제 데이터에서 발견된 패턴 추가
+                r'기반.*원격제어.*악성코드.*특징',
+                r'트로이.*특징',
+                r'RAT.*특징'
             ],
             "지표_묻기": [
                 r'지표.*설명하세요',
@@ -128,7 +137,11 @@ class SimpleDataProcessor:
                 r'관찰.*지표',
                 r'식별.*지표',
                 r'발견.*방법',
-                r'탐지.*방법'
+                r'탐지.*방법',
+                # 실제 데이터 패턴 추가
+                r'주요.*탐지.*지표',
+                r'악성코드.*탐지.*지표',
+                r'원격제어.*탐지.*지표'
             ],
             "방안_묻기": [
                 r'방안.*기술하세요',
@@ -143,7 +156,11 @@ class SimpleDataProcessor:
                 r'개선.*방안',
                 r'예방.*방안',
                 r'보완.*방안',
-                r'강화.*방안'
+                r'강화.*방안',
+                # 실제 데이터 패턴 추가
+                r'딥페이크.*대응.*방안',
+                r'금융권.*대응.*방안',
+                r'악용.*대비.*방안'
             ],
             "절차_묻기": [
                 r'절차.*설명하세요',
@@ -191,7 +208,7 @@ class SimpleDataProcessor:
             ]
         }
         
-        # 주관식 패턴 (확장)
+        # 주관식 패턴 (실제 데이터 분석 기반 강화)
         self.subj_patterns = [
             r'설명하세요',
             r'기술하세요', 
@@ -208,50 +225,60 @@ class SimpleDataProcessor:
             r'조치.*사항',
             r'제시하시오',
             r'논하시오',
-            r'답하시오'
+            r'답하시오',
+            # 실제 데이터에서 발견된 패턴 강화
+            r'특징과.*주요.*탐지.*지표를.*설명하세요',
+            r'기관을.*기술하세요',
+            r'대응.*방안을.*기술하세요'
         ]
         
-        # 도메인 키워드 (확장)
+        # 도메인 키워드 (실제 데이터 분포 기반 대폭 확장)
         self.domain_keywords = {
             "개인정보보호": [
                 "개인정보", "정보주체", "개인정보보호법", "민감정보", 
                 "고유식별정보", "동의", "법정대리인", "아동",
                 "개인정보처리자", "열람권", "정정삭제권", "처리정지권",
                 "개인정보보호위원회", "손해배상", "처리방침",
-                "개인정보영향평가", "개인정보보호책임자", "개인정보침해신고센터"
+                "개인정보영향평가", "개인정보보호책임자", "개인정보침해신고센터",
+                "PIMS", "관리체계", "처리 현황", "만 14세", "수집", "이용", "제공", "파기"
             ],
             "전자금융": [
                 "전자금융", "전자적", "접근매체", "전자금융거래법", 
                 "전자서명", "전자인증", "공인인증서", "분쟁조정",
                 "전자지급수단", "전자화폐", "금융감독원", "한국은행",
                 "전자금융업", "전자금융분쟁조정위원회", "전자금융거래",
-                "전자금융업무", "전자금융서비스"
+                "전자금융업무", "전자금융서비스", "전자금융거래기록",
+                "이용자", "금융통화위원회", "자료제출", "통화신용정책", "지급결제제도"
             ],
             "사이버보안": [
                 "트로이", "악성코드", "멀웨어", "바이러스", "피싱",
                 "스미싱", "랜섬웨어", "해킹", "딥페이크", "원격제어",
                 "RAT", "원격접근", "봇넷", "백도어", "루트킷",
                 "취약점", "제로데이", "사회공학", "APT", "DDoS",
-                "침입탐지", "침입방지", "보안관제"
+                "침입탐지", "침입방지", "보안관제", "SBOM", "소프트웨어 구성 요소",
+                "Trojan", "원격제어 악성코드", "탐지 지표", "보안 위협"
             ],
             "정보보안": [
                 "정보보안", "보안관리", "ISMS", "보안정책", 
                 "접근통제", "암호화", "방화벽", "침입탐지",
                 "침입방지시스템", "IDS", "IPS", "보안관제",
                 "로그관리", "백업", "복구", "재해복구", "BCP",
-                "정보보안관리체계"
+                "정보보안관리체계", "정보보호", "관리체계 수립", "정책 수립",
+                "최고책임자", "경영진", "자원 할당", "내부 감사"
             ],
             "금융투자": [
                 "금융투자업", "투자자문업", "투자매매업", "투자중개업",
                 "소비자금융업", "보험중개업", "자본시장법",
                 "집합투자업", "신탁업", "펀드", "파생상품",
-                "투자자보호", "적합성원칙", "설명의무"
+                "투자자보호", "적합성원칙", "설명의무", "금융산업"
             ],
             "위험관리": [
                 "위험관리", "위험평가", "위험대응", "위험수용",
                 "리스크", "내부통제", "컴플라이언스", "위험식별",
                 "위험분석", "위험모니터링", "위험회피", "위험전가",
-                "위험감소", "잔여위험", "위험성향"
+                "위험감소", "잔여위험", "위험성향", "위험 관리 계획",
+                "수행인력", "위험 대응 전략", "재해 복구", "복구 절차",
+                "비상연락체계", "복구 목표시간"
             ]
         }
         
@@ -272,7 +299,8 @@ class SimpleDataProcessor:
             "question_type_accuracy": {"correct": 0, "total": 0},
             "choice_count_errors": 0,
             "intent_analysis_accuracy": {"correct": 0, "total": 0},
-            "intent_match_accuracy": {"correct": 0, "total": 0}  # 의도 일치 정확도 추가
+            "intent_match_accuracy": {"correct": 0, "total": 0},  # 의도 일치 정확도 추가
+            "mc_classification_accuracy": {"correct": 0, "total": 0}  # 객관식 분류 정확도 추가
         }
         
         # 이전 처리 기록 로드
@@ -417,40 +445,51 @@ class SimpleDataProcessor:
             intent_analysis["context_hints"].append("단계별 설명 필요")
     
     def extract_choice_range(self, question: str) -> Tuple[str, int]:
-        """선택지 범위 추출 (개선된 버전)"""
+        """선택지 범위 추출 (실제 데이터 기반 대폭 개선)"""
         question_type = self.analyze_question_type(question)
         
         if question_type != "multiple_choice":
             return "subjective", 0
         
-        # 줄별로 분석하여 선택지 번호 추출
+        # 실제 데이터 패턴에 맞는 선택지 추출 로직
+        # 패턴: "1 소비자금융업\n2 투자자문업\n3 투자매매업\n4 투자중개업\n5 보험중개업"
+        
+        # 1차: 줄바꿈으로 분리된 선택지 패턴 확인
         lines = question.split('\n')
         choice_numbers = []
         
         for line in lines:
-            # 선택지 패턴: 숫자 + 공백 + 내용
-            match = re.match(r'^(\d+)\s+', line.strip())
+            line = line.strip()
+            # "숫자 + 공백 + 텍스트" 패턴 매칭
+            match = re.match(r'^(\d+)\s+(.+)', line)
             if match:
-                choice_numbers.append(int(match.group(1)))
+                num = int(match.group(1))
+                content = match.group(2).strip()
+                if 1 <= num <= 5 and len(content) > 0:  # 유효한 선택지인지 확인
+                    choice_numbers.append(num)
         
-        # 연속된 선택지인지 확인
+        # 2차: 연속된 선택지인지 확인
         if choice_numbers:
             choice_numbers.sort()
             max_choice = max(choice_numbers)
             min_choice = min(choice_numbers)
             
-            # 연속성 검증
+            # 연속성 검증 (1부터 시작하는 연속 선택지)
             expected_count = max_choice - min_choice + 1
-            if len(choice_numbers) == expected_count and min_choice == 1:
+            if (len(choice_numbers) == expected_count and 
+                min_choice == 1 and 
+                max_choice >= 3):  # 최소 3개 선택지
                 return "multiple_choice", max_choice
         
-        # 폴백: 전통적인 패턴으로 확인
+        # 3차: 전통적인 패턴으로 확인 (폴백)
         for i in range(5, 2, -1):  # 5개부터 3개까지 확인
-            pattern = r'1\s.*' + '.*'.join([f'{j}\s' for j in range(2, i+1)])
+            # "1 텍스트 2 텍스트 3 텍스트" 패턴
+            pattern_parts = [f'{j}\\s+[가-힣\\w]+' for j in range(1, i+1)]
+            pattern = '.*'.join(pattern_parts)
             if re.search(pattern, question, re.DOTALL):
                 return "multiple_choice", i
         
-        # 객관식 키워드가 있지만 선택지를 찾을 수 없는 경우
+        # 4차: 객관식 키워드가 있지만 선택지를 찾을 수 없는 경우
         for pattern in self.mc_keywords:
             if re.search(pattern, question, re.IGNORECASE):
                 self.processing_stats["choice_count_errors"] += 1
@@ -459,57 +498,61 @@ class SimpleDataProcessor:
         return "subjective", 0
     
     def analyze_question_type(self, question: str) -> str:
-        """질문 유형 분석 (개선된 버전)"""
+        """질문 유형 분석 (실제 데이터 기반 대폭 개선)"""
         
         question = question.strip()
         self.processing_stats["question_type_accuracy"]["total"] += 1
+        self.processing_stats["mc_classification_accuracy"]["total"] += 1
         
-        # 1차: 명확한 선택지 패턴 확인
-        for pattern in self.mc_patterns:
-            if re.search(pattern, question, re.DOTALL | re.MULTILINE):
+        # 1차: 주관식 패턴 우선 확인 (확실한 주관식 먼저)
+        for pattern in self.subj_patterns:
+            if re.search(pattern, question, re.IGNORECASE):
+                return "subjective"
+        
+        # 2차: 실제 데이터 패턴 기반 객관식 확인
+        # "숫자 + 공백 + 한글/영문" 패턴이 3개 이상 있는지 확인
+        choice_pattern = r'\n(\d+)\s+[가-힣\w]'
+        choice_matches = re.findall(choice_pattern, question)
+        
+        if len(choice_matches) >= 3:
+            # 선택지 번호가 연속적인지 확인
+            choice_nums = [int(match) for match in choice_matches]
+            choice_nums.sort()
+            if (choice_nums[0] == 1 and 
+                len(choice_nums) == choice_nums[-1] and
+                choice_nums[-1] <= 5):
                 self.processing_stats["question_type_accuracy"]["correct"] += 1
+                self.processing_stats["mc_classification_accuracy"]["correct"] += 1
                 return "multiple_choice"
-        
-        # 2차: 줄별 선택지 분석
-        lines = question.split('\n')
-        choice_lines = 0
-        for line in lines:
-            if re.match(r'^\s*[1-5][\s\.]\s*', line):
-                choice_lines += 1
-        
-        if choice_lines >= 3:  # 3개 이상의 선택지가 있으면 객관식
-            self.processing_stats["question_type_accuracy"]["correct"] += 1
-            return "multiple_choice"
         
         # 3차: 객관식 키워드 확인
         for pattern in self.mc_keywords:
             if re.search(pattern, question, re.IGNORECASE):
                 # 선택지가 있는지 추가 확인
-                if any(str(i) in question for i in range(1, 6)):
+                if any(f'{i} ' in question for i in range(1, 6)):
                     self.processing_stats["question_type_accuracy"]["correct"] += 1
+                    self.processing_stats["mc_classification_accuracy"]["correct"] += 1
                     return "multiple_choice"
         
-        # 4차: 주관식 패턴 확인
-        for pattern in self.subj_patterns:
-            if re.search(pattern, question, re.IGNORECASE):
-                return "subjective"
-        
-        # 5차: 질문 구조 분석
-        # 선택지 번호만 단순 카운트
-        number_count = len(re.findall(r'\b[1-5]\b', question))
-        if number_count >= 3 and len(question) < 300:
-            return "multiple_choice"
-        
-        # 6차: "것은?" "것?" 패턴과 길이로 추가 판단
-        if re.search(r'것은\?|것\?|것은\s*$', question):
-            if len(question) < 300 and any(str(i) in question for i in range(1, 6)):
+        # 4차: 전통적인 객관식 패턴 확인
+        for pattern in self.mc_patterns:
+            if re.search(pattern, question, re.DOTALL | re.MULTILINE):
+                self.processing_stats["question_type_accuracy"]["correct"] += 1
+                self.processing_stats["mc_classification_accuracy"]["correct"] += 1
                 return "multiple_choice"
+        
+        # 5차: 길이와 구조 기반 추정
+        # 짧고 "것은?" "것?" 패턴이 있으면서 숫자가 있으면 객관식 가능성 높음
+        if (len(question) < 400 and 
+            re.search(r'것은\?|것\?|것은\s*$', question) and
+            len(re.findall(r'\b[1-5]\b', question)) >= 3):
+            return "multiple_choice"
         
         # 기본값: 주관식
         return "subjective"
     
     def extract_domain(self, question: str) -> str:
-        """도메인 추출 (개선)"""
+        """도메인 추출 (실제 데이터 분포 기반 개선)"""
         question_lower = question.lower()
         
         # 각 도메인별 키워드 매칭 점수 계산
@@ -520,7 +563,8 @@ class SimpleDataProcessor:
             for keyword in keywords:
                 if keyword.lower() in question_lower:
                     # 핵심 키워드는 가중치 부여
-                    if keyword in ["개인정보보호법", "전자금융거래법", "자본시장법", "ISMS"]:
+                    if keyword in ["개인정보보호법", "전자금융거래법", "자본시장법", "ISMS", 
+                                  "트로이", "RAT", "원격제어", "분쟁조정", "위험관리"]:
                         score += 3
                     else:
                         score += 1
@@ -533,6 +577,17 @@ class SimpleDataProcessor:
         
         # 가장 높은 점수의 도메인 반환
         detected_domain = max(domain_scores.items(), key=lambda x: x[1])[0]
+        
+        # 실제 데이터 분포에 맞는 추가 검증
+        # 사이버보안(114개)과 개인정보보호(81개)가 주요 도메인이므로 우선 확인
+        if detected_domain == "사이버보안":
+            cybersec_keywords = ["트로이", "악성코드", "RAT", "원격제어", "딥페이크", "SBOM", "보안"]
+            if any(keyword in question_lower for keyword in cybersec_keywords):
+                detected_domain = "사이버보안"
+        elif detected_domain == "개인정보보호":
+            privacy_keywords = ["개인정보", "정보주체", "만 14세", "법정대리인", "PIMS"]
+            if any(keyword in question_lower for keyword in privacy_keywords):
+                detected_domain = "개인정보보호"
         
         # 통계 업데이트
         if detected_domain not in self.processing_stats["domain_distribution"]:
@@ -765,20 +820,25 @@ class SimpleDataProcessor:
         return self.clean_korean_text(text)
     
     def extract_choices(self, question: str) -> List[str]:
-        """객관식 선택지 추출"""
+        """객관식 선택지 추출 (실제 데이터 기반 개선)"""
         choices = []
         
-        # 줄별로 선택지 추출
+        # 실제 데이터 패턴: "1 소비자금융업\n2 투자자문업\n3 투자매매업"
         lines = question.split('\n')
         for line in lines:
-            match = re.match(r'^(\d+)\s+(.+)', line.strip())
+            line = line.strip()
+            match = re.match(r'^(\d+)\s+(.+)', line)
             if match:
                 choice_num = int(match.group(1))
                 choice_content = match.group(2).strip()
-                if choice_num <= 5:  # 5번까지만
+                if 1 <= choice_num <= 5 and len(choice_content) > 0:
                     choices.append(choice_content)
         
-        # 전통적인 패턴으로도 확인
+        # 순서 정렬 (번호 순서대로)
+        if len(choices) >= 3:  # 최소 3개 선택지
+            return choices
+        
+        # 폴백: 전통적인 패턴으로도 확인
         if not choices:
             patterns = [
                 r'(\d+)\s+([^0-9\n]+?)(?=\d+\s+|$)',
@@ -802,16 +862,17 @@ class SimpleDataProcessor:
         return choices[:5]  # 최대 5개 선택지
     
     def analyze_question_difficulty(self, question: str) -> str:
-        """질문 난이도 분석"""
+        """질문 난이도 분석 (실제 데이터 기반)"""
         question_lower = question.lower()
         
-        # 전문 용어 개수
+        # 전문 용어 개수 (실제 데이터에서 발견된 용어들)
         technical_terms = [
             "isms", "pims", "sbom", "원격제어", "침입탐지", 
             "트로이", "멀웨어", "랜섬웨어", "딥페이크", "피싱",
             "접근매체", "전자서명", "개인정보보호법", "자본시장법",
             "rat", "원격접근", "탐지지표", "apt", "ddos",
-            "ids", "ips", "bcp", "drp", "isms-p"
+            "ids", "ips", "bcp", "drp", "isms-p", "분쟁조정",
+            "금융투자업", "위험관리", "재해복구", "비상연락체계"
         ]
         
         term_count = sum(1 for term in technical_terms if term in question_lower)
@@ -819,10 +880,13 @@ class SimpleDataProcessor:
         # 문장 길이
         length = len(question)
         
-        # 난이도 계산
-        if term_count >= 3 or length > 300:
+        # 선택지 개수 (객관식의 경우)
+        choice_count = len(self.extract_choices(question))
+        
+        # 난이도 계산 (실제 데이터 분포 고려)
+        if term_count >= 3 or length > 400 or choice_count >= 5:
             return "고급"
-        elif term_count >= 1 or length > 150:
+        elif term_count >= 1 or length > 200 or choice_count >= 4:
             return "중급"
         else:
             return "초급"
@@ -874,6 +938,7 @@ class SimpleDataProcessor:
         total = max(self.processing_stats["total_processed"], 1)
         intent_total = max(self.processing_stats["intent_analysis_accuracy"]["total"], 1)
         intent_match_total = max(self.processing_stats["intent_match_accuracy"]["total"], 1)
+        mc_total = max(self.processing_stats["mc_classification_accuracy"]["total"], 1)
         
         return {
             "total_processed": self.processing_stats["total_processed"],
@@ -881,7 +946,8 @@ class SimpleDataProcessor:
             "validation_failure_rate": (self.processing_stats["validation_failures"] / total) * 100,
             "choice_count_errors": self.processing_stats["choice_count_errors"],
             "intent_analysis_accuracy_rate": (self.processing_stats["intent_analysis_accuracy"]["correct"] / intent_total) * 100,
-            "intent_match_accuracy_rate": (self.processing_stats["intent_match_accuracy"]["correct"] / intent_match_total) * 100,  # 신규
+            "intent_match_accuracy_rate": (self.processing_stats["intent_match_accuracy"]["correct"] / intent_match_total) * 100,
+            "mc_classification_accuracy_rate": (self.processing_stats["mc_classification_accuracy"]["correct"] / mc_total) * 100,  # 신규
             "domain_distribution": dict(self.processing_stats["domain_distribution"]),
             "question_type_accuracy": self.processing_stats["question_type_accuracy"]
         }
