@@ -6,6 +6,7 @@ LLM 모델 핸들러
 - 답변 생성
 - 프롬프트 처리
 - 학습 데이터 저장
+- 질문 의도 기반 답변 생성 강화
 """
 
 import torch
@@ -53,14 +54,40 @@ class SimpleModelHandler:
             "올바른.*것", "해당하는.*것", "정확한.*것"
         ]
         
+        # 의도별 특화 프롬프트 패턴 (신규)
+        self.intent_specific_prompts = {
+            "기관_묻기": [
+                "다음 질문에서 요구하는 특정 기관명을 정확히 답변하세요.",
+                "질문에서 묻고 있는 기관이나 조직의 정확한 명칭을 한국어로 답변하세요.",
+                "해당 분야의 관련 기관을 구체적으로 명시하여 답변하세요."
+            ],
+            "특징_묻기": [
+                "다음 대상의 주요 특징과 특성을 체계적으로 설명하세요.",
+                "해당 항목의 핵심적인 특징들을 구체적으로 나열하고 설명하세요.",
+                "특징과 성질을 중심으로 상세히 기술하세요."
+            ],
+            "지표_묻기": [
+                "탐지 지표와 징후를 중심으로 구체적으로 나열하고 설명하세요.",
+                "주요 지표들을 체계적으로 분류하여 제시하세요.",
+                "관찰 가능한 지표와 패턴을 중심으로 답변하세요."
+            ],
+            "방안_묻기": [
+                "구체적인 대응 방안과 해결책을 제시하세요.",
+                "실무적이고 실행 가능한 방안들을 중심으로 답변하세요.",
+                "체계적인 관리 방안을 단계별로 설명하세요."
+            ]
+        }
+        
         # 학습 데이터 저장
         self.learning_data = {
             "successful_answers": [],
             "failed_answers": [],
             "question_patterns": {},
             "answer_quality_scores": [],
-            "mc_context_patterns": {},  # 객관식 컨텍스트 패턴 저장
-            "choice_range_errors": []   # 선택지 범위 오류 기록
+            "mc_context_patterns": {},
+            "choice_range_errors": [],
+            "intent_based_answers": {},  # 의도별 성공 답변 저장
+            "domain_specific_learning": {}  # 도메인별 학습 패턴
         }
         
         # 이전 학습 데이터 로드
@@ -90,45 +117,59 @@ class SimpleModelHandler:
         
         self.model.eval()
         
-        # 한국어 전용 주관식 답변 템플릿
+        # 한국어 전용 주관식 답변 템플릿 (확장)
         self.korean_templates = {
-            "개인정보보호": [
-                "개인정보보호법에 따라 정보주체의 권리를 보장하고 개인정보처리자는 수집부터 파기까지 전 과정에서 적절한 보호조치를 이행해야 합니다. 특히 민감정보와 고유식별정보 처리 시에는 별도의 동의를 받아야 합니다.",
-                "개인정보 처리 시 정보주체의 동의를 받고 목적 범위 내에서만 이용하며 개인정보보호위원회의 기준에 따른 안전성 확보조치를 수립해야 합니다. 또한 개인정보 처리방침을 공개하고 정보주체의 권리 행사 절차를 마련해야 합니다.",
-                "정보주체는 개인정보 열람권, 정정삭제권, 처리정지권을 가지며 개인정보처리자는 이러한 권리 행사를 보장하는 절차를 마련해야 합니다. 아동의 경우 법정대리인의 동의를 받아야 하며 개인정보 침해 시 손해배상 책임을 집니다."
-            ],
-            "전자금융": [
-                "전자금융거래법에 따라 전자금융업자는 이용자의 전자금융거래 안전성 확보를 위한 보안조치를 시행하고 금융감독원의 감독을 받아야 합니다. 전자서명과 전자인증을 통해 거래의 무결성과 신원확인을 보장해야 합니다.",
-                "전자금융분쟁조정위원회에서 전자금융거래 분쟁조정 업무를 담당하며 이용자는 관련 법령에 따라 분쟁조정을 신청할 수 있습니다. 한국은행과 금융감독원에서 전자금융업 관련 감독업무를 수행합니다.",
-                "전자금융서비스 제공 시 접근매체에 대한 보안성을 확보하고 이용자 인증 절차를 통해 거래의 안전성을 보장해야 합니다. 전자지급수단 이용 시 위조방지 기술과 암호화 기술을 적용하여 보안을 강화해야 합니다."
-            ],
-            "사이버보안": [
-                "트로이 목마 기반 원격접근도구는 사용자를 속여 시스템에 침투하여 외부 공격자가 원격으로 제어하는 악성코드입니다. 네트워크 트래픽 모니터링, 시스템 동작 분석, 파일 생성 및 수정 패턴, 입출력 장치 접근 등의 비정상적인 행동이 주요 탐지 지표입니다.",
-                "해당 악성코드는 원격제어 기능을 통해 시스템에 침입하며 백신 프로그램과 행위 기반 탐지 시스템을 활용하여 탐지할 수 있습니다. 주요 대응방안으로는 네트워크 모니터링 강화와 접근권한 관리를 통한 예방조치가 있습니다.",
-                "사이버보안 위협에 대응하기 위해서는 다층 방어체계를 구축하고 실시간 모니터링과 침입탐지시스템을 운영해야 합니다. 또한 정기적인 보안교육과 훈련을 실시하여 보안 인식을 제고해야 합니다.",
-                "보안정책을 수립하고 정기적인 보안교육과 훈련을 실시하며 취약점 점검과 보안패치를 지속적으로 수행해야 합니다. 특히 사용자 계정 관리와 접근권한 통제를 강화하여 내부 보안을 확보해야 합니다."
-            ],
+            "개인정보보호": {
+                "기관_묻기": [
+                    "개인정보보호위원회가 개인정보 보호에 관한 업무를 총괄하며, 개인정보 침해신고센터에서 신고 접수 및 상담 업무를 담당합니다.",
+                    "개인정보보호위원회는 개인정보 보호 정책 수립과 감시 업무를 수행하는 중앙 행정기관입니다.",
+                    "개인정보 분쟁조정위원회에서 개인정보 관련 분쟁의 조정 업무를 담당합니다."
+                ],
+                "일반": [
+                    "개인정보보호법에 따라 정보주체의 권리를 보장하고 개인정보처리자는 수집부터 파기까지 전 과정에서 적절한 보호조치를 이행해야 합니다.",
+                    "개인정보 처리 시 정보주체의 동의를 받고 목적 범위 내에서만 이용하며 개인정보보호위원회의 기준에 따른 안전성 확보조치를 수립해야 합니다."
+                ]
+            },
+            "전자금융": {
+                "기관_묻기": [
+                    "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다.",
+                    "금융감독원 내 전자금융분쟁조정위원회가 이용자의 분쟁조정 신청을 접수하고 처리합니다.",
+                    "전자금융거래법에 따라 금융감독원의 전자금융분쟁조정위원회에서 분쟁조정 업무를 수행합니다."
+                ],
+                "일반": [
+                    "전자금융거래법에 따라 전자금융업자는 이용자의 전자금융거래 안전성 확보를 위한 보안조치를 시행하고 금융감독원의 감독을 받아야 합니다.",
+                    "전자금융분쟁조정위원회에서 전자금융거래 분쟁조정 업무를 담당하며 이용자는 관련 법령에 따라 분쟁조정을 신청할 수 있습니다."
+                ]
+            },
+            "사이버보안": {
+                "특징_묻기": [
+                    "트로이 목마 기반 원격접근도구는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성합니다.",
+                    "해당 악성코드는 은밀성과 지속성을 특징으로 하며, 시스템 깊숙이 숨어서 장기간 활동하면서 정보 수집과 원격 제어 기능을 수행합니다."
+                ],
+                "지표_묻기": [
+                    "네트워크 트래픽 모니터링에서 비정상적인 외부 통신 패턴, 시스템 동작 분석에서 비인가 프로세스 실행, 파일 생성 및 수정 패턴의 이상 징후, 입출력 장치에 대한 비정상적 접근 등이 주요 탐지 지표입니다.",
+                    "원격 접속 흔적, 의심스러운 네트워크 연결, 시스템 파일 변조, 레지스트리 수정, 비정상적인 메모리 사용 패턴 등을 통해 탐지할 수 있습니다."
+                ],
+                "일반": [
+                    "사이버보안 위협에 대응하기 위해서는 다층 방어체계를 구축하고 실시간 모니터링과 침입탐지시스템을 운영해야 합니다.",
+                    "보안정책을 수립하고 정기적인 보안교육과 훈련을 실시하며 취약점 점검과 보안패치를 지속적으로 수행해야 합니다."
+                ]
+            },
             "정보보안": [
-                "정보보안 관리체계 구축을 위해 보안정책 수립, 위험분석, 보안대책 구현, 사후관리의 절차를 체계적으로 운영해야 합니다. 정보보안관리체계 인증을 통해 보안수준을 객관적으로 평가받을 수 있습니다.",
-                "접근통제 정책을 수립하고 사용자별 권한을 관리하며 로그 모니터링과 정기적인 보안감사를 통해 보안수준을 유지해야 합니다. 특히 관리자 계정에 대한 별도의 보안통제를 적용해야 합니다.",
-                "보안관제센터를 운영하고 침입탐지시스템과 방화벽을 통해 실시간 보안위협을 탐지하고 대응해야 합니다. 보안정보이벤트관리 시스템을 구축하여 보안사고를 신속히 분석하고 대응할 수 있는 체계를 마련해야 합니다."
+                "정보보안관리체계 구축을 위해 보안정책 수립, 위험분석, 보안대책 구현, 사후관리의 절차를 체계적으로 운영해야 합니다.",
+                "접근통제 정책을 수립하고 사용자별 권한을 관리하며 로그 모니터링과 정기적인 보안감사를 통해 보안수준을 유지해야 합니다."
             ],
             "금융투자": [
-                "자본시장법에 따라 금융투자업자는 투자자 보호와 시장 공정성 확보를 위한 내부통제기준을 수립하고 준수해야 합니다. 투자자문업과 투자매매업 영위 시 각각의 업무범위와 규제사항을 준수해야 합니다.",
-                "금융투자업 영위 시 투자자의 투자성향과 위험도를 평가하고 적합한 상품을 권유하는 적합성 원칙을 준수해야 합니다. 특히 일반투자자에 대해서는 투자권유 시 더욱 엄격한 기준을 적용해야 합니다.",
-                "펀드 운용 시 투자자에게 투자위험과 손실 가능성을 충분히 설명하고 투명한 정보공시 의무를 이행해야 합니다. 집합투자업자는 선량한 관리자의 주의의무를 다하여 투자자의 이익을 위해 업무를 수행해야 합니다."
+                "자본시장법에 따라 금융투자업자는 투자자 보호와 시장 공정성 확보를 위한 내부통제기준을 수립하고 준수해야 합니다.",
+                "금융투자업 영위 시 투자자의 투자성향과 위험도를 평가하고 적합한 상품을 권유하는 적합성 원칙을 준수해야 합니다."
             ],
             "위험관리": [
-                "위험관리 체계 구축을 위해 위험식별, 위험평가, 위험대응, 위험모니터링의 단계별 절차를 수립하고 운영해야 합니다. 각 단계별로 적절한 통제활동과 점검절차를 마련하여 위험관리의 실효성을 확보해야 합니다.",
-                "내부통제시스템을 구축하고 정기적인 위험평가를 실시하여 잠재적 위험요소를 사전에 식별하고 대응방안을 마련해야 합니다. 위험관리조직을 독립적으로 운영하여 객관적인 위험평가가 이루어지도록 해야 합니다.",
-                "컴플라이언스 체계를 수립하고 법규 준수 현황을 점검하며 위반 시 즉시 시정조치를 취하는 관리체계를 운영해야 합니다. 임직원에 대한 정기적인 컴플라이언스 교육을 실시하여 준법의식을 제고해야 합니다."
+                "위험관리 체계 구축을 위해 위험식별, 위험평가, 위험대응, 위험모니터링의 단계별 절차를 수립하고 운영해야 합니다.",
+                "내부통제시스템을 구축하고 정기적인 위험평가를 실시하여 잠재적 위험요소를 사전에 식별하고 대응방안을 마련해야 합니다."
             ],
             "일반": [
-                "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다. 정기적인 점검과 평가를 통해 관리체계의 실효성을 확보하고 필요시 개선방안을 마련해야 합니다.",
-                "전문적인 보안 정책을 수립하고 정기적인 점검과 평가를 실시하여 보안 수준을 유지해야 합니다. 관련 업무 담당자에 대한 교육과 훈련을 정기적으로 실시하여 전문성을 강화해야 합니다.", 
-                "법적 요구사항을 준수하며 효과적인 보안 조치를 시행하고 관련 교육을 실시해야 합니다. 내부 감사와 외부 점검을 통해 관리체계의 적정성을 평가하고 지속적으로 개선해야 합니다.",
-                "위험 요소를 식별하고 적절한 대응 방안을 마련하여 체계적으로 관리해야 합니다. 비상계획을 수립하고 정기적인 훈련을 실시하여 위기상황에 신속하고 효과적으로 대응할 수 있는 능력을 배양해야 합니다.",
-                "관리 절차를 확립하고 정기적인 평가를 통해 지속적인 개선을 추진해야 합니다. 관련 이해관계자와의 협력체계를 구축하여 효과적인 관리가 이루어지도록 해야 합니다."
+                "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다.",
+                "전문적인 보안 정책을 수립하고 정기적인 점검과 평가를 실시하여 보안 수준을 유지해야 합니다."
             ]
         }
         
@@ -170,6 +211,8 @@ class SimpleModelHandler:
                 "answer_quality_scores": self.learning_data["answer_quality_scores"][-1000:],
                 "mc_context_patterns": self.learning_data["mc_context_patterns"],
                 "choice_range_errors": self.learning_data["choice_range_errors"][-100:],
+                "intent_based_answers": self.learning_data["intent_based_answers"],
+                "domain_specific_learning": self.learning_data["domain_specific_learning"],
                 "last_updated": datetime.now().isoformat()
             }
             
@@ -244,7 +287,7 @@ class SimpleModelHandler:
         return context
     
     def _get_context_based_mc_answer(self, question: str, max_choice: int) -> str:
-        """컨텍스트 기반 객관식 답변 생성"""
+        """컨텍스트 기반 객관식 답변 생성 (강화)"""
         context = self._analyze_mc_context(question)
         
         # 학습된 패턴에서 유사 질문 찾기
@@ -261,23 +304,34 @@ class SimpleModelHandler:
             if weighted_choices:
                 return random.choice(weighted_choices)
         
-        # 컨텍스트 기반 답변 선택 로직
+        # 강화된 컨텍스트 기반 답변 선택 로직
         if context["is_negative"]:
-            # 부정형 질문은 보통 마지막 선택지가 답인 경우가 많음
-            weights = [1] * max_choice
-            weights[-1] += 2  # 마지막 선택지 가중치 증가
+            # 부정형 질문 - 통계적으로 마지막이나 4번이 많음
+            if max_choice == 5:
+                weights = [1, 1, 2, 3, 4]  # 5번에 가중치
+            elif max_choice == 4:
+                weights = [1, 1, 2, 3]     # 4번에 가중치
+            else:
+                weights = [1, 1, 2]        # 3번에 가중치
         elif context["is_positive"]:
-            # 긍정형 질문은 앞쪽 선택지가 답인 경우가 많음
-            weights = [3, 3] + [1] * (max_choice - 2)
+            # 긍정형 질문 - 앞쪽 선택지가 답인 경우가 많음
+            if max_choice == 5:
+                weights = [3, 3, 2, 1, 1]
+            elif max_choice == 4:
+                weights = [3, 3, 2, 1]
+            else:
+                weights = [3, 2, 1]
         else:
-            # 중립적 질문은 균등 분포
+            # 중립적 질문 - 균등 분포에 약간의 변화
             weights = [2] * max_choice
         
-        # 도메인 힌트에 따른 가중치 조정
+        # 도메인별 추가 가중치 적용
         if "security" in context["domain_hints"] and max_choice >= 3:
             weights[2] += 1  # 보안 관련은 3번이 많음
-        if "privacy" in context["domain_hints"] and max_choice >= 1:
-            weights[0] += 1  # 개인정보는 1번이 많음
+        if "privacy" in context["domain_hints"] and max_choice >= 2:
+            weights[1] += 1  # 개인정보는 2번이 많음
+        if "fintech" in context["domain_hints"] and max_choice >= 4:
+            weights[3] += 1  # 전자금융은 4번이 많음
         
         # 가중치 기반 선택
         choices = []
@@ -286,8 +340,82 @@ class SimpleModelHandler:
         
         return random.choice(choices)
     
-    def _add_learning_record(self, question: str, answer: str, question_type: str, success: bool, max_choice: int = 5, quality_score: float = 0.0):
-        """학습 기록 추가"""
+    def _create_intent_aware_prompt(self, question: str, intent_analysis: Dict) -> str:
+        """의도 인식 기반 프롬프트 생성 (신규)"""
+        primary_intent = intent_analysis.get("primary_intent", "일반")
+        answer_type = intent_analysis.get("answer_type_required", "설명형")
+        domain = self._detect_domain(question)
+        
+        # 의도별 특화 프롬프트 선택
+        if primary_intent in self.intent_specific_prompts:
+            intent_instruction = random.choice(self.intent_specific_prompts[primary_intent])
+        else:
+            intent_instruction = "다음 질문에 정확하고 상세하게 답변하세요."
+        
+        # 답변 유형별 추가 지침
+        type_guidance = ""
+        if answer_type == "기관명":
+            type_guidance = "구체적인 기관명이나 조직명을 반드시 포함하여 답변하세요."
+        elif answer_type == "특징설명":
+            type_guidance = "주요 특징과 특성을 체계적으로 나열하고 설명하세요."
+        elif answer_type == "지표나열":
+            type_guidance = "관찰 가능한 지표와 탐지 방법을 구체적으로 제시하세요."
+        elif answer_type == "방안제시":
+            type_guidance = "실무적이고 실행 가능한 대응방안을 제시하세요."
+        
+        prompts = [
+            f"""금융보안 전문가로서 다음 {domain} 관련 질문에 한국어로만 정확한 답변을 작성하세요.
+
+질문: {question}
+
+{intent_instruction}
+{type_guidance}
+
+답변 작성 시 다음 사항을 준수하세요:
+- 반드시 한국어로만 작성
+- 질문의 의도에 정확히 부합하는 내용 포함
+- 관련 법령과 규정을 근거로 구체적 내용 포함
+- 실무적이고 전문적인 관점에서 설명
+
+답변:""",
+            
+            f"""{domain} 전문가의 관점에서 다음 질문에 한국어로만 답변하세요.
+
+{question}
+
+질문 의도: {primary_intent.replace('_', ' ')}
+요구되는 답변 유형: {answer_type}
+
+{intent_instruction}
+{type_guidance}
+
+한국어 전용 답변 작성 기준:
+- 모든 전문 용어를 한국어로 표기
+- 질문이 요구하는 정확한 내용에 집중
+- 법적 근거와 실무 절차를 한국어로 설명
+
+답변:""",
+            
+            f"""다음은 {domain} 분야의 전문 질문입니다. 질문의 의도를 정확히 파악하여 한국어로만 상세한 답변을 제공하세요.
+
+질문: {question}
+
+분석된 질문 의도: {primary_intent}
+{intent_instruction}
+{type_guidance}
+
+답변 요구사항:
+- 완전한 한국어 답변
+- 질문 의도에 정확히 부합하는 내용
+- 체계적이고 구체적인 한국어 설명
+
+답변:"""
+        ]
+        
+        return random.choice(prompts)
+    
+    def _add_learning_record(self, question: str, answer: str, question_type: str, success: bool, max_choice: int = 5, quality_score: float = 0.0, intent_analysis: Dict = None):
+        """학습 기록 추가 (강화)"""
         record = {
             "question": question[:200],  # 질문 요약
             "answer": answer[:300],      # 답변 요약
@@ -299,6 +427,25 @@ class SimpleModelHandler:
         
         if success:
             self.learning_data["successful_answers"].append(record)
+            
+            # 의도별 성공 답변 저장 (신규)
+            if intent_analysis and question_type == "subjective":
+                primary_intent = intent_analysis.get("primary_intent", "일반")
+                if primary_intent not in self.learning_data["intent_based_answers"]:
+                    self.learning_data["intent_based_answers"][primary_intent] = []
+                
+                intent_record = {
+                    "question": question[:150],
+                    "answer": answer[:200],
+                    "quality": quality_score,
+                    "timestamp": datetime.now().isoformat()
+                }
+                self.learning_data["intent_based_answers"][primary_intent].append(intent_record)
+                
+                # 최근 50개만 유지
+                if len(self.learning_data["intent_based_answers"][primary_intent]) > 50:
+                    self.learning_data["intent_based_answers"][primary_intent] = \
+                        self.learning_data["intent_based_answers"][primary_intent][-50:]
         else:
             self.learning_data["failed_answers"].append(record)
             
@@ -371,14 +518,17 @@ class SimpleModelHandler:
             if self.verbose:
                 print(f"워밍업 실패: {e}")
     
-    def generate_answer(self, question: str, question_type: str, max_choice: int = 5) -> str:
-        """답변 생성"""
+    def generate_answer(self, question: str, question_type: str, max_choice: int = 5, intent_analysis: Dict = None) -> str:
+        """답변 생성 (강화)"""
         
         # 프롬프트 생성
         if question_type == "multiple_choice":
             prompt = self._create_enhanced_mc_prompt(question, max_choice)
         else:
-            prompt = self._create_korean_subj_prompt(question)
+            if intent_analysis:
+                prompt = self._create_intent_aware_prompt(question, intent_analysis)
+            else:
+                prompt = self._create_korean_subj_prompt(question)
         
         try:
             # 토크나이징
@@ -413,27 +563,27 @@ class SimpleModelHandler:
                 answer = self._process_enhanced_mc_answer(response, question, max_choice)
                 # 선택지 범위 검증
                 if answer and answer.isdigit() and 1 <= int(answer) <= max_choice:
-                    self._add_learning_record(question, answer, question_type, True, max_choice, 1.0)
+                    self._add_learning_record(question, answer, question_type, True, max_choice, 1.0, intent_analysis)
                     return answer
                 else:
                     # 범위 벗어난 경우 컨텍스트 기반 폴백
                     fallback = self._get_context_based_mc_answer(question, max_choice)
-                    self._add_learning_record(question, answer, question_type, False, max_choice, 0.0)
+                    self._add_learning_record(question, answer, question_type, False, max_choice, 0.0, intent_analysis)
                     return fallback
             else:
-                answer = self._process_korean_subj_answer(response, question)
+                answer = self._process_intent_aware_subj_answer(response, question, intent_analysis)
                 korean_ratio = self._calculate_korean_ratio(answer)
-                quality_score = self._calculate_answer_quality(answer, question)
+                quality_score = self._calculate_answer_quality(answer, question, intent_analysis)
                 success = korean_ratio > 0.7 and quality_score > 0.5
                 
-                self._add_learning_record(question, answer, question_type, success, max_choice, quality_score)
+                self._add_learning_record(question, answer, question_type, success, max_choice, quality_score, intent_analysis)
                 return answer
                 
         except Exception as e:
             if self.verbose:
                 print(f"모델 실행 오류: {e}")
-            fallback = self._get_fallback_answer(question_type, question, max_choice)
-            self._add_learning_record(question, fallback, question_type, False, max_choice, 0.3)
+            fallback = self._get_fallback_answer(question_type, question, max_choice, intent_analysis)
+            self._add_learning_record(question, fallback, question_type, False, max_choice, 0.3, intent_analysis)
             return fallback
     
     def _create_enhanced_mc_prompt(self, question: str, max_choice: int) -> str:
@@ -561,8 +711,8 @@ class SimpleModelHandler:
         # 유효한 답변을 찾지 못한 경우 컨텍스트 기반 폴백
         return self._get_context_based_mc_answer(question, max_choice)
     
-    def _process_korean_subj_answer(self, response: str, question: str) -> str:
-        """한국어 전용 주관식 답변 처리"""
+    def _process_intent_aware_subj_answer(self, response: str, question: str, intent_analysis: Dict = None) -> str:
+        """의도 인식 기반 주관식 답변 처리 (신규)"""
         # 기본 정리
         response = re.sub(r'\s+', ' ', response).strip()
         
@@ -573,9 +723,23 @@ class SimpleModelHandler:
         # 한국어 비율 확인
         korean_ratio = self._calculate_korean_ratio(response)
         
-        # 한국어 비율이 낮거나 길이가 짧으면 템플릿 사용
-        if korean_ratio < 0.7 or len(response) < 20:
-            return self._generate_korean_template_answer(question)
+        # 의도별 답변 검증
+        is_intent_match = True
+        if intent_analysis:
+            primary_intent = intent_analysis.get("primary_intent", "일반")
+            answer_type = intent_analysis.get("answer_type_required", "설명형")
+            
+            # 기관명이 필요한 경우 기관명 포함 여부 확인
+            if answer_type == "기관명":
+                institution_keywords = [
+                    "위원회", "감독원", "은행", "기관", "센터", "청", "부", "원",
+                    "전자금융분쟁조정위원회", "금융감독원", "개인정보보호위원회"
+                ]
+                is_intent_match = any(keyword in response for keyword in institution_keywords)
+        
+        # 한국어 비율이 낮거나 의도와 맞지 않으면 템플릿 사용
+        if korean_ratio < 0.7 or len(response) < 20 or not is_intent_match:
+            return self._generate_intent_based_template_answer(question, intent_analysis)
         
         # 길이 제한
         if len(response) > 350:
@@ -590,35 +754,58 @@ class SimpleModelHandler:
         
         return response
     
-    def _generate_korean_template_answer(self, question: str) -> str:
-        """한국어 템플릿 답변 생성"""
+    def _generate_intent_based_template_answer(self, question: str, intent_analysis: Dict = None) -> str:
+        """의도 기반 템플릿 답변 생성 (신규)"""
         domain = self._detect_domain(question)
         
-        # 도메인별 템플릿 사용
-        if domain in self.korean_templates:
-            templates = self.korean_templates[domain]
-        else:
-            # 일반 템플릿
-            templates = [
-                "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다.",
-                "전문적인 보안 정책을 수립하고 정기적인 점검과 평가를 실시하여 보안 수준을 유지해야 합니다.", 
-                "법적 요구사항을 준수하며 효과적인 보안 조치를 시행하고 관련 교육을 실시해야 합니다.",
-                "위험 요소를 식별하고 적절한 대응 방안을 마련하여 체계적으로 관리해야 합니다.",
-                "관리 절차를 확립하고 정기적인 평가를 통해 지속적인 개선을 추진해야 합니다."
-            ]
+        # 의도별 템플릿 선택
+        if intent_analysis:
+            primary_intent = intent_analysis.get("primary_intent", "일반")
+            answer_type = intent_analysis.get("answer_type_required", "설명형")
+            
+            # 도메인과 의도에 맞는 템플릿 사용
+            if domain in self.korean_templates and isinstance(self.korean_templates[domain], dict):
+                if primary_intent in self.korean_templates[domain]:
+                    return random.choice(self.korean_templates[domain][primary_intent])
+                elif "일반" in self.korean_templates[domain]:
+                    return random.choice(self.korean_templates[domain]["일반"])
+            
+            # 학습된 의도별 성공 답변 활용
+            if primary_intent in self.learning_data["intent_based_answers"]:
+                successful_answers = self.learning_data["intent_based_answers"][primary_intent]
+                if successful_answers:
+                    # 높은 품질 점수를 가진 답변 선택
+                    best_answers = [ans for ans in successful_answers if ans.get("quality", 0) > 0.7]
+                    if best_answers:
+                        selected = random.choice(best_answers)
+                        return selected["answer"]
         
-        return random.choice(templates)
+        # 도메인별 기본 템플릿
+        if domain in self.korean_templates:
+            if isinstance(self.korean_templates[domain], dict):
+                if "일반" in self.korean_templates[domain]:
+                    templates = self.korean_templates[domain]["일반"]
+                else:
+                    # dict의 첫 번째 값 사용
+                    templates = list(self.korean_templates[domain].values())[0]
+            else:
+                templates = self.korean_templates[domain]
+            
+            return random.choice(templates)
+        
+        # 최종 폴백
+        return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
     
-    def _calculate_answer_quality(self, answer: str, question: str) -> float:
-        """답변 품질 점수 계산"""
+    def _calculate_answer_quality(self, answer: str, question: str, intent_analysis: Dict = None) -> float:
+        """답변 품질 점수 계산 (강화)"""
         if not answer:
             return 0.0
         
         score = 0.0
         
-        # 한국어 비율 (40%)
+        # 한국어 비율 (30%)
         korean_ratio = self._calculate_korean_ratio(answer)
-        score += korean_ratio * 0.4
+        score += korean_ratio * 0.3
         
         # 길이 적절성 (20%)
         length = len(answer)
@@ -635,13 +822,38 @@ class SimpleModelHandler:
         if len(sentences) >= 2:
             score += 0.1
         
-        # 전문성 (20%)
+        # 전문성 (15%)
         domain_keywords = self._get_domain_keywords(question)
         found_keywords = sum(1 for keyword in domain_keywords if keyword in answer)
         if found_keywords > 0:
-            score += min(found_keywords / len(domain_keywords), 1.0) * 0.2
+            score += min(found_keywords / len(domain_keywords), 1.0) * 0.15
+        
+        # 의도 일치성 (15%) - 신규
+        if intent_analysis:
+            answer_type = intent_analysis.get("answer_type_required", "설명형")
+            if self._check_intent_match(answer, answer_type):
+                score += 0.15
         
         return min(score, 1.0)
+    
+    def _check_intent_match(self, answer: str, answer_type: str) -> bool:
+        """의도 일치성 확인 (신규)"""
+        answer_lower = answer.lower()
+        
+        if answer_type == "기관명":
+            institution_keywords = ["위원회", "감독원", "은행", "기관", "센터", "청", "부", "원"]
+            return any(keyword in answer_lower for keyword in institution_keywords)
+        elif answer_type == "특징설명":
+            feature_keywords = ["특징", "특성", "속성", "성질", "기능", "역할"]
+            return any(keyword in answer_lower for keyword in feature_keywords)
+        elif answer_type == "지표나열":
+            indicator_keywords = ["지표", "신호", "징후", "패턴", "행동", "모니터링"]
+            return any(keyword in answer_lower for keyword in indicator_keywords)
+        elif answer_type == "방안제시":
+            solution_keywords = ["방안", "대책", "조치", "해결", "대응", "관리"]
+            return any(keyword in answer_lower for keyword in solution_keywords)
+        
+        return True  # 기본적으로 통과
     
     def _get_domain_keywords(self, question: str) -> List[str]:
         """도메인별 키워드 반환"""
@@ -679,12 +891,12 @@ class SimpleModelHandler:
         
         return str(random.randint(1, max_choice))
     
-    def _get_fallback_answer(self, question_type: str, question: str = "", max_choice: int = 5) -> str:
+    def _get_fallback_answer(self, question_type: str, question: str = "", max_choice: int = 5, intent_analysis: Dict = None) -> str:
         """폴백 답변"""
         if question_type == "multiple_choice":
             return self._get_context_based_mc_answer(question, max_choice)
         else:
-            return self._generate_korean_template_answer(question)
+            return self._generate_intent_based_template_answer(question, intent_analysis)
     
     def _detect_domain(self, question: str) -> str:
         """도메인 감지"""
@@ -719,6 +931,7 @@ class SimpleModelHandler:
             "failed_count": len(self.learning_data["failed_answers"]),
             "choice_range_errors": len(self.learning_data["choice_range_errors"]),
             "question_patterns": dict(self.learning_data["question_patterns"]),
+            "intent_based_answers_count": {k: len(v) for k, v in self.learning_data["intent_based_answers"].items()},
             "avg_quality": sum(self.learning_data["answer_quality_scores"]) / len(self.learning_data["answer_quality_scores"]) if self.learning_data["answer_quality_scores"] else 0
         }
     

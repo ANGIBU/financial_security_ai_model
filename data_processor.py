@@ -6,6 +6,7 @@
 - 텍스트 정리
 - 답변 검증
 - 한국어 전용 처리
+- 질문 의도 분석 강화
 """
 
 import re
@@ -49,6 +50,59 @@ class SimpleDataProcessor:
             r'다음.*중.*것',
             r'다음.*보기.*중'
         ]
+        
+        # 주관식 질문 의도 분석 패턴 (강화)
+        self.question_intent_patterns = {
+            "기관_묻기": [
+                r'기관.*기술하세요',
+                r'기관.*설명하세요',
+                r'기관.*서술하세요',
+                r'기관.*무엇',
+                r'어떤.*기관',
+                r'어느.*기관',
+                r'기관.*어디',
+                r'조정.*신청.*기관',
+                r'분쟁.*조정.*기관',
+                r'신청.*수.*있는.*기관'
+            ],
+            "특징_묻기": [
+                r'특징.*설명하세요',
+                r'특징.*기술하세요',
+                r'특징.*서술하세요',
+                r'어떤.*특징',
+                r'주요.*특징',
+                r'특징.*무엇'
+            ],
+            "지표_묻기": [
+                r'지표.*설명하세요',
+                r'탐지.*지표',
+                r'주요.*지표',
+                r'어떤.*지표',
+                r'지표.*무엇'
+            ],
+            "방안_묻기": [
+                r'방안.*기술하세요',
+                r'방안.*설명하세요',
+                r'대응.*방안',
+                r'해결.*방안',
+                r'관리.*방안',
+                r'어떤.*방안'
+            ],
+            "절차_묻기": [
+                r'절차.*설명하세요',
+                r'절차.*기술하세요',
+                r'어떤.*절차',
+                r'처리.*절차',
+                r'진행.*절차'
+            ],
+            "조치_묻기": [
+                r'조치.*설명하세요',
+                r'조치.*기술하세요',
+                r'어떤.*조치',
+                r'보안.*조치',
+                r'대응.*조치'
+            ]
+        }
         
         # 주관식 패턴
         self.subj_patterns = [
@@ -123,7 +177,8 @@ class SimpleDataProcessor:
             "validation_failures": 0,
             "domain_distribution": {},
             "question_type_accuracy": {"correct": 0, "total": 0},
-            "choice_count_errors": 0  # 선택지 개수 오류 통계 추가
+            "choice_count_errors": 0,
+            "intent_analysis_accuracy": {"correct": 0, "total": 0}  # 의도 분석 정확도 추가
         }
         
         # 이전 처리 기록 로드
@@ -155,6 +210,61 @@ class SimpleDataProcessor:
                 pickle.dump(save_data, f)
         except Exception:
             pass
+    
+    def analyze_question_intent(self, question: str) -> Dict:
+        """질문 의도 분석 (강화)"""
+        question_lower = question.lower()
+        
+        intent_analysis = {
+            "primary_intent": "일반",
+            "intent_confidence": 0.0,
+            "detected_patterns": [],
+            "answer_type_required": "설명형"
+        }
+        
+        # 각 의도 패턴별 점수 계산
+        intent_scores = {}
+        
+        for intent_type, patterns in self.question_intent_patterns.items():
+            score = 0
+            matched_patterns = []
+            
+            for pattern in patterns:
+                if re.search(pattern, question, re.IGNORECASE):
+                    score += 1
+                    matched_patterns.append(pattern)
+            
+            if score > 0:
+                intent_scores[intent_type] = {
+                    "score": score,
+                    "patterns": matched_patterns
+                }
+        
+        # 가장 높은 점수의 의도 선택
+        if intent_scores:
+            best_intent = max(intent_scores.items(), key=lambda x: x[1]["score"])
+            intent_analysis["primary_intent"] = best_intent[0]
+            intent_analysis["intent_confidence"] = best_intent[1]["score"] / len(self.question_intent_patterns[best_intent[0]])
+            intent_analysis["detected_patterns"] = best_intent[1]["patterns"]
+            
+            # 답변 유형 결정
+            if "기관" in best_intent[0]:
+                intent_analysis["answer_type_required"] = "기관명"
+            elif "특징" in best_intent[0]:
+                intent_analysis["answer_type_required"] = "특징설명"
+            elif "지표" in best_intent[0]:
+                intent_analysis["answer_type_required"] = "지표나열"
+            elif "방안" in best_intent[0]:
+                intent_analysis["answer_type_required"] = "방안제시"
+            elif "절차" in best_intent[0]:
+                intent_analysis["answer_type_required"] = "절차설명"
+            elif "조치" in best_intent[0]:
+                intent_analysis["answer_type_required"] = "조치설명"
+        
+        # 통계 업데이트
+        self.processing_stats["intent_analysis_accuracy"]["total"] += 1
+        
+        return intent_analysis
     
     def extract_choice_range(self, question: str) -> Tuple[str, int]:
         """선택지 범위 추출 (개선된 버전)"""
@@ -340,7 +450,42 @@ class SimpleDataProcessor:
         answer_num = int(answer)
         return 1 <= answer_num <= max_choice
     
-    def validate_korean_answer(self, answer: str, question_type: str, max_choice: int = 5) -> bool:
+    def validate_answer_intent_match(self, answer: str, question: str, intent_analysis: Dict) -> bool:
+        """답변과 질문 의도 일치성 검증 (신규)"""
+        if not answer or not intent_analysis:
+            return False
+        
+        required_type = intent_analysis.get("answer_type_required", "설명형")
+        answer_lower = answer.lower()
+        
+        # 기관명이 필요한 경우
+        if required_type == "기관명":
+            institution_keywords = [
+                "위원회", "감독원", "은행", "기관", "센터", "청", "부", "원", 
+                "전자금융분쟁조정위원회", "금융감독원", "개인정보보호위원회",
+                "한국은행", "금융위원회", "과학기술정보통신부"
+            ]
+            return any(keyword in answer_lower for keyword in institution_keywords)
+        
+        # 특징 설명이 필요한 경우
+        elif required_type == "특징설명":
+            feature_keywords = ["특징", "특성", "속성", "성질", "기능", "역할", "원리"]
+            return any(keyword in answer_lower for keyword in feature_keywords)
+        
+        # 지표 나열이 필요한 경우
+        elif required_type == "지표나열":
+            indicator_keywords = ["지표", "신호", "징후", "패턴", "행동", "활동", "모니터링", "탐지"]
+            return any(keyword in answer_lower for keyword in indicator_keywords)
+        
+        # 방안 제시가 필요한 경우
+        elif required_type == "방안제시":
+            solution_keywords = ["방안", "대책", "조치", "해결", "대응", "관리", "처리", "절차"]
+            return any(keyword in answer_lower for keyword in solution_keywords)
+        
+        # 기본적으로 통과
+        return True
+    
+    def validate_korean_answer(self, answer: str, question_type: str, max_choice: int = 5, question: str = "") -> bool:
         """한국어 답변 유효성 검증 (강화)"""
         if not answer:
             return False
@@ -358,7 +503,7 @@ class SimpleDataProcessor:
             return True
         
         else:
-            # 주관식: 한국어 전용 검증 (더 엄격하게)
+            # 주관식: 한국어 전용 검증 + 의도 일치성 검증
             clean_answer = self.clean_korean_text(answer)
             
             # 길이 검증
@@ -366,14 +511,14 @@ class SimpleDataProcessor:
                 self.processing_stats["validation_failures"] += 1
                 return False
             
-            # 한국어 비율 검증 (더 엄격하게)
+            # 한국어 비율 검증
             korean_ratio = self.calculate_korean_ratio(clean_answer)
             if korean_ratio < self.korean_requirements["min_korean_ratio"]:
                 self.processing_stats["validation_failures"] += 1
                 return False
             
             # 영어 비율 검증
-            english_ratio = self.calculate_english_ratio(answer)  # 원본 텍스트에서 검증
+            english_ratio = self.calculate_english_ratio(answer)
             if english_ratio > self.korean_requirements["max_english_ratio"]:
                 self.processing_stats["validation_failures"] += 1
                 return False
@@ -390,12 +535,21 @@ class SimpleDataProcessor:
                 self.processing_stats["validation_failures"] += 1
                 return False
             
+            # 질문 의도 일치성 검증 (신규)
+            if question:
+                intent_analysis = self.analyze_question_intent(question)
+                if not self.validate_answer_intent_match(answer, question, intent_analysis):
+                    self.processing_stats["validation_failures"] += 1
+                    return False
+                else:
+                    self.processing_stats["intent_analysis_accuracy"]["correct"] += 1
+            
             self.processing_stats["korean_compliance"] += 1
             return True
     
-    def validate_answer(self, answer: str, question_type: str, max_choice: int = 5) -> bool:
+    def validate_answer(self, answer: str, question_type: str, max_choice: int = 5, question: str = "") -> bool:
         """답변 유효성 검증 (한국어 전용)"""
-        return self.validate_korean_answer(answer, question_type, max_choice)
+        return self.validate_korean_answer(answer, question_type, max_choice, question)
     
     def clean_text(self, text: str) -> str:
         """텍스트 정리 (한국어 전용)"""
@@ -509,12 +663,14 @@ class SimpleDataProcessor:
     def get_processing_stats(self) -> Dict:
         """처리 통계 반환"""
         total = max(self.processing_stats["total_processed"], 1)
+        intent_total = max(self.processing_stats["intent_analysis_accuracy"]["total"], 1)
         
         return {
             "total_processed": self.processing_stats["total_processed"],
             "korean_compliance_rate": (self.processing_stats["korean_compliance"] / total) * 100,
             "validation_failure_rate": (self.processing_stats["validation_failures"] / total) * 100,
             "choice_count_errors": self.processing_stats["choice_count_errors"],
+            "intent_analysis_accuracy_rate": (self.processing_stats["intent_analysis_accuracy"]["correct"] / intent_total) * 100,
             "domain_distribution": dict(self.processing_stats["domain_distribution"]),
             "question_type_accuracy": self.processing_stats["question_type_accuracy"]
         }

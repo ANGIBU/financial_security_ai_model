@@ -6,10 +6,12 @@
 - 전문 용어 처리
 - 한국어 전용 답변 템플릿 제공
 - 대회 규칙 준수 검증
+- 질문 의도별 지식 제공 강화
 """
 
 import pickle
 import os
+import re
 from datetime import datetime
 from typing import Dict, List
 from pathlib import Path
@@ -23,35 +25,38 @@ class FinancialSecurityKnowledgeBase:
         self.pkl_dir = Path("./pkl")
         self.pkl_dir.mkdir(exist_ok=True)
         
-        # 도메인별 키워드 (2025년 8월 1일 이전 공개 정보 기준)
+        # 도메인별 키워드 (2025년 8월 1일 이전 공개 정보 기준) - 확장
         self.domain_keywords = {
             "개인정보보호": [
                 "개인정보", "정보주체", "개인정보보호법", "민감정보", 
                 "고유식별정보", "수집", "이용", "제공", "파기", "동의",
                 "법정대리인", "아동", "처리", "개인정보처리방침", "열람권",
                 "정정삭제권", "처리정지권", "손해배상", "개인정보보호위원회",
-                "개인정보영향평가", "개인정보관리체계", "개인정보처리시스템"
+                "개인정보영향평가", "개인정보관리체계", "개인정보처리시스템",
+                "개인정보보호책임자", "개인정보취급자", "개인정보침해신고센터"
             ],
             "전자금융": [
                 "전자금융", "전자적", "접근매체", "전자금융거래법", 
                 "전자서명", "전자인증", "공인인증서", "전자금융업",
                 "전자지급수단", "전자화폐", "전자금융거래", "인증",
                 "전자금융분쟁조정위원회", "금융감독원", "한국은행",
-                "전자금융거래기록", "전자금융업무", "전자적장치"
+                "전자금융거래기록", "전자금융업무", "전자적장치",
+                "전자금융거래약관", "전자금융서비스", "전자금융업무위탁"
             ],
             "사이버보안": [
                 "트로이", "악성코드", "해킹", "멀웨어", "피싱", 
                 "스미싱", "랜섬웨어", "바이러스", "웜", "스파이웨어",
                 "원격제어", "원격접근", "RAT", "봇넷", "분산서비스거부공격", 
                 "지능형지속위협", "제로데이", "딥페이크", "사회공학", 
-                "취약점", "패치", "침입탐지", "침입방지", "보안관제"
+                "취약점", "패치", "침입탐지", "침입방지", "보안관제",
+                "백도어", "루트킷", "키로거", "트로이목마", "원격접근도구"
             ],
             "정보보안": [
                 "정보보안", "보안관리", "정보보안관리체계", "보안정책", 
                 "접근통제", "암호화", "방화벽", "침입탐지시스템",
                 "침입방지시스템", "보안정보이벤트관리", "보안관제", "인증",
                 "권한관리", "로그관리", "백업", "복구", "재해복구",
-                "비즈니스연속성계획", "보안감사", "보안교육"
+                "비즈니스연속성계획", "보안감사", "보안교육", "ISMS"
             ],
             "금융투자": [
                 "금융투자업", "투자자문업", "투자매매업", "투자중개업",
@@ -82,55 +87,76 @@ class FinancialSecurityKnowledgeBase:
             "가장.*옳은.*것"
         ]
         
-        # 한국어 전용 주관식 답변 템플릿 (대회 규칙 준수)
+        # 한국어 전용 주관식 답변 템플릿 (대회 규칙 준수) - 의도별 확장
         self.korean_subjective_templates = {
-            "사이버보안": [
-                "트로이 목마 기반 원격접근도구는 사용자를 속여 시스템에 침투하여 외부 공격자가 원격으로 제어하는 악성코드입니다. 네트워크 트래픽 모니터링, 시스템 동작 분석, 파일 생성 및 수정 패턴, 입출력 장치 접근 등의 비정상적인 행동이 주요 탐지 지표입니다.",
-                "해당 악성코드는 원격제어 기능을 통해 시스템에 침입하며 백신 프로그램과 행위 기반 탐지 시스템을 활용하여 탐지할 수 있습니다. 주요 대응방안으로는 네트워크 모니터링 강화와 접근권한 관리를 통한 예방조치가 있습니다.",
-                "사이버보안 위협에 대응하기 위해서는 다층 방어체계를 구축하고 실시간 모니터링과 침입탐지시스템을 운영해야 합니다. 또한 정기적인 보안교육과 훈련을 실시하여 보안 인식을 제고해야 합니다.",
-                "보안정책을 수립하고 정기적인 보안교육과 훈련을 실시하며 취약점 점검과 보안패치를 지속적으로 수행해야 합니다. 특히 사용자 계정 관리와 접근권한 통제를 강화하여 내부 보안을 확보해야 합니다.",
-                "침입탐지시스템과 침입방지시스템을 구축하여 실시간 보안위협을 탐지하고 차단해야 합니다. 보안관제센터를 운영하여 지속적인 모니터링과 신속한 대응체계를 마련해야 합니다."
-            ],
-            "개인정보보호": [
-                "개인정보보호법에 따라 정보주체의 권리를 보장하고 개인정보처리자는 수집부터 파기까지 전 과정에서 적절한 보호조치를 이행해야 합니다. 특히 민감정보와 고유식별정보 처리 시에는 별도의 동의를 받아야 합니다.",
-                "개인정보 처리 시 정보주체의 동의를 받고 목적 범위 내에서만 이용하며 개인정보보호위원회의 기준에 따른 안전성 확보조치를 수립해야 합니다. 또한 개인정보 처리방침을 공개하고 정보주체의 권리 행사 절차를 마련해야 합니다.",
-                "정보주체는 개인정보 열람권, 정정삭제권, 처리정지권을 가지며 개인정보처리자는 이러한 권리 행사를 보장하는 절차를 마련해야 합니다. 아동의 경우 법정대리인의 동의를 받아야 하며 개인정보 침해 시 손해배상 책임을 집니다.",
-                "개인정보관리체계를 수립하고 개인정보영향평가를 실시하여 개인정보 처리에 따른 위험을 사전에 분석하고 대응방안을 마련해야 합니다. 개인정보처리시스템의 보안성을 확보하고 정기적인 점검을 실시해야 합니다."
-            ],
-            "전자금융": [
-                "전자금융거래법에 따라 전자금융업자는 이용자의 전자금융거래 안전성 확보를 위한 보안조치를 시행하고 금융감독원의 감독을 받아야 합니다. 전자서명과 전자인증을 통해 거래의 무결성과 신원확인을 보장해야 합니다.",
-                "전자금융분쟁조정위원회에서 전자금융거래 분쟁조정 업무를 담당하며 이용자는 관련 법령에 따라 분쟁조정을 신청할 수 있습니다. 한국은행과 금융감독원에서 전자금융업 관련 감독업무를 수행합니다.",
-                "전자금융서비스 제공 시 접근매체에 대한 보안성을 확보하고 이용자 인증 절차를 통해 거래의 안전성을 보장해야 합니다. 전자지급수단 이용 시 위조방지 기술과 암호화 기술을 적용하여 보안을 강화해야 합니다.",
-                "전자금융거래기록을 안전하게 보관하고 전자적장치의 보안성을 확보해야 합니다. 전자금융업무 수행 시 이용자의 정보보호와 거래안전성을 위한 기술적 관리적 보호조치를 이행해야 합니다."
-            ],
-            "정보보안": [
-                "정보보안관리체계 구축을 위해 보안정책 수립, 위험분석, 보안대책 구현, 사후관리의 절차를 체계적으로 운영해야 합니다. 정보보안관리체계 인증을 통해 보안수준을 객관적으로 평가받을 수 있습니다.",
-                "접근통제 정책을 수립하고 사용자별 권한을 관리하며 로그 모니터링과 정기적인 보안감사를 통해 보안수준을 유지해야 합니다. 특히 관리자 계정에 대한 별도의 보안통제를 적용해야 합니다.",
-                "보안관제센터를 운영하고 침입탐지시스템과 방화벽을 통해 실시간 보안위협을 탐지하고 대응해야 합니다. 보안정보이벤트관리 시스템을 구축하여 보안사고를 신속히 분석하고 대응할 수 있는 체계를 마련해야 합니다.",
-                "재해복구계획과 비즈니스연속성계획을 수립하여 정보시스템 장애 시 신속한 복구가 가능하도록 해야 합니다. 정기적인 보안교육을 실시하여 임직원의 보안의식을 제고하고 보안사고 예방에 노력해야 합니다."
-            ],
-            "금융투자": [
-                "자본시장법에 따라 금융투자업자는 투자자 보호와 시장 공정성 확보를 위한 내부통제기준을 수립하고 준수해야 합니다. 투자자문업과 투자매매업 영위 시 각각의 업무범위와 규제사항을 준수해야 합니다.",
-                "금융투자업 영위 시 투자자의 투자성향과 위험도를 평가하고 적합한 상품을 권유하는 적합성 원칙을 준수해야 합니다. 특히 일반투자자에 대해서는 투자권유 시 더욱 엄격한 기준을 적용해야 합니다.",
-                "펀드 운용 시 투자자에게 투자위험과 손실 가능성을 충분히 설명하고 투명한 정보공시 의무를 이행해야 합니다. 집합투자업자는 선량한 관리자의 주의의무를 다하여 투자자의 이익을 위해 업무를 수행해야 합니다.",
-                "금융투자상품 판매 시 투자성과에 대한 과도한 기대를 조성하지 않도록 주의하고 투자위험을 명확히 설명해야 합니다. 투자자보호를 위한 설명의무를 충실히 이행하고 투자권유 과정에서 적합성 원칙을 준수해야 합니다."
-            ],
-            "위험관리": [
-                "위험관리 체계 구축을 위해 위험식별, 위험평가, 위험대응, 위험모니터링의 단계별 절차를 수립하고 운영해야 합니다. 각 단계별로 적절한 통제활동과 점검절차를 마련하여 위험관리의 실효성을 확보해야 합니다.",
-                "내부통제시스템을 구축하고 정기적인 위험평가를 실시하여 잠재적 위험요소를 사전에 식별하고 대응방안을 마련해야 합니다. 위험관리조직을 독립적으로 운영하여 객관적인 위험평가가 이루어지도록 해야 합니다.",
-                "컴플라이언스 체계를 수립하고 법규 준수 현황을 점검하며 위반 시 즉시 시정조치를 취하는 관리체계를 운영해야 합니다. 임직원에 대한 정기적인 컴플라이언스 교육을 실시하여 준법의식을 제고해야 합니다.",
-                "위험통제 정책을 수립하고 위험한도를 설정하여 허용 가능한 위험 수준을 관리해야 합니다. 위험보고 체계를 구축하고 위험문화를 조성하여 전사적 위험관리 역량을 강화해야 합니다."
-            ],
-            "일반": [
-                "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다. 정기적인 점검과 평가를 통해 관리체계의 실효성을 확보하고 필요시 개선방안을 마련해야 합니다.",
-                "전문적인 보안 정책을 수립하고 정기적인 점검과 평가를 실시하여 보안 수준을 유지해야 합니다. 관련 업무 담당자에 대한 교육과 훈련을 정기적으로 실시하여 전문성을 강화해야 합니다.", 
-                "법적 요구사항을 준수하며 효과적인 보안 조치를 시행하고 관련 교육을 실시해야 합니다. 내부 감사와 외부 점검을 통해 관리체계의 적정성을 평가하고 지속적으로 개선해야 합니다.",
-                "위험 요소를 식별하고 적절한 대응 방안을 마련하여 체계적으로 관리해야 합니다. 비상계획을 수립하고 정기적인 훈련을 실시하여 위기상황에 신속하고 효과적으로 대응할 수 있는 능력을 배양해야 합니다.",
-                "관리 절차를 확립하고 정기적인 평가를 통해 지속적인 개선을 추진해야 합니다. 관련 이해관계자와의 협력체계를 구축하여 효과적인 관리가 이루어지도록 해야 합니다."
-            ]
+            "사이버보안": {
+                "특징_묻기": [
+                    "트로이 목마 기반 원격접근도구는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하며, 은밀성과 지속성을 특징으로 합니다.",
+                    "해당 악성코드는 사용자를 속여 시스템에 침투하여 외부 공격자가 원격으로 제어하는 특성을 가지며, 시스템 깊숙이 숨어서 장기간 활동하면서 정보 수집과 원격 제어 기능을 수행합니다.",
+                    "트로이 목마는 유용한 프로그램으로 가장하여 사용자가 직접 설치하도록 유도하고, 설치 후 악의적인 기능을 수행하는 특징을 가집니다. 원격 접근 기능을 통해 시스템을 외부에서 조작할 수 있습니다."
+                ],
+                "지표_묻기": [
+                    "네트워크 트래픽 모니터링에서 비정상적인 외부 통신 패턴, 시스템 동작 분석에서 비인가 프로세스 실행, 파일 생성 및 수정 패턴의 이상 징후, 입출력 장치에 대한 비정상적 접근 등이 주요 탐지 지표입니다.",
+                    "원격 접속 흔적, 의심스러운 네트워크 연결, 시스템 파일 변조, 레지스트리 수정, 비정상적인 메모리 사용 패턴, 알려지지 않은 프로세스 실행 등을 통해 탐지할 수 있습니다.",
+                    "시스템 성능 저하, 예상치 못한 네트워크 활동, 방화벽 로그의 이상 패턴, 파일 시스템 변경 사항, 사용자 계정의 비정상적 활동 등이 주요 탐지 지표로 활용됩니다."
+                ],
+                "일반": [
+                    "사이버보안 위협에 대응하기 위해서는 다층 방어체계를 구축하고 실시간 모니터링과 침입탐지시스템을 운영해야 합니다.",
+                    "보안정책을 수립하고 정기적인 보안교육과 훈련을 실시하며 취약점 점검과 보안패치를 지속적으로 수행해야 합니다."
+                ]
+            },
+            "개인정보보호": {
+                "기관_묻기": [
+                    "개인정보보호위원회가 개인정보 보호에 관한 업무를 총괄하며, 개인정보 침해신고센터에서 신고 접수 및 상담 업무를 담당합니다.",
+                    "개인정보보호위원회는 개인정보 보호 정책 수립과 감시 업무를 수행하는 중앙 행정기관이며, 개인정보 분쟁조정위원회에서 관련 분쟁의 조정 업무를 담당합니다.",
+                    "개인정보 침해 관련 신고 및 상담은 개인정보보호위원회 산하 개인정보침해신고센터에서 담당하고 있습니다."
+                ],
+                "일반": [
+                    "개인정보보호법에 따라 정보주체의 권리를 보장하고 개인정보처리자는 수집부터 파기까지 전 과정에서 적절한 보호조치를 이행해야 합니다.",
+                    "개인정보 처리 시 정보주체의 동의를 받고 목적 범위 내에서만 이용하며 개인정보보호위원회의 기준에 따른 안전성 확보조치를 수립해야 합니다."
+                ]
+            },
+            "전자금융": {
+                "기관_묻기": [
+                    "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 금융감독원 내에 설치되어 운영됩니다.",
+                    "금융감독원 내 전자금융분쟁조정위원회가 이용자의 분쟁조정 신청을 접수하고 처리하는 업무를 수행합니다.",
+                    "전자금융거래법에 따라 금융감독원의 전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁의 조정 업무를 담당하고 있습니다.",
+                    "전자금융 분쟁조정은 금융감독원에 설치된 전자금융분쟁조정위원회에서 신청할 수 있으며, 이용자 보호를 위한 분쟁해결 업무를 수행합니다."
+                ],
+                "일반": [
+                    "전자금융거래법에 따라 전자금융업자는 이용자의 전자금융거래 안전성 확보를 위한 보안조치를 시행하고 금융감독원의 감독을 받아야 합니다.",
+                    "전자금융분쟁조정위원회에서 전자금융거래 분쟁조정 업무를 담당하며 이용자는 관련 법령에 따라 분쟁조정을 신청할 수 있습니다."
+                ]
+            },
+            "정보보안": {
+                "일반": [
+                    "정보보안관리체계 구축을 위해 보안정책 수립, 위험분석, 보안대책 구현, 사후관리의 절차를 체계적으로 운영해야 합니다.",
+                    "접근통제 정책을 수립하고 사용자별 권한을 관리하며 로그 모니터링과 정기적인 보안감사를 통해 보안수준을 유지해야 합니다."
+                ]
+            },
+            "금융투자": {
+                "일반": [
+                    "자본시장법에 따라 금융투자업자는 투자자 보호와 시장 공정성 확보를 위한 내부통제기준을 수립하고 준수해야 합니다.",
+                    "금융투자업 영위 시 투자자의 투자성향과 위험도를 평가하고 적합한 상품을 권유하는 적합성 원칙을 준수해야 합니다."
+                ]
+            },
+            "위험관리": {
+                "일반": [
+                    "위험관리 체계 구축을 위해 위험식별, 위험평가, 위험대응, 위험모니터링의 단계별 절차를 수립하고 운영해야 합니다.",
+                    "내부통제시스템을 구축하고 정기적인 위험평가를 실시하여 잠재적 위험요소를 사전에 식별하고 대응방안을 마련해야 합니다."
+                ]
+            },
+            "일반": {
+                "일반": [
+                    "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다.",
+                    "전문적인 보안 정책을 수립하고 정기적인 점검과 평가를 실시하여 보안 수준을 유지해야 합니다.",
+                    "법적 요구사항을 준수하며 효과적인 보안 조치를 시행하고 관련 교육을 실시해야 합니다.",
+                    "위험 요소를 식별하고 적절한 대응 방안을 마련하여 체계적으로 관리해야 합니다."
+                ]
+            }
         }
         
-        # 한국어 전용 금융 전문 용어 사전 (대회 규칙 준수)
+        # 한국어 전용 금융 전문 용어 사전 (대회 규칙 준수) - 확장
         self.korean_financial_terms = {
             "정보보안관리체계": "조직의 정보자산을 보호하기 위한 종합적인 관리체계",
             "개인정보관리체계": "개인정보의 안전한 처리를 위한 체계적 관리방안",
@@ -140,7 +166,35 @@ class FinancialSecurityKnowledgeBase:
             "모바일기기관리": "조직에서 사용하는 모바일 기기의 보안을 관리하는 솔루션",
             "보안정보이벤트관리": "보안 정보와 이벤트를 통합적으로 관리하고 분석하는 시스템",
             "비즈니스연속성계획": "재해나 위기상황 발생 시 업무 연속성을 보장하기 위한 계획",
-            "재해복구계획": "정보시스템 장애 시 신속한 복구를 위한 절차와 방법"
+            "재해복구계획": "정보시스템 장애 시 신속한 복구를 위한 절차와 방법",
+            "전자금융분쟁조정위원회": "전자금융거래 관련 분쟁의 조정을 담당하는 기관",
+            "개인정보보호위원회": "개인정보 보호에 관한 업무를 총괄하는 중앙행정기관",
+            "트로이목마": "정상 프로그램으로 위장하여 악의적 기능을 수행하는 악성코드",
+            "원격접근도구": "네트워크를 통해 원격지 시스템을 제어할 수 있는 소프트웨어"
+        }
+        
+        # 기관별 구체적 정보 (신규)
+        self.institution_database = {
+            "전자금융분쟁조정": {
+                "기관명": "전자금융분쟁조정위원회",
+                "소속": "금융감독원",
+                "역할": "전자금융거래 관련 분쟁조정",
+                "근거법": "전자금융거래법",
+                "신청방법": "금융감독원 홈페이지 또는 방문 신청"
+            },
+            "개인정보보호": {
+                "기관명": "개인정보보호위원회",
+                "소속": "국무총리 소속",
+                "역할": "개인정보보호 정책 수립 및 감시",
+                "근거법": "개인정보보호법",
+                "신고기관": "개인정보침해신고센터"
+            },
+            "금융투자분쟁조정": {
+                "기관명": "금융분쟁조정위원회",
+                "소속": "금융감독원",
+                "역할": "금융투자 관련 분쟁조정",
+                "근거법": "자본시장법"
+            }
         }
         
         # 질문 분석 이력
@@ -152,7 +206,8 @@ class FinancialSecurityKnowledgeBase:
                 "korean_only": 0,
                 "law_references": 0,
                 "technical_terms": 0
-            }
+            },
+            "intent_analysis_history": {}  # 의도 분석 이력 추가
         }
         
         # 이전 분석 이력 로드
@@ -189,7 +244,7 @@ class FinancialSecurityKnowledgeBase:
             pass
     
     def analyze_question(self, question: str) -> Dict:
-        """질문 분석 (대회 규칙 준수 확인)"""
+        """질문 분석 (대회 규칙 준수 확인) - 강화"""
         question_lower = question.lower()
         
         # 도메인 찾기
@@ -210,19 +265,57 @@ class FinancialSecurityKnowledgeBase:
         # 대회 규칙 준수 확인
         compliance_check = self._check_competition_compliance(question)
         
+        # 기관 관련 질문인지 확인 (신규)
+        institution_info = self._check_institution_question(question)
+        
         # 분석 결과 저장
         analysis_result = {
             "domain": detected_domains,
             "complexity": complexity,
             "technical_level": self._determine_technical_level(complexity, korean_terms),
             "korean_technical_terms": korean_terms,
-            "compliance": compliance_check
+            "compliance": compliance_check,
+            "institution_info": institution_info  # 기관 정보 추가
         }
         
         # 이력에 추가
         self._add_to_analysis_history(question, analysis_result)
         
         return analysis_result
+    
+    def _check_institution_question(self, question: str) -> Dict:
+        """기관 관련 질문 확인 (신규)"""
+        question_lower = question.lower()
+        
+        institution_info = {
+            "is_institution_question": False,
+            "institution_type": None,
+            "relevant_institution": None
+        }
+        
+        # 기관을 묻는 질문인지 확인
+        institution_patterns = [
+            "기관.*기술하세요", "기관.*설명하세요", "어떤.*기관", "어느.*기관",
+            "조정.*신청.*기관", "분쟁.*조정.*기관", "신청.*수.*있는.*기관"
+        ]
+        
+        is_asking_institution = any(re.search(pattern, question_lower) for pattern in institution_patterns)
+        
+        if is_asking_institution:
+            institution_info["is_institution_question"] = True
+            
+            # 분야별 기관 확인
+            if "전자금융" in question_lower and "분쟁" in question_lower:
+                institution_info["institution_type"] = "전자금융분쟁조정"
+                institution_info["relevant_institution"] = self.institution_database["전자금융분쟁조정"]
+            elif "개인정보" in question_lower:
+                institution_info["institution_type"] = "개인정보보호"
+                institution_info["relevant_institution"] = self.institution_database["개인정보보호"]
+            elif "금융투자" in question_lower and "분쟁" in question_lower:
+                institution_info["institution_type"] = "금융투자분쟁조정"
+                institution_info["relevant_institution"] = self.institution_database["금융투자분쟁조정"]
+        
+        return institution_info
     
     def _check_competition_compliance(self, question: str) -> Dict:
         """대회 규칙 준수 확인"""
@@ -272,6 +365,13 @@ class FinancialSecurityKnowledgeBase:
         if len(analysis["korean_technical_terms"]) > 0:
             self.analysis_history["compliance_check"]["technical_terms"] += 1
         
+        # 기관 질문 이력 추가 (신규)
+        if analysis["institution_info"]["is_institution_question"]:
+            institution_type = analysis["institution_info"]["institution_type"]
+            if institution_type not in self.analysis_history["intent_analysis_history"]:
+                self.analysis_history["intent_analysis_history"][institution_type] = 0
+            self.analysis_history["intent_analysis_history"][institution_type] += 1
+        
         # 질문 패턴 추가
         pattern = {
             "question_length": len(question),
@@ -279,18 +379,33 @@ class FinancialSecurityKnowledgeBase:
             "complexity": analysis["complexity"],
             "korean_terms_count": len(analysis["korean_technical_terms"]),
             "compliance_score": sum(analysis["compliance"].values()) / len(analysis["compliance"]),
+            "is_institution_question": analysis["institution_info"]["is_institution_question"],
             "timestamp": datetime.now().isoformat()
         }
         
         self.analysis_history["question_patterns"].append(pattern)
     
-    def get_korean_subjective_template(self, domain: str) -> str:
-        """한국어 주관식 답변 템플릿 반환 (대회 규칙 준수)"""
+    def get_korean_subjective_template(self, domain: str, intent_type: str = "일반") -> str:
+        """한국어 주관식 답변 템플릿 반환 (대회 규칙 준수) - 의도별 강화"""
         
+        # 도메인과 의도에 맞는 템플릿 선택
         if domain in self.korean_subjective_templates:
-            templates = self.korean_subjective_templates[domain]
+            domain_templates = self.korean_subjective_templates[domain]
+            
+            # 의도별 템플릿이 있는지 확인
+            if isinstance(domain_templates, dict):
+                if intent_type in domain_templates:
+                    templates = domain_templates[intent_type]
+                elif "일반" in domain_templates:
+                    templates = domain_templates["일반"]
+                else:
+                    # dict의 첫 번째 값 사용
+                    templates = list(domain_templates.values())[0]
+            else:
+                templates = domain_templates
         else:
-            templates = self.korean_subjective_templates["일반"]
+            # 일반 템플릿 사용
+            templates = self.korean_subjective_templates["일반"]["일반"]
         
         # 한국어 전용 검증
         selected_template = random.choice(templates)
@@ -302,9 +417,26 @@ class FinancialSecurityKnowledgeBase:
         
         return selected_template
     
-    def get_subjective_template(self, domain: str) -> str:
+    def get_institution_specific_answer(self, institution_type: str) -> str:
+        """기관별 구체적 답변 반환 (신규)"""
+        if institution_type in self.institution_database:
+            info = self.institution_database[institution_type]
+            
+            if institution_type == "전자금융분쟁조정":
+                return f"{info['기관명']}에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 {info['소속']} 내에 설치되어 운영되며, {info['근거법']}에 따라 이용자의 분쟁조정 신청을 접수하고 처리합니다."
+            
+            elif institution_type == "개인정보보호":
+                return f"{info['기관명']}이 개인정보 보호에 관한 업무를 총괄하며, {info['신고기관']}에서 신고 접수 및 상담 업무를 담당합니다. 이는 {info['근거법']}에 근거하여 운영됩니다."
+            
+            elif institution_type == "금융투자분쟁조정":
+                return f"{info['기관명']}에서 금융투자 관련 분쟁조정 업무를 담당하며, {info['소속']} 내에 설치되어 {info['근거법']}에 따라 운영됩니다."
+        
+        # 기본 답변
+        return "관련 법령에 따라 해당 분야의 전문 기관에서 업무를 담당하고 있습니다."
+    
+    def get_subjective_template(self, domain: str, intent_type: str = "일반") -> str:
         """주관식 답변 템플릿 반환 (한국어 전용)"""
-        return self.get_korean_subjective_template(domain)
+        return self.get_korean_subjective_template(domain, intent_type)
     
     def _calculate_complexity(self, question: str) -> float:
         """질문 복잡도 계산"""
@@ -343,42 +475,48 @@ class FinancialSecurityKnowledgeBase:
             return "초급"
     
     def get_domain_specific_guidance(self, domain: str) -> Dict:
-        """도메인별 지침 반환 (대회 규칙 준수)"""
+        """도메인별 지침 반환 (대회 규칙 준수) - 강화"""
         guidance = {
             "개인정보보호": {
                 "key_laws": ["개인정보보호법", "정보통신망법"],
                 "key_concepts": ["정보주체", "개인정보처리자", "동의", "목적외이용금지"],
                 "oversight_body": "개인정보보호위원회",
+                "related_institutions": ["개인정보보호위원회", "개인정보침해신고센터"],
                 "compliance_focus": "한국어 법령 용어 사용"
             },
             "전자금융": {
                 "key_laws": ["전자금융거래법", "전자서명법"],
                 "key_concepts": ["접근매체", "전자서명", "인증", "분쟁조정"],
                 "oversight_body": "금융감독원, 한국은행",
+                "related_institutions": ["전자금융분쟁조정위원회", "금융감독원"],
                 "compliance_focus": "한국어 금융 용어 사용"
             },
             "사이버보안": {
                 "key_laws": ["정보통신망법", "개인정보보호법"],
                 "key_concepts": ["악성코드", "침입탐지", "보안관제", "사고대응"],
                 "oversight_body": "과학기술정보통신부, 경찰청",
+                "related_institutions": ["한국인터넷진흥원", "사이버보안센터"],
                 "compliance_focus": "한국어 보안 용어 사용"
             },
             "정보보안": {
                 "key_laws": ["정보통신망법", "전자정부법"],
                 "key_concepts": ["정보보안관리체계", "접근통제", "암호화", "백업"],
                 "oversight_body": "과학기술정보통신부",
+                "related_institutions": ["한국인터넷진흥원"],
                 "compliance_focus": "한국어 기술 용어 사용"
             },
             "금융투자": {
                 "key_laws": ["자본시장법", "금융투자업규정"],
                 "key_concepts": ["투자자보호", "적합성원칙", "설명의무", "내부통제"],
                 "oversight_body": "금융감독원, 금융위원회",
+                "related_institutions": ["금융분쟁조정위원회", "금융감독원"],
                 "compliance_focus": "한국어 투자 용어 사용"
             },
             "위험관리": {
                 "key_laws": ["은행법", "보험업법", "자본시장법"],
                 "key_concepts": ["위험평가", "내부통제", "컴플라이언스", "감사"],
                 "oversight_body": "금융감독원",
+                "related_institutions": ["금융감독원"],
                 "compliance_focus": "한국어 관리 용어 사용"
             }
         }
@@ -387,6 +525,7 @@ class FinancialSecurityKnowledgeBase:
             "key_laws": ["관련 법령"],
             "key_concepts": ["체계적 관리", "지속적 개선"],
             "oversight_body": "관계기관",
+            "related_institutions": ["해당 전문기관"],
             "compliance_focus": "한국어 전용 답변"
         })
     
@@ -396,8 +535,10 @@ class FinancialSecurityKnowledgeBase:
             "domain_frequency": dict(self.analysis_history["domain_frequency"]),
             "complexity_distribution": dict(self.analysis_history["complexity_distribution"]),
             "compliance_check": dict(self.analysis_history["compliance_check"]),
+            "intent_analysis_history": dict(self.analysis_history["intent_analysis_history"]),
             "total_analyzed": len(self.analysis_history["question_patterns"]),
-            "korean_terms_available": len(self.korean_financial_terms)
+            "korean_terms_available": len(self.korean_financial_terms),
+            "institutions_available": len(self.institution_database)
         }
     
     def validate_competition_compliance(self, answer: str, domain: str) -> Dict:
