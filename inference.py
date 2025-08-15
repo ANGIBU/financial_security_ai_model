@@ -219,26 +219,35 @@ class FinancialAIInference:
         self.stats["difficulty_stats"][difficulty] += 1
     
     def print_progress_bar(self, current: int, total: int, start_time: float, bar_length: int = 50):
-        """진행률 게이지바 출력 (개선된 버전)"""
+        """진행률 게이지바 출력"""
         progress = current / total
         filled_length = int(bar_length * progress)
         bar = '█' * filled_length + '░' * (bar_length - filled_length)
         
-        # 시간 계산
-        elapsed = time.time() - start_time
-        if current > 0:
-            avg_time_per_item = elapsed / current
-            remaining_items = total - current
-            eta = avg_time_per_item * remaining_items
-            eta_minutes = int(eta // 60)
-            eta_seconds = int(eta % 60)
-            eta_str = f"{eta_minutes:02d}:{eta_seconds:02d}"
-        else:
-            eta_str = "--:--"
-        
-        # 진행률 출력 (개선된 형식)
+        # 진행률 출력
         percent = progress * 100
-        print(f"\r문항 처리: ({current}/{total}) 진행도: {percent:.0f}% [{bar}] 남은시간: {eta_str}", end='', flush=True)
+        print(f"\r문항 처리: ({current}/{total}) 진행도: {percent:.0f}% [{bar}]", end='', flush=True)
+    
+    def _calculate_model_reliability(self) -> float:
+        """모델 신뢰도 계산"""
+        total = max(self.stats["total"], 1)
+        
+        # 기본 성공률 (40%)
+        success_rate = (self.stats["model_success"] / total) * 0.4
+        
+        # 한국어 준수율 (30%)
+        korean_rate = (self.stats["korean_compliance"] / total) * 0.3
+        
+        # 범위 정확도 (20%) - 선택지 범위 오류가 적을수록 높음
+        range_accuracy = max(0, (1 - self.stats["choice_range_errors"] / total)) * 0.2
+        
+        # 검증 통과율 (10%) - 검증 오류가 적을수록 높음
+        validation_rate = max(0, (1 - self.stats["validation_errors"] / total)) * 0.1
+        
+        # 전체 신뢰도 (0-100%)
+        reliability = (success_rate + korean_rate + range_accuracy + validation_rate) * 100
+        
+        return min(reliability, 100.0)
     
     def _safe_save_csv(self, df: pd.DataFrame, filepath: str, max_retries: int = 3) -> bool:
         """안전한 CSV 저장 (권한 오류 처리)"""
@@ -330,23 +339,9 @@ class FinancialAIInference:
         # 진행률 완료 후 줄바꿈
         print()
         
-        # 선택지별 답변 분포 출력 (개선된 버전)
-        if self.stats["mc_count"] > 0:
-            print("\n객관식 답변 분포:")
-            for choice_count in [3, 4, 5]:
-                if any(count > 0 for count in self.stats["mc_answers_by_range"][choice_count].values()):
-                    total_for_range = sum(self.stats["mc_answers_by_range"][choice_count].values())
-                    print(f"  {choice_count}개 선택지 문항 ({total_for_range}개):")
-                    for num in range(1, choice_count + 1):
-                        count = self.stats["mc_answers_by_range"][choice_count][str(num)]
-                        percentage = (count / total_for_range) * 100 if total_for_range > 0 else 0
-                        print(f"    {num}번: {count}개 ({percentage:.1f}%)")
-        
-        # 오류 통계 출력
-        if self.stats["choice_range_errors"] > 0 or self.stats["validation_errors"] > 0:
-            print(f"\n오류 통계:")
-            print(f"  선택지 범위 오류: {self.stats['choice_range_errors']}개")
-            print(f"  검증 오류: {self.stats['validation_errors']}개")
+        # 모델 신뢰도 계산
+        reliability_score = self._calculate_model_reliability()
+        print(f"\n모델 신뢰도: {reliability_score:.1f}%")
         
         # 결과 저장 (안전한 저장 방식 사용)
         submission_df['Answer'] = answers

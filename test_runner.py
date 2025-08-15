@@ -25,7 +25,6 @@ def analyze_test_data(test_file: str):
     """테스트 데이터 분석"""
     try:
         test_df = pd.read_csv(test_file)
-        print("\n테스트 데이터 분석:")
         
         choice_analysis = {}
         for idx, row in test_df.iterrows():
@@ -55,25 +54,6 @@ def analyze_test_data(test_file: str):
                     "is_mc": False
                 }
         
-        # 통계 출력
-        mc_questions = [k for k, v in choice_analysis.items() if v["is_mc"]]
-        subj_questions = [k for k, v in choice_analysis.items() if not v["is_mc"]]
-        
-        print(f"  총 문항: {len(test_df)}개")
-        print(f"  객관식: {len(mc_questions)}개")
-        print(f"  주관식: {len(subj_questions)}개")
-        
-        # 선택지 개수별 분포
-        if mc_questions:
-            choice_distribution = {}
-            for qid in mc_questions:
-                max_choice = choice_analysis[qid]["max_choice"]
-                choice_distribution[max_choice] = choice_distribution.get(max_choice, 0) + 1
-            
-            print("  객관식 선택지 분포:")
-            for choice_count, count in sorted(choice_distribution.items()):
-                print(f"    {choice_count}개 선택지: {count}문항")
-        
         return choice_analysis
         
     except Exception as e:
@@ -92,7 +72,7 @@ def run_test(test_size: int = 50, verbose: bool = True):
             print(f"오류: {file_path} 파일이 없습니다")
             return False
     
-    # 테스트 데이터 분석
+    # 테스트 데이터 분석 (내부 처리용)
     choice_analysis = analyze_test_data(test_file)
     
     engine = None
@@ -128,10 +108,6 @@ def run_test(test_size: int = 50, verbose: bool = True):
         
         # 결과 분석
         print_test_results(results, output_file, test_size)
-        
-        # 답변 검증 (옵션)
-        if test_size <= 10:
-            validate_answers_with_choice_analysis(output_file, test_df.head(test_size), choice_analysis)
         
         return True
         
@@ -361,21 +337,12 @@ def print_test_results(results: dict, output_file: str, test_size: int):
 
     print("테스트 완료")
     
-    # 핵심 정보 출력
+    # 기본 정보만 출력
     total_time_minutes = results['total_time'] / 60
     
     print(f"\n기본 정보:")
     print(f"  처리 시간: {total_time_minutes:.1f}분")
     print(f"  처리 문항: {results['total_questions']}개")
-    print(f"  모델 성공률: {results['model_success_rate']:.1f}%")
-    print(f"  한국어 준수율: {results['korean_compliance_rate']:.1f}%")
-    
-    # 오류율 출력
-    if results.get('choice_range_error_rate', 0) > 0:
-        print(f"  선택지 범위 오류율: {results['choice_range_error_rate']:.1f}%")
-    if results.get('validation_error_rate', 0) > 0:
-        print(f"  검증 오류율: {results['validation_error_rate']:.1f}%")
-    
     print(f"  결과 파일: {output_file}")
 
 def select_test_size():
