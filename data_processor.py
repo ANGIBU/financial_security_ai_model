@@ -19,7 +19,7 @@ from pathlib import Path
 import hashlib
 from collections import defaultdict
 
-class EnhancedDataProcessor:
+class SimpleDataProcessor:
     """CSV 분석 기반 강화된 데이터 처리기"""
     
     def __init__(self):
@@ -1371,3 +1371,7 @@ class EnhancedDataProcessor:
     def cleanup(self):
         """정리"""
         self._save_processing_history()
+
+
+# 호환성을 위한 별칭 추가
+EnhancedDataProcessor = SimpleDataProcessor
