@@ -11,6 +11,8 @@
 import os
 import time
 import gc
+import tempfile
+import shutil
 import pandas as pd
 from typing import Dict, List
 from pathlib import Path
@@ -61,7 +63,11 @@ class FinancialAIInference:
             "domain_stats": {},
             "difficulty_stats": {"초급": 0, "중급": 0, "고급": 0},
             "quality_scores": [],
-            "mc_answers": {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}  # 객관식 답변 분포 추적
+            "mc_answers_by_range": {3: {"1": 0, "2": 0, "3": 0}, 
+                                   4: {"1": 0, "2": 0, "3": 0, "4": 0}, 
+                                   5: {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}},
+            "choice_range_errors": 0,  # 선택지 범위 오류 추가
+            "validation_errors": 0    # 검증 오류 추가
         }
         
         if verbose:
@@ -72,25 +78,30 @@ class FinancialAIInference:
         start_time = time.time()
         
         try:
-            # 1. 질문 분석
-            question_type = self.data_processor.analyze_question_type(question)
+            # 1. 질문 분석 및 선택지 범위 추출
+            question_type, max_choice = self.data_processor.extract_choice_range(question)
             domain = self.data_processor.extract_domain(question)
             difficulty = self.data_processor.analyze_question_difficulty(question)
             
             # 지식베이스 분석
             kb_analysis = self.knowledge_base.analyze_question(question)
             
-            # 2. AI 모델로 답변 생성
-            answer = self.model_handler.generate_answer(question, question_type)
+            # 2. AI 모델로 답변 생성 (선택지 개수 전달)
+            if question_type == "multiple_choice":
+                answer = self.model_handler.generate_answer(question, question_type, max_choice)
+            else:
+                answer = self.model_handler.generate_answer(question, question_type)
             
             # 3. 한국어 답변 검증 및 정규화
-            if self.data_processor.validate_korean_answer(answer, question_type):
-                answer = self.data_processor.normalize_korean_answer(answer, question_type)
+            if self.data_processor.validate_korean_answer(answer, question_type, max_choice):
+                answer = self.data_processor.normalize_korean_answer(answer, question_type, max_choice)
                 self.stats["model_success"] += 1
                 
-                # 객관식 답변 분포 추적
-                if question_type == "multiple_choice" and answer in self.stats["mc_answers"]:
-                    self.stats["mc_answers"][answer] += 1
+                # 선택지별 답변 분포 추적 (수정된 부분)
+                if question_type == "multiple_choice" and answer.isdigit():
+                    answer_num = int(answer)
+                    if 1 <= answer_num <= max_choice and max_choice in self.stats["mc_answers_by_range"]:
+                        self.stats["mc_answers_by_range"][max_choice][answer] += 1
                 
                 # 한국어 준수율 확인
                 if question_type == "subjective":
@@ -101,19 +112,34 @@ class FinancialAIInference:
                         self.stats["quality_scores"].append(quality_score)
                     else:
                         # 한국어 비율이 낮으면 템플릿으로 대체
-                        answer = self._get_korean_fallback_answer(question_type, domain)
+                        answer = self._get_korean_fallback_answer(question_type, domain, max_choice)
                         self.stats["korean_compliance"] += 1
                 else:
                     self.stats["korean_compliance"] += 1
                     
             else:
                 # 검증 실패시 한국어 폴백
-                answer = self._get_korean_fallback_answer(question_type, domain)
-                if question_type == "multiple_choice" and answer in self.stats["mc_answers"]:
-                    self.stats["mc_answers"][answer] += 1
+                self.stats["validation_errors"] += 1
+                answer = self._get_korean_fallback_answer(question_type, domain, max_choice)
+                
+                # 객관식인 경우 답변 분포 업데이트
+                if question_type == "multiple_choice" and answer.isdigit():
+                    answer_num = int(answer)
+                    if 1 <= answer_num <= max_choice and max_choice in self.stats["mc_answers_by_range"]:
+                        self.stats["mc_answers_by_range"][max_choice][answer] += 1
+                
                 self.stats["korean_compliance"] += 1
             
-            # 4. 통계 업데이트
+            # 4. 최종 답변 범위 검증
+            if question_type == "multiple_choice":
+                if not answer.isdigit() or not (1 <= int(answer) <= max_choice):
+                    self.stats["choice_range_errors"] += 1
+                    # 범위 내 답변으로 강제 수정
+                    answer = self._get_safe_mc_answer(max_choice)
+                    if max_choice in self.stats["mc_answers_by_range"]:
+                        self.stats["mc_answers_by_range"][max_choice][answer] += 1
+            
+            # 5. 통계 업데이트
             self._update_stats(question_type, domain, difficulty, time.time() - start_time)
             
             return answer
@@ -121,13 +147,29 @@ class FinancialAIInference:
         except Exception as e:
             if self.verbose:
                 print(f"오류 발생: {e}")
-            return self._get_korean_fallback_answer("multiple_choice", "일반")
+            # 안전한 폴백 답변
+            fallback = self._get_safe_fallback(question, max_choice if 'max_choice' in locals() else 5)
+            self._update_stats("multiple_choice", "일반", "초급", time.time() - start_time)
+            return fallback
     
-    def _get_korean_fallback_answer(self, question_type: str, domain: str) -> str:
+    def _get_safe_mc_answer(self, max_choice: int) -> str:
+        """안전한 객관식 답변 생성"""
+        import random
+        return str(random.randint(1, max_choice))
+    
+    def _get_safe_fallback(self, question: str, max_choice: int) -> str:
+        """안전한 폴백 답변"""
+        # 간단한 객관식/주관식 구분
+        if any(str(i) in question for i in range(1, 6)) and len(question) < 300:
+            return self._get_safe_mc_answer(max_choice)
+        else:
+            return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+    
+    def _get_korean_fallback_answer(self, question_type: str, domain: str, max_choice: int) -> str:
         """한국어 폴백 답변"""
         if question_type == "multiple_choice":
             # 모델 핸들러의 균등 분포 답변 사용
-            return self.model_handler._get_balanced_mc_answer()
+            return self.model_handler._get_balanced_mc_answer(max_choice)
         else:
             # 지식베이스의 한국어 도메인별 템플릿 사용
             return self.knowledge_base.get_korean_subjective_template(domain)
@@ -198,6 +240,52 @@ class FinancialAIInference:
         percent = progress * 100
         print(f"\r문항 처리: ({current}/{total}) 진행도: {percent:.0f}% [{bar}] 남은시간: {eta_str}", end='', flush=True)
     
+    def _safe_save_csv(self, df: pd.DataFrame, filepath: str, max_retries: int = 3) -> bool:
+        """안전한 CSV 저장 (권한 오류 처리)"""
+        filepath = Path(filepath)
+        
+        for attempt in range(max_retries):
+            try:
+                # 임시 파일로 먼저 저장
+                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv', encoding='utf-8-sig') as tmp_file:
+                    df.to_csv(tmp_file.name, index=False, encoding='utf-8-sig')
+                    temp_path = tmp_file.name
+                
+                # 대상 파일이 존재하면 백업
+                if filepath.exists():
+                    backup_path = filepath.with_suffix('.bak')
+                    if backup_path.exists():
+                        backup_path.unlink()
+                    shutil.move(str(filepath), str(backup_path))
+                
+                # 임시 파일을 대상 위치로 이동
+                shutil.move(temp_path, str(filepath))
+                
+                if self.verbose:
+                    print(f"\n결과 저장 완료: {filepath}")
+                return True
+                
+            except PermissionError as e:
+                if attempt < max_retries - 1:
+                    if self.verbose:
+                        print(f"\n파일 저장 권한 오류 (시도 {attempt + 1}/{max_retries}): {e}")
+                    time.sleep(1)  # 1초 대기 후 재시도
+                    
+                    # 대체 파일명 시도
+                    timestamp = int(time.time())
+                    filepath = filepath.parent / f"{filepath.stem}_{timestamp}{filepath.suffix}"
+                else:
+                    if self.verbose:
+                        print(f"\n파일 저장 실패: {e}")
+                    return False
+                    
+            except Exception as e:
+                if self.verbose:
+                    print(f"\n파일 저장 중 오류: {e}")
+                return False
+                
+        return False
+    
     def execute_inference(self, test_file: str = "./test.csv", 
                          submission_file: str = "./sample_submission.csv",
                          output_file: str = "./final_submission.csv") -> Dict:
@@ -242,19 +330,37 @@ class FinancialAIInference:
         # 진행률 완료 후 줄바꿈
         print()
         
-        # 객관식 답변 분포 출력
+        # 선택지별 답변 분포 출력 (개선된 버전)
         if self.stats["mc_count"] > 0:
             print("\n객관식 답변 분포:")
-            for num in ["1", "2", "3", "4", "5"]:
-                count = self.stats["mc_answers"][num]
-                percentage = (count / self.stats["mc_count"]) * 100 if self.stats["mc_count"] > 0 else 0
-                print(f"  {num}번: {count}개 ({percentage:.1f}%)")
+            for choice_count in [3, 4, 5]:
+                if any(count > 0 for count in self.stats["mc_answers_by_range"][choice_count].values()):
+                    total_for_range = sum(self.stats["mc_answers_by_range"][choice_count].values())
+                    print(f"  {choice_count}개 선택지 문항 ({total_for_range}개):")
+                    for num in range(1, choice_count + 1):
+                        count = self.stats["mc_answers_by_range"][choice_count][str(num)]
+                        percentage = (count / total_for_range) * 100 if total_for_range > 0 else 0
+                        print(f"    {num}번: {count}개 ({percentage:.1f}%)")
         
-        # 결과 저장
+        # 오류 통계 출력
+        if self.stats["choice_range_errors"] > 0 or self.stats["validation_errors"] > 0:
+            print(f"\n오류 통계:")
+            print(f"  선택지 범위 오류: {self.stats['choice_range_errors']}개")
+            print(f"  검증 오류: {self.stats['validation_errors']}개")
+        
+        # 결과 저장 (안전한 저장 방식 사용)
         submission_df['Answer'] = answers
-        submission_df.to_csv(output_file, index=False, encoding='utf-8-sig')
+        save_success = self._safe_save_csv(submission_df, output_file)
         
-        print(f"\n결과 저장 완료: {output_file}")
+        if not save_success:
+            # 저장 실패시 임시 디렉토리에 저장
+            temp_dir = Path(tempfile.gettempdir())
+            temp_file = temp_dir / f"inference_result_{int(time.time())}.csv"
+            try:
+                submission_df.to_csv(temp_file, index=False, encoding='utf-8-sig')
+                print(f"결과를 임시 디렉토리에 저장: {temp_file}")
+            except Exception as e:
+                print(f"임시 저장도 실패: {e}")
         
         return self._get_results_summary()
     
@@ -272,11 +378,13 @@ class FinancialAIInference:
             "subj_count": self.stats["subj_count"],
             "model_success_rate": (self.stats["model_success"] / total) * 100,
             "korean_compliance_rate": (self.stats["korean_compliance"] / total) * 100,
+            "choice_range_error_rate": (self.stats["choice_range_errors"] / total) * 100,
+            "validation_error_rate": (self.stats["validation_errors"] / total) * 100,
             "avg_processing_time": sum(self.stats["processing_times"]) / len(self.stats["processing_times"]) if self.stats["processing_times"] else 0,
             "avg_quality_score": sum(self.stats["quality_scores"]) / len(self.stats["quality_scores"]) if self.stats["quality_scores"] else 0,
             "domain_stats": dict(self.stats["domain_stats"]),
             "difficulty_stats": dict(self.stats["difficulty_stats"]),
-            "answer_distribution": self.stats["mc_answers"],
+            "answer_distribution_by_range": self.stats["mc_answers_by_range"],
             "learning_stats": learning_stats,
             "processing_stats": processing_stats,
             "total_time": time.time() - self.start_time
@@ -313,10 +421,12 @@ def main():
         results = engine.execute_inference()
         
         if results["success"]:
-            print("\n추론 완료!")
+            print("\n추론 완료")
             print(f"총 처리시간: {results['total_time']:.1f}초")
             print(f"모델 성공률: {results['model_success_rate']:.1f}%")
             print(f"한국어 준수율: {results['korean_compliance_rate']:.1f}%")
+            if results['choice_range_error_rate'] > 0:
+                print(f"선택지 범위 오류율: {results['choice_range_error_rate']:.1f}%")
         
     except KeyboardInterrupt:
         print("\n추론 중단됨")

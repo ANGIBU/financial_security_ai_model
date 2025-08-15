@@ -12,6 +12,7 @@ import os
 import sys
 import time
 import re
+import pandas as pd
 from pathlib import Path
 
 # 현재 디렉토리 설정
@@ -19,6 +20,65 @@ current_dir = Path(__file__).parent.absolute()
 sys.path.append(str(current_dir))
 
 from inference import FinancialAIInference
+
+def analyze_test_data(test_file: str):
+    """테스트 데이터 분석"""
+    try:
+        test_df = pd.read_csv(test_file)
+        print("\n테스트 데이터 분석:")
+        
+        choice_analysis = {}
+        for idx, row in test_df.iterrows():
+            question = row['Question']
+            question_id = row['ID']
+            
+            # 선택지 개수 분석
+            lines = question.split('\n')
+            choice_numbers = []
+            for line in lines:
+                match = re.match(r'^(\d+)\s+', line.strip())
+                if match:
+                    choice_numbers.append(int(match.group(1)))
+            
+            if choice_numbers:
+                max_choice = max(choice_numbers)
+                choice_count = len(choice_numbers)
+                choice_analysis[question_id] = {
+                    "max_choice": max_choice,
+                    "choice_count": choice_count,
+                    "is_mc": True
+                }
+            else:
+                choice_analysis[question_id] = {
+                    "max_choice": 0,
+                    "choice_count": 0,
+                    "is_mc": False
+                }
+        
+        # 통계 출력
+        mc_questions = [k for k, v in choice_analysis.items() if v["is_mc"]]
+        subj_questions = [k for k, v in choice_analysis.items() if not v["is_mc"]]
+        
+        print(f"  총 문항: {len(test_df)}개")
+        print(f"  객관식: {len(mc_questions)}개")
+        print(f"  주관식: {len(subj_questions)}개")
+        
+        # 선택지 개수별 분포
+        if mc_questions:
+            choice_distribution = {}
+            for qid in mc_questions:
+                max_choice = choice_analysis[qid]["max_choice"]
+                choice_distribution[max_choice] = choice_distribution.get(max_choice, 0) + 1
+            
+            print("  객관식 선택지 분포:")
+            for choice_count, count in sorted(choice_distribution.items()):
+                print(f"    {choice_count}개 선택지: {count}문항")
+        
+        return choice_analysis
+        
+    except Exception as e:
+        print(f"테스트 데이터 분석 오류: {e}")
+        return {}
 
 def run_test(test_size: int = 50, verbose: bool = True):
     """테스트 실행"""
@@ -32,6 +92,9 @@ def run_test(test_size: int = 50, verbose: bool = True):
             print(f"오류: {file_path} 파일이 없습니다")
             return False
     
+    # 테스트 데이터 분석
+    choice_analysis = analyze_test_data(test_file)
+    
     engine = None
     try:
         # AI 엔진 초기화
@@ -39,7 +102,6 @@ def run_test(test_size: int = 50, verbose: bool = True):
         engine = FinancialAIInference(verbose=False)  # 초기화시 verbose=False로 설정
         
         # 테스트 데이터 준비
-        import pandas as pd
         test_df = pd.read_csv(test_file)
         submission_df = pd.read_csv(submission_file)
         
@@ -69,7 +131,7 @@ def run_test(test_size: int = 50, verbose: bool = True):
         
         # 답변 검증 (옵션)
         if test_size <= 10:
-            validate_answers(output_file)
+            validate_answers_with_choice_analysis(output_file, test_df.head(test_size), choice_analysis)
         
         return True
         
@@ -83,8 +145,143 @@ def run_test(test_size: int = 50, verbose: bool = True):
         if engine:
             engine.cleanup()
 
+def validate_answers_with_choice_analysis(output_file: str, test_df: pd.DataFrame, choice_analysis: dict):
+    """선택지 분석을 포함한 답변 유효성 검증"""
+    try:
+        # 결과 파일이 존재하는지 확인
+        if not os.path.exists(output_file):
+            print(f"\n결과 파일을 찾을 수 없습니다: {output_file}")
+            return
+        
+        result_df = pd.read_csv(output_file)
+        
+        print(f"\n답변 검증 결과:")
+        
+        # 객관식/주관식별 분류
+        mc_results = []
+        subj_results = []
+        range_errors = []
+        
+        for idx, row in result_df.iterrows():
+            answer = str(row['Answer']).strip()
+            question_id = row['ID']
+            
+            # 원본 질문 정보 가져오기
+            if question_id in choice_analysis:
+                analysis = choice_analysis[question_id]
+                
+                if analysis["is_mc"]:
+                    # 객관식 검증
+                    max_choice = analysis["max_choice"]
+                    
+                    if answer.isdigit():
+                        answer_num = int(answer)
+                        if 1 <= answer_num <= max_choice:
+                            mc_results.append({
+                                "id": question_id,
+                                "answer": answer,
+                                "max_choice": max_choice,
+                                "valid": True
+                            })
+                        else:
+                            # 범위 오류
+                            mc_results.append({
+                                "id": question_id,
+                                "answer": answer,
+                                "max_choice": max_choice,
+                                "valid": False
+                            })
+                            range_errors.append({
+                                "id": question_id,
+                                "answer": answer,
+                                "max_choice": max_choice,
+                                "error": f"{answer}번 선택 (최대 {max_choice}번)"
+                            })
+                    else:
+                        # 숫자가 아닌 답변
+                        mc_results.append({
+                            "id": question_id,
+                            "answer": answer,
+                            "max_choice": max_choice,
+                            "valid": False
+                        })
+                        range_errors.append({
+                            "id": question_id,
+                            "answer": answer,
+                            "max_choice": max_choice,
+                            "error": f"숫자가 아님: '{answer}'"
+                        })
+                
+                else:
+                    # 주관식 검증
+                    korean_ratio = calculate_korean_ratio(answer)
+                    english_ratio = calculate_english_ratio(answer)
+                    
+                    is_valid = (korean_ratio >= 0.8 and 
+                               english_ratio <= 0.1 and 
+                               len(answer) >= 30)
+                    
+                    subj_results.append({
+                        "id": question_id,
+                        "valid": is_valid,
+                        "korean_ratio": korean_ratio,
+                        "english_ratio": english_ratio,
+                        "length": len(answer)
+                    })
+        
+        # 객관식 결과 출력
+        if mc_results:
+            valid_mc = [r for r in mc_results if r["valid"]]
+            invalid_mc = [r for r in mc_results if not r["valid"]]
+            
+            print(f"  객관식 문항: {len(mc_results)}개")
+            print(f"    정상 답변: {len(valid_mc)}개 ({len(valid_mc)/len(mc_results)*100:.1f}%)")
+            print(f"    오류 답변: {len(invalid_mc)}개 ({len(invalid_mc)/len(mc_results)*100:.1f}%)")
+            
+            # 선택지별 분포
+            choice_distribution = {}
+            for result in valid_mc:
+                max_choice = result["max_choice"]
+                if max_choice not in choice_distribution:
+                    choice_distribution[max_choice] = {}
+                
+                answer = result["answer"]
+                choice_distribution[max_choice][answer] = choice_distribution[max_choice].get(answer, 0) + 1
+            
+            for choice_count in sorted(choice_distribution.keys()):
+                total_for_range = sum(choice_distribution[choice_count].values())
+                print(f"    {choice_count}개 선택지 문항 ({total_for_range}개):")
+                for num in range(1, choice_count + 1):
+                    count = choice_distribution[choice_count].get(str(num), 0)
+                    percentage = (count / total_for_range) * 100 if total_for_range > 0 else 0
+                    print(f"      {num}번: {count}개 ({percentage:.1f}%)")
+        
+        # 주관식 결과 출력
+        if subj_results:
+            valid_subj = [r for r in subj_results if r["valid"]]
+            invalid_subj = [r for r in subj_results if not r["valid"]]
+            
+            print(f"  주관식 문항: {len(subj_results)}개")
+            print(f"    한국어 적합: {len(valid_subj)}개 ({len(valid_subj)/len(subj_results)*100:.1f}%)")
+            print(f"    한국어 부적합: {len(invalid_subj)}개 ({len(invalid_subj)/len(subj_results)*100:.1f}%)")
+            
+            if invalid_subj:
+                print("    부적합 상세:")
+                for result in invalid_subj[:3]:  # 최대 3개만 표시
+                    print(f"      {result['id']}: 한국어 {result['korean_ratio']*100:.0f}%, "
+                          f"영어 {result['english_ratio']*100:.0f}%, 길이 {result['length']}자")
+        
+        # 범위 오류 상세 출력
+        if range_errors:
+            print(f"  선택지 범위 오류: {len(range_errors)}개")
+            for error in range_errors:
+                print(f"    {error['id']}: {error['error']}")
+        
+    except Exception as e:
+        print(f"답변 검증 오류: {e}")
+
 def validate_answers(output_file: str):
-    """답변 유효성 검증"""
+    """답변 유효성 검증 (기본 버전)"""
     try:
         import pandas as pd
         result_df = pd.read_csv(output_file)
@@ -170,6 +367,15 @@ def print_test_results(results: dict, output_file: str, test_size: int):
     print(f"\n기본 정보:")
     print(f"  처리 시간: {total_time_minutes:.1f}분")
     print(f"  처리 문항: {results['total_questions']}개")
+    print(f"  모델 성공률: {results['model_success_rate']:.1f}%")
+    print(f"  한국어 준수율: {results['korean_compliance_rate']:.1f}%")
+    
+    # 오류율 출력
+    if results.get('choice_range_error_rate', 0) > 0:
+        print(f"  선택지 범위 오류율: {results['choice_range_error_rate']:.1f}%")
+    if results.get('validation_error_rate', 0) > 0:
+        print(f"  검증 오류율: {results['validation_error_rate']:.1f}%")
+    
     print(f"  결과 파일: {output_file}")
 
 def select_test_size():
@@ -210,7 +416,7 @@ def main():
     success = run_test(test_size, verbose=True)
     
     if success:
-        print("\n테스트가 성공적으로 완료되었습니다.")
+        print("\n테스트가 완료되었습니다.")
     else:
         print("\n테스트 실패")
         sys.exit(1)

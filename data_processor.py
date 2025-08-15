@@ -11,7 +11,7 @@
 import re
 import pickle
 import os
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from datetime import datetime
 from pathlib import Path
 
@@ -122,7 +122,8 @@ class SimpleDataProcessor:
             "korean_compliance": 0,
             "validation_failures": 0,
             "domain_distribution": {},
-            "question_type_accuracy": {"correct": 0, "total": 0}
+            "question_type_accuracy": {"correct": 0, "total": 0},
+            "choice_count_errors": 0  # 선택지 개수 오류 통계 추가
         }
         
         # 이전 처리 기록 로드
@@ -155,6 +156,48 @@ class SimpleDataProcessor:
         except Exception:
             pass
     
+    def extract_choice_range(self, question: str) -> Tuple[str, int]:
+        """선택지 범위 추출 (개선된 버전)"""
+        question_type = self.analyze_question_type(question)
+        
+        if question_type != "multiple_choice":
+            return "subjective", 0
+        
+        # 줄별로 분석하여 선택지 번호 추출
+        lines = question.split('\n')
+        choice_numbers = []
+        
+        for line in lines:
+            # 선택지 패턴: 숫자 + 공백 + 내용
+            match = re.match(r'^(\d+)\s+', line.strip())
+            if match:
+                choice_numbers.append(int(match.group(1)))
+        
+        # 연속된 선택지인지 확인
+        if choice_numbers:
+            choice_numbers.sort()
+            max_choice = max(choice_numbers)
+            min_choice = min(choice_numbers)
+            
+            # 연속성 검증
+            expected_count = max_choice - min_choice + 1
+            if len(choice_numbers) == expected_count and min_choice == 1:
+                return "multiple_choice", max_choice
+        
+        # 폴백: 전통적인 패턴으로 확인
+        for i in range(5, 2, -1):  # 5개부터 3개까지 확인
+            pattern = r'1\s.*' + '.*'.join([f'{j}\s' for j in range(2, i+1)])
+            if re.search(pattern, question, re.DOTALL):
+                return "multiple_choice", i
+        
+        # 객관식 키워드가 있지만 선택지를 찾을 수 없는 경우
+        for pattern in self.mc_keywords:
+            if re.search(pattern, question, re.IGNORECASE):
+                self.processing_stats["choice_count_errors"] += 1
+                return "multiple_choice", 5  # 기본값
+        
+        return "subjective", 0
+    
     def analyze_question_type(self, question: str) -> str:
         """질문 유형 분석 (개선된 버전)"""
         
@@ -167,13 +210,14 @@ class SimpleDataProcessor:
                 self.processing_stats["question_type_accuracy"]["correct"] += 1
                 return "multiple_choice"
         
-        # 2차: 선택지 개수 확인 (1부터 5까지 모두 있는지)
-        numbers_found = []
-        for i in range(1, 6):
-            if re.search(rf'\b{i}[\s\.\)]\s*[가-힣]', question):
-                numbers_found.append(i)
+        # 2차: 줄별 선택지 분석
+        lines = question.split('\n')
+        choice_lines = 0
+        for line in lines:
+            if re.match(r'^\s*[1-5][\s\.]\s*', line):
+                choice_lines += 1
         
-        if len(numbers_found) == 5:
+        if choice_lines >= 3:  # 3개 이상의 선택지가 있으면 객관식
             self.processing_stats["question_type_accuracy"]["correct"] += 1
             return "multiple_choice"
         
@@ -191,24 +235,14 @@ class SimpleDataProcessor:
                 return "subjective"
         
         # 5차: 질문 구조 분석
-        # 선택지 형태가 있는지 확인
-        lines = question.split('\n')
-        choice_lines = 0
-        for line in lines:
-            if re.match(r'^\s*[1-5][\s\.\)]\s*', line):
-                choice_lines += 1
-        
-        if choice_lines >= 3:  # 3개 이상의 선택지가 있으면 객관식
+        # 선택지 번호만 단순 카운트
+        number_count = len(re.findall(r'\b[1-5]\b', question))
+        if number_count >= 3 and len(question) < 300:
             return "multiple_choice"
         
         # 6차: "것은?" "것?" 패턴과 길이로 추가 판단
         if re.search(r'것은\?|것\?|것은\s*$', question):
             if len(question) < 300 and any(str(i) in question for i in range(1, 6)):
-                return "multiple_choice"
-        
-        # 7차: 질문 길이와 내용으로 최종 판단
-        if len(question) < 200 and any(word in question for word in ["구분", "해당", "적절", "옳은", "올바른"]):
-            if any(str(i) in question for i in range(1, 6)):
                 return "multiple_choice"
         
         # 기본값: 주관식
@@ -298,7 +332,15 @@ class SimpleDataProcessor:
         
         return english_chars / total_chars
     
-    def validate_korean_answer(self, answer: str, question_type: str) -> bool:
+    def validate_mc_answer_range(self, answer: str, max_choice: int) -> bool:
+        """객관식 답변 범위 검증"""
+        if not answer or not answer.isdigit():
+            return False
+        
+        answer_num = int(answer)
+        return 1 <= answer_num <= max_choice
+    
+    def validate_korean_answer(self, answer: str, question_type: str, max_choice: int = 5) -> bool:
         """한국어 답변 유효성 검증 (강화)"""
         if not answer:
             return False
@@ -307,13 +349,13 @@ class SimpleDataProcessor:
         self.processing_stats["total_processed"] += 1
         
         if question_type == "multiple_choice":
-            # 객관식: 1-5 범위의 숫자
-            is_valid = bool(re.match(r'^[1-5]$', answer))
-            if is_valid:
-                self.processing_stats["korean_compliance"] += 1
-            else:
+            # 객관식: 지정된 범위의 숫자
+            if not self.validate_mc_answer_range(answer, max_choice):
                 self.processing_stats["validation_failures"] += 1
-            return is_valid
+                return False
+            
+            self.processing_stats["korean_compliance"] += 1
+            return True
         
         else:
             # 주관식: 한국어 전용 검증 (더 엄격하게)
@@ -351,9 +393,9 @@ class SimpleDataProcessor:
             self.processing_stats["korean_compliance"] += 1
             return True
     
-    def validate_answer(self, answer: str, question_type: str) -> bool:
+    def validate_answer(self, answer: str, question_type: str, max_choice: int = 5) -> bool:
         """답변 유효성 검증 (한국어 전용)"""
-        return self.validate_korean_answer(answer, question_type)
+        return self.validate_korean_answer(answer, question_type, max_choice)
     
     def clean_text(self, text: str) -> str:
         """텍스트 정리 (한국어 전용)"""
@@ -363,25 +405,36 @@ class SimpleDataProcessor:
         """객관식 선택지 추출"""
         choices = []
         
-        # 다양한 형식의 선택지 패턴
-        patterns = [
-            r'(\d+)\s+([^0-9\n]+?)(?=\d+\s+|$)',
-            r'(\d+)\)\s*([^0-9\n]+?)(?=\d+\)|$)',
-            r'(\d+)\.\s*([^0-9\n]+?)(?=\d+\.|$)',
-            r'[①②③④⑤]\s*([^①②③④⑤\n]+?)(?=[①②③④⑤]|$)'
-        ]
+        # 줄별로 선택지 추출
+        lines = question.split('\n')
+        for line in lines:
+            match = re.match(r'^(\d+)\s+(.+)', line.strip())
+            if match:
+                choice_num = int(match.group(1))
+                choice_content = match.group(2).strip()
+                if choice_num <= 5:  # 5번까지만
+                    choices.append(choice_content)
         
-        for pattern in patterns:
-            matches = re.findall(pattern, question, re.MULTILINE | re.DOTALL)
-            if matches:
-                if isinstance(matches[0], tuple):
-                    choices = [match[1].strip() for match in matches]
-                else:
-                    choices = [match.strip() for match in matches]
-                
-                # 5개 선택지가 모두 있는지 확인
-                if len(choices) >= 5:
-                    break
+        # 전통적인 패턴으로도 확인
+        if not choices:
+            patterns = [
+                r'(\d+)\s+([^0-9\n]+?)(?=\d+\s+|$)',
+                r'(\d+)\)\s*([^0-9\n]+?)(?=\d+\)|$)',
+                r'(\d+)\.\s*([^0-9\n]+?)(?=\d+\.|$)',
+                r'[①②③④⑤]\s*([^①②③④⑤\n]+?)(?=[①②③④⑤]|$)'
+            ]
+            
+            for pattern in patterns:
+                matches = re.findall(pattern, question, re.MULTILINE | re.DOTALL)
+                if matches:
+                    if isinstance(matches[0], tuple):
+                        choices = [match[1].strip() for match in matches]
+                    else:
+                        choices = [match.strip() for match in matches]
+                    
+                    # 5개 선택지가 모두 있는지 확인
+                    if len(choices) >= 3:
+                        break
         
         return choices[:5]  # 최대 5개 선택지
     
@@ -411,7 +464,7 @@ class SimpleDataProcessor:
         else:
             return "초급"
     
-    def normalize_korean_answer(self, answer: str, question_type: str) -> str:
+    def normalize_korean_answer(self, answer: str, question_type: str, max_choice: int = 5) -> str:
         """한국어 답변 정규화 (강화)"""
         if not answer:
             return ""
@@ -419,9 +472,14 @@ class SimpleDataProcessor:
         answer = str(answer).strip()
         
         if question_type == "multiple_choice":
-            # 숫자만 추출
-            numbers = re.findall(r'[1-5]', answer)
-            return numbers[0] if numbers else ""
+            # 숫자만 추출하고 범위 검증
+            numbers = re.findall(r'[1-9]', answer)
+            for num in numbers:
+                if 1 <= int(num) <= max_choice:
+                    return num
+            
+            # 유효한 답변이 없으면 빈 문자열 반환
+            return ""
         
         else:
             # 주관식 답변 한국어 정리 (더 강화)
@@ -444,9 +502,9 @@ class SimpleDataProcessor:
             
             return answer
     
-    def normalize_answer(self, answer: str, question_type: str) -> str:
+    def normalize_answer(self, answer: str, question_type: str, max_choice: int = 5) -> str:
         """답변 정규화 (한국어 전용)"""
-        return self.normalize_korean_answer(answer, question_type)
+        return self.normalize_korean_answer(answer, question_type, max_choice)
     
     def get_processing_stats(self) -> Dict:
         """처리 통계 반환"""
@@ -456,6 +514,7 @@ class SimpleDataProcessor:
             "total_processed": self.processing_stats["total_processed"],
             "korean_compliance_rate": (self.processing_stats["korean_compliance"] / total) * 100,
             "validation_failure_rate": (self.processing_stats["validation_failures"] / total) * 100,
+            "choice_count_errors": self.processing_stats["choice_count_errors"],
             "domain_distribution": dict(self.processing_stats["domain_distribution"]),
             "question_type_accuracy": self.processing_stats["question_type_accuracy"]
         }

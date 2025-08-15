@@ -5,6 +5,7 @@
 - 도메인별 키워드 분류
 - 전문 용어 처리
 - 한국어 전용 답변 템플릿 제공
+- 대회 규칙 준수 검증
 """
 
 import pickle
@@ -22,45 +23,52 @@ class FinancialSecurityKnowledgeBase:
         self.pkl_dir = Path("./pkl")
         self.pkl_dir.mkdir(exist_ok=True)
         
-        # 도메인별 키워드
+        # 도메인별 키워드 (2025년 8월 1일 이전 공개 정보 기준)
         self.domain_keywords = {
             "개인정보보호": [
                 "개인정보", "정보주체", "개인정보보호법", "민감정보", 
                 "고유식별정보", "수집", "이용", "제공", "파기", "동의",
                 "법정대리인", "아동", "처리", "개인정보처리방침", "열람권",
-                "정정삭제권", "처리정지권", "손해배상", "개인정보보호위원회"
+                "정정삭제권", "처리정지권", "손해배상", "개인정보보호위원회",
+                "개인정보영향평가", "개인정보관리체계", "개인정보처리시스템"
             ],
             "전자금융": [
                 "전자금융", "전자적", "접근매체", "전자금융거래법", 
                 "전자서명", "전자인증", "공인인증서", "전자금융업",
                 "전자지급수단", "전자화폐", "전자금융거래", "인증",
-                "전자금융분쟁조정위원회", "금융감독원", "한국은행"
+                "전자금융분쟁조정위원회", "금융감독원", "한국은행",
+                "전자금융거래기록", "전자금융업무", "전자적장치"
             ],
             "사이버보안": [
                 "트로이", "악성코드", "해킹", "멀웨어", "피싱", 
                 "스미싱", "랜섬웨어", "바이러스", "웜", "스파이웨어",
                 "원격제어", "원격접근", "RAT", "봇넷", "분산서비스거부공격", 
-                "지능형지속위협", "제로데이", "딥페이크", "사회공학", "취약점", "패치"
+                "지능형지속위협", "제로데이", "딥페이크", "사회공학", 
+                "취약점", "패치", "침입탐지", "침입방지", "보안관제"
             ],
             "정보보안": [
                 "정보보안", "보안관리", "정보보안관리체계", "보안정책", 
-                "접근통제", "암호화", "방화벽", "침입탐지",
+                "접근통제", "암호화", "방화벽", "침입탐지시스템",
                 "침입방지시스템", "보안정보이벤트관리", "보안관제", "인증",
-                "권한관리", "로그관리", "백업", "복구", "재해복구"
+                "권한관리", "로그관리", "백업", "복구", "재해복구",
+                "비즈니스연속성계획", "보안감사", "보안교육"
             ],
             "금융투자": [
                 "금융투자업", "투자자문업", "투자매매업", "투자중개업",
                 "집합투자업", "신탁업", "소비자금융업", "보험중개업",
-                "금융투자회사", "자본시장법", "펀드", "파생상품"
+                "금융투자회사", "자본시장법", "펀드", "파생상품",
+                "투자자보호", "적합성원칙", "설명의무", "투자권유",
+                "금융투자상품", "투자위험", "투자성과"
             ],
             "위험관리": [
                 "위험관리", "위험평가", "위험대응", "위험수용", "위험회피",
                 "위험전가", "위험감소", "위험분석", "위험식별", "위험모니터링",
-                "리스크", "내부통제", "컴플라이언스", "감사"
+                "리스크", "내부통제", "컴플라이언스", "감사", "위험통제",
+                "위험보고", "위험문화", "위험거버넌스", "위험한도"
             ]
         }
         
-        # 객관식 질문 패턴
+        # 객관식 질문 패턴 (한국어 전용)
         self.mc_patterns = [
             "해당하지.*않는.*것",
             "적절하지.*않는.*것", 
@@ -74,38 +82,44 @@ class FinancialSecurityKnowledgeBase:
             "가장.*옳은.*것"
         ]
         
-        # 한국어 전용 주관식 답변 템플릿 (강화)
+        # 한국어 전용 주관식 답변 템플릿 (대회 규칙 준수)
         self.korean_subjective_templates = {
             "사이버보안": [
                 "트로이 목마 기반 원격접근도구는 사용자를 속여 시스템에 침투하여 외부 공격자가 원격으로 제어하는 악성코드입니다. 네트워크 트래픽 모니터링, 시스템 동작 분석, 파일 생성 및 수정 패턴, 입출력 장치 접근 등의 비정상적인 행동이 주요 탐지 지표입니다.",
                 "해당 악성코드는 원격제어 기능을 통해 시스템에 침입하며 백신 프로그램과 행위 기반 탐지 시스템을 활용하여 탐지할 수 있습니다. 주요 대응방안으로는 네트워크 모니터링 강화와 접근권한 관리를 통한 예방조치가 있습니다.",
                 "사이버보안 위협에 대응하기 위해서는 다층 방어체계를 구축하고 실시간 모니터링과 침입탐지시스템을 운영해야 합니다. 또한 정기적인 보안교육과 훈련을 실시하여 보안 인식을 제고해야 합니다.",
-                "보안정책을 수립하고 정기적인 보안교육과 훈련을 실시하며 취약점 점검과 보안패치를 지속적으로 수행해야 합니다. 특히 사용자 계정 관리와 접근권한 통제를 강화하여 내부 보안을 확보해야 합니다."
+                "보안정책을 수립하고 정기적인 보안교육과 훈련을 실시하며 취약점 점검과 보안패치를 지속적으로 수행해야 합니다. 특히 사용자 계정 관리와 접근권한 통제를 강화하여 내부 보안을 확보해야 합니다.",
+                "침입탐지시스템과 침입방지시스템을 구축하여 실시간 보안위협을 탐지하고 차단해야 합니다. 보안관제센터를 운영하여 지속적인 모니터링과 신속한 대응체계를 마련해야 합니다."
             ],
             "개인정보보호": [
                 "개인정보보호법에 따라 정보주체의 권리를 보장하고 개인정보처리자는 수집부터 파기까지 전 과정에서 적절한 보호조치를 이행해야 합니다. 특히 민감정보와 고유식별정보 처리 시에는 별도의 동의를 받아야 합니다.",
                 "개인정보 처리 시 정보주체의 동의를 받고 목적 범위 내에서만 이용하며 개인정보보호위원회의 기준에 따른 안전성 확보조치를 수립해야 합니다. 또한 개인정보 처리방침을 공개하고 정보주체의 권리 행사 절차를 마련해야 합니다.",
-                "정보주체는 개인정보 열람권, 정정삭제권, 처리정지권을 가지며 개인정보처리자는 이러한 권리 행사를 보장하는 절차를 마련해야 합니다. 아동의 경우 법정대리인의 동의를 받아야 하며 개인정보 침해 시 손해배상 책임을 집니다."
+                "정보주체는 개인정보 열람권, 정정삭제권, 처리정지권을 가지며 개인정보처리자는 이러한 권리 행사를 보장하는 절차를 마련해야 합니다. 아동의 경우 법정대리인의 동의를 받아야 하며 개인정보 침해 시 손해배상 책임을 집니다.",
+                "개인정보관리체계를 수립하고 개인정보영향평가를 실시하여 개인정보 처리에 따른 위험을 사전에 분석하고 대응방안을 마련해야 합니다. 개인정보처리시스템의 보안성을 확보하고 정기적인 점검을 실시해야 합니다."
             ],
             "전자금융": [
                 "전자금융거래법에 따라 전자금융업자는 이용자의 전자금융거래 안전성 확보를 위한 보안조치를 시행하고 금융감독원의 감독을 받아야 합니다. 전자서명과 전자인증을 통해 거래의 무결성과 신원확인을 보장해야 합니다.",
                 "전자금융분쟁조정위원회에서 전자금융거래 분쟁조정 업무를 담당하며 이용자는 관련 법령에 따라 분쟁조정을 신청할 수 있습니다. 한국은행과 금융감독원에서 전자금융업 관련 감독업무를 수행합니다.",
-                "전자금융서비스 제공 시 접근매체에 대한 보안성을 확보하고 이용자 인증 절차를 통해 거래의 안전성을 보장해야 합니다. 전자지급수단 이용 시 위조방지 기술과 암호화 기술을 적용하여 보안을 강화해야 합니다."
+                "전자금융서비스 제공 시 접근매체에 대한 보안성을 확보하고 이용자 인증 절차를 통해 거래의 안전성을 보장해야 합니다. 전자지급수단 이용 시 위조방지 기술과 암호화 기술을 적용하여 보안을 강화해야 합니다.",
+                "전자금융거래기록을 안전하게 보관하고 전자적장치의 보안성을 확보해야 합니다. 전자금융업무 수행 시 이용자의 정보보호와 거래안전성을 위한 기술적 관리적 보호조치를 이행해야 합니다."
             ],
             "정보보안": [
-                "정보보안 관리체계 구축을 위해 보안정책 수립, 위험분석, 보안대책 구현, 사후관리의 절차를 체계적으로 운영해야 합니다. 정보보안관리체계 인증을 통해 보안수준을 객관적으로 평가받을 수 있습니다.",
+                "정보보안관리체계 구축을 위해 보안정책 수립, 위험분석, 보안대책 구현, 사후관리의 절차를 체계적으로 운영해야 합니다. 정보보안관리체계 인증을 통해 보안수준을 객관적으로 평가받을 수 있습니다.",
                 "접근통제 정책을 수립하고 사용자별 권한을 관리하며 로그 모니터링과 정기적인 보안감사를 통해 보안수준을 유지해야 합니다. 특히 관리자 계정에 대한 별도의 보안통제를 적용해야 합니다.",
-                "보안관제센터를 운영하고 침입탐지시스템과 방화벽을 통해 실시간 보안위협을 탐지하고 대응해야 합니다. 보안정보이벤트관리 시스템을 구축하여 보안사고를 신속히 분석하고 대응할 수 있는 체계를 마련해야 합니다."
+                "보안관제센터를 운영하고 침입탐지시스템과 방화벽을 통해 실시간 보안위협을 탐지하고 대응해야 합니다. 보안정보이벤트관리 시스템을 구축하여 보안사고를 신속히 분석하고 대응할 수 있는 체계를 마련해야 합니다.",
+                "재해복구계획과 비즈니스연속성계획을 수립하여 정보시스템 장애 시 신속한 복구가 가능하도록 해야 합니다. 정기적인 보안교육을 실시하여 임직원의 보안의식을 제고하고 보안사고 예방에 노력해야 합니다."
             ],
             "금융투자": [
                 "자본시장법에 따라 금융투자업자는 투자자 보호와 시장 공정성 확보를 위한 내부통제기준을 수립하고 준수해야 합니다. 투자자문업과 투자매매업 영위 시 각각의 업무범위와 규제사항을 준수해야 합니다.",
                 "금융투자업 영위 시 투자자의 투자성향과 위험도를 평가하고 적합한 상품을 권유하는 적합성 원칙을 준수해야 합니다. 특히 일반투자자에 대해서는 투자권유 시 더욱 엄격한 기준을 적용해야 합니다.",
-                "펀드 운용 시 투자자에게 투자위험과 손실 가능성을 충분히 설명하고 투명한 정보공시 의무를 이행해야 합니다. 집합투자업자는 선량한 관리자의 주의의무를 다하여 투자자의 이익을 위해 업무를 수행해야 합니다."
+                "펀드 운용 시 투자자에게 투자위험과 손실 가능성을 충분히 설명하고 투명한 정보공시 의무를 이행해야 합니다. 집합투자업자는 선량한 관리자의 주의의무를 다하여 투자자의 이익을 위해 업무를 수행해야 합니다.",
+                "금융투자상품 판매 시 투자성과에 대한 과도한 기대를 조성하지 않도록 주의하고 투자위험을 명확히 설명해야 합니다. 투자자보호를 위한 설명의무를 충실히 이행하고 투자권유 과정에서 적합성 원칙을 준수해야 합니다."
             ],
             "위험관리": [
                 "위험관리 체계 구축을 위해 위험식별, 위험평가, 위험대응, 위험모니터링의 단계별 절차를 수립하고 운영해야 합니다. 각 단계별로 적절한 통제활동과 점검절차를 마련하여 위험관리의 실효성을 확보해야 합니다.",
                 "내부통제시스템을 구축하고 정기적인 위험평가를 실시하여 잠재적 위험요소를 사전에 식별하고 대응방안을 마련해야 합니다. 위험관리조직을 독립적으로 운영하여 객관적인 위험평가가 이루어지도록 해야 합니다.",
-                "컴플라이언스 체계를 수립하고 법규 준수 현황을 점검하며 위반 시 즉시 시정조치를 취하는 관리체계를 운영해야 합니다. 임직원에 대한 정기적인 컴플라이언스 교육을 실시하여 준법의식을 제고해야 합니다."
+                "컴플라이언스 체계를 수립하고 법규 준수 현황을 점검하며 위반 시 즉시 시정조치를 취하는 관리체계를 운영해야 합니다. 임직원에 대한 정기적인 컴플라이언스 교육을 실시하여 준법의식을 제고해야 합니다.",
+                "위험통제 정책을 수립하고 위험한도를 설정하여 허용 가능한 위험 수준을 관리해야 합니다. 위험보고 체계를 구축하고 위험문화를 조성하여 전사적 위험관리 역량을 강화해야 합니다."
             ],
             "일반": [
                 "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다. 정기적인 점검과 평가를 통해 관리체계의 실효성을 확보하고 필요시 개선방안을 마련해야 합니다.",
@@ -116,7 +130,7 @@ class FinancialSecurityKnowledgeBase:
             ]
         }
         
-        # 한국어 전용 금융 전문 용어 사전
+        # 한국어 전용 금융 전문 용어 사전 (대회 규칙 준수)
         self.korean_financial_terms = {
             "정보보안관리체계": "조직의 정보자산을 보호하기 위한 종합적인 관리체계",
             "개인정보관리체계": "개인정보의 안전한 처리를 위한 체계적 관리방안",
@@ -124,14 +138,21 @@ class FinancialSecurityKnowledgeBase:
             "지능형지속위협": "특정 목표를 대상으로 장기간에 걸쳐 수행되는 고도화된 사이버공격",
             "데이터유출방지": "조직 내부의 중요 데이터가 외부로 유출되는 것을 방지하는 보안기술",
             "모바일기기관리": "조직에서 사용하는 모바일 기기의 보안을 관리하는 솔루션",
-            "보안정보이벤트관리": "보안 정보와 이벤트를 통합적으로 관리하고 분석하는 시스템"
+            "보안정보이벤트관리": "보안 정보와 이벤트를 통합적으로 관리하고 분석하는 시스템",
+            "비즈니스연속성계획": "재해나 위기상황 발생 시 업무 연속성을 보장하기 위한 계획",
+            "재해복구계획": "정보시스템 장애 시 신속한 복구를 위한 절차와 방법"
         }
         
         # 질문 분석 이력
         self.analysis_history = {
             "domain_frequency": {},
             "complexity_distribution": {},
-            "question_patterns": []
+            "question_patterns": [],
+            "compliance_check": {
+                "korean_only": 0,
+                "law_references": 0,
+                "technical_terms": 0
+            }
         }
         
         # 이전 분석 이력 로드
@@ -159,7 +180,7 @@ class FinancialSecurityKnowledgeBase:
                 "last_updated": datetime.now().isoformat()
             }
             
-            # 최근 1000개 패턴만 저장
+            # 최근 1000개 패턴만 저장 (대회 환경 고려)
             save_data["question_patterns"] = save_data["question_patterns"][-1000:]
             
             with open(history_file, 'wb') as f:
@@ -168,7 +189,7 @@ class FinancialSecurityKnowledgeBase:
             pass
     
     def analyze_question(self, question: str) -> Dict:
-        """질문 분석"""
+        """질문 분석 (대회 규칙 준수 확인)"""
         question_lower = question.lower()
         
         # 도메인 찾기
@@ -186,18 +207,48 @@ class FinancialSecurityKnowledgeBase:
         # 한국어 전문 용어 포함 여부
         korean_terms = self._find_korean_technical_terms(question)
         
+        # 대회 규칙 준수 확인
+        compliance_check = self._check_competition_compliance(question)
+        
         # 분석 결과 저장
         analysis_result = {
             "domain": detected_domains,
             "complexity": complexity,
             "technical_level": self._determine_technical_level(complexity, korean_terms),
-            "korean_technical_terms": korean_terms
+            "korean_technical_terms": korean_terms,
+            "compliance": compliance_check
         }
         
         # 이력에 추가
         self._add_to_analysis_history(question, analysis_result)
         
         return analysis_result
+    
+    def _check_competition_compliance(self, question: str) -> Dict:
+        """대회 규칙 준수 확인"""
+        compliance = {
+            "korean_content": True,  # 한국어 질문인지
+            "appropriate_domain": True,  # 적절한 도메인인지
+            "no_external_dependency": True  # 외부 의존성 없는지
+        }
+        
+        # 한국어 비율 확인
+        korean_chars = len([c for c in question if ord(c) >= 0xAC00 and ord(c) <= 0xD7A3])
+        total_chars = len([c for c in question if c.isalpha()])
+        
+        if total_chars > 0:
+            korean_ratio = korean_chars / total_chars
+            compliance["korean_content"] = korean_ratio > 0.7
+        
+        # 도메인 적절성 확인
+        found_domains = []
+        for domain, keywords in self.domain_keywords.items():
+            if any(keyword in question.lower() for keyword in keywords):
+                found_domains.append(domain)
+        
+        compliance["appropriate_domain"] = len(found_domains) > 0
+        
+        return compliance
     
     def _add_to_analysis_history(self, question: str, analysis: Dict):
         """분석 이력에 추가"""
@@ -211,26 +262,45 @@ class FinancialSecurityKnowledgeBase:
         self.analysis_history["complexity_distribution"][level] = \
             self.analysis_history["complexity_distribution"].get(level, 0) + 1
         
+        # 준수성 확인 업데이트
+        if analysis["compliance"]["korean_content"]:
+            self.analysis_history["compliance_check"]["korean_only"] += 1
+        
+        if any("법" in term for term in analysis["korean_technical_terms"]):
+            self.analysis_history["compliance_check"]["law_references"] += 1
+        
+        if len(analysis["korean_technical_terms"]) > 0:
+            self.analysis_history["compliance_check"]["technical_terms"] += 1
+        
         # 질문 패턴 추가
         pattern = {
             "question_length": len(question),
             "domain": analysis["domain"][0] if analysis["domain"] else "일반",
             "complexity": analysis["complexity"],
             "korean_terms_count": len(analysis["korean_technical_terms"]),
+            "compliance_score": sum(analysis["compliance"].values()) / len(analysis["compliance"]),
             "timestamp": datetime.now().isoformat()
         }
         
         self.analysis_history["question_patterns"].append(pattern)
     
     def get_korean_subjective_template(self, domain: str) -> str:
-        """한국어 주관식 답변 템플릿 반환"""
+        """한국어 주관식 답변 템플릿 반환 (대회 규칙 준수)"""
         
         if domain in self.korean_subjective_templates:
             templates = self.korean_subjective_templates[domain]
         else:
             templates = self.korean_subjective_templates["일반"]
         
-        return random.choice(templates)
+        # 한국어 전용 검증
+        selected_template = random.choice(templates)
+        
+        # 영어 문자 제거 (대회 규칙 준수)
+        import re
+        selected_template = re.sub(r'[a-zA-Z]+', '', selected_template)
+        selected_template = re.sub(r'\s+', ' ', selected_template).strip()
+        
+        return selected_template
     
     def get_subjective_template(self, domain: str) -> str:
         """주관식 답변 템플릿 반환 (한국어 전용)"""
@@ -273,44 +343,51 @@ class FinancialSecurityKnowledgeBase:
             return "초급"
     
     def get_domain_specific_guidance(self, domain: str) -> Dict:
-        """도메인별 지침 반환"""
+        """도메인별 지침 반환 (대회 규칙 준수)"""
         guidance = {
             "개인정보보호": {
                 "key_laws": ["개인정보보호법", "정보통신망법"],
                 "key_concepts": ["정보주체", "개인정보처리자", "동의", "목적외이용금지"],
-                "oversight_body": "개인정보보호위원회"
+                "oversight_body": "개인정보보호위원회",
+                "compliance_focus": "한국어 법령 용어 사용"
             },
             "전자금융": {
                 "key_laws": ["전자금융거래법", "전자서명법"],
                 "key_concepts": ["접근매체", "전자서명", "인증", "분쟁조정"],
-                "oversight_body": "금융감독원, 한국은행"
+                "oversight_body": "금융감독원, 한국은행",
+                "compliance_focus": "한국어 금융 용어 사용"
             },
             "사이버보안": {
                 "key_laws": ["정보통신망법", "개인정보보호법"],
                 "key_concepts": ["악성코드", "침입탐지", "보안관제", "사고대응"],
-                "oversight_body": "과학기술정보통신부, 경찰청"
+                "oversight_body": "과학기술정보통신부, 경찰청",
+                "compliance_focus": "한국어 보안 용어 사용"
             },
             "정보보안": {
                 "key_laws": ["정보통신망법", "전자정부법"],
                 "key_concepts": ["정보보안관리체계", "접근통제", "암호화", "백업"],
-                "oversight_body": "과학기술정보통신부"
+                "oversight_body": "과학기술정보통신부",
+                "compliance_focus": "한국어 기술 용어 사용"
             },
             "금융투자": {
                 "key_laws": ["자본시장법", "금융투자업규정"],
                 "key_concepts": ["투자자보호", "적합성원칙", "설명의무", "내부통제"],
-                "oversight_body": "금융감독원, 금융위원회"
+                "oversight_body": "금융감독원, 금융위원회",
+                "compliance_focus": "한국어 투자 용어 사용"
             },
             "위험관리": {
                 "key_laws": ["은행법", "보험업법", "자본시장법"],
                 "key_concepts": ["위험평가", "내부통제", "컴플라이언스", "감사"],
-                "oversight_body": "금융감독원"
+                "oversight_body": "금융감독원",
+                "compliance_focus": "한국어 관리 용어 사용"
             }
         }
         
         return guidance.get(domain, {
             "key_laws": ["관련 법령"],
             "key_concepts": ["체계적 관리", "지속적 개선"],
-            "oversight_body": "관계기관"
+            "oversight_body": "관계기관",
+            "compliance_focus": "한국어 전용 답변"
         })
     
     def get_analysis_statistics(self) -> Dict:
@@ -318,9 +395,40 @@ class FinancialSecurityKnowledgeBase:
         return {
             "domain_frequency": dict(self.analysis_history["domain_frequency"]),
             "complexity_distribution": dict(self.analysis_history["complexity_distribution"]),
+            "compliance_check": dict(self.analysis_history["compliance_check"]),
             "total_analyzed": len(self.analysis_history["question_patterns"]),
             "korean_terms_available": len(self.korean_financial_terms)
         }
+    
+    def validate_competition_compliance(self, answer: str, domain: str) -> Dict:
+        """대회 규칙 준수 검증"""
+        compliance = {
+            "korean_only": True,
+            "no_external_api": True,
+            "appropriate_content": True,
+            "technical_accuracy": True
+        }
+        
+        # 한국어 전용 확인
+        import re
+        english_chars = len(re.findall(r'[a-zA-Z]', answer))
+        total_chars = len(re.sub(r'[^\w가-힣]', '', answer))
+        
+        if total_chars > 0:
+            english_ratio = english_chars / total_chars
+            compliance["korean_only"] = english_ratio < 0.1
+        
+        # 외부 의존성 확인 (URL, 외부 서비스 언급 등)
+        external_indicators = ["http", "www", "api", "service", "cloud"]
+        compliance["no_external_api"] = not any(indicator in answer.lower() for indicator in external_indicators)
+        
+        # 도메인 적절성 확인
+        if domain in self.domain_keywords:
+            domain_keywords = self.domain_keywords[domain]
+            found_keywords = sum(1 for keyword in domain_keywords if keyword in answer.lower())
+            compliance["appropriate_content"] = found_keywords > 0
+        
+        return compliance
     
     def cleanup(self):
         """정리"""

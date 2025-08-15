@@ -34,9 +34,13 @@ class SimpleModelHandler:
         self.pkl_dir = Path("./pkl")
         self.pkl_dir.mkdir(exist_ok=True)
         
-        # 답변 분포 추적
-        self.answer_distribution = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
-        self.total_mc_answers = 0
+        # 답변 분포 추적 (선택지별로 관리)
+        self.answer_distributions = {
+            3: {"1": 0, "2": 0, "3": 0},
+            4: {"1": 0, "2": 0, "3": 0, "4": 0},
+            5: {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
+        }
+        self.mc_answer_counts = {3: 0, 4: 0, 5: 0}
         
         # 질문 컨텍스트 분석용 패턴
         self.negative_patterns = [
@@ -55,7 +59,8 @@ class SimpleModelHandler:
             "failed_answers": [],
             "question_patterns": {},
             "answer_quality_scores": [],
-            "mc_context_patterns": {}  # 객관식 컨텍스트 패턴 저장
+            "mc_context_patterns": {},  # 객관식 컨텍스트 패턴 저장
+            "choice_range_errors": []   # 선택지 범위 오류 기록
         }
         
         # 이전 학습 데이터 로드
@@ -164,6 +169,7 @@ class SimpleModelHandler:
                 "question_patterns": self.learning_data["question_patterns"],
                 "answer_quality_scores": self.learning_data["answer_quality_scores"][-1000:],
                 "mc_context_patterns": self.learning_data["mc_context_patterns"],
+                "choice_range_errors": self.learning_data["choice_range_errors"][-100:],
                 "last_updated": datetime.now().isoformat()
             }
             
@@ -174,13 +180,38 @@ class SimpleModelHandler:
             if self.verbose:
                 print(f"학습 데이터 저장 오류: {e}")
     
+    def _extract_choice_count(self, question: str) -> int:
+        """질문에서 선택지 개수 추출"""
+        # 줄별로 분석하여 선택지 번호 추출
+        lines = question.split('\n')
+        choice_numbers = []
+        
+        for line in lines:
+            # 선택지 패턴: 숫자 + 공백 + 내용
+            match = re.match(r'^(\d+)\s+', line.strip())
+            if match:
+                choice_numbers.append(int(match.group(1)))
+        
+        if choice_numbers:
+            choice_numbers.sort()
+            return max(choice_numbers)
+        
+        # 폴백: 기본 패턴으로 확인
+        for i in range(5, 2, -1):  # 5개부터 3개까지 확인
+            pattern = r'1\s.*' + '.*'.join([f'{j}\s' for j in range(2, i+1)])
+            if re.search(pattern, question, re.DOTALL):
+                return i
+        
+        return 5  # 기본값
+    
     def _analyze_mc_context(self, question: str) -> Dict:
         """객관식 질문 컨텍스트 분석"""
         context = {
             "is_negative": False,
             "is_positive": False,
             "domain_hints": [],
-            "key_terms": []
+            "key_terms": [],
+            "choice_count": self._extract_choice_count(question)
         }
         
         question_lower = question.lower()
@@ -212,19 +243,20 @@ class SimpleModelHandler:
         
         return context
     
-    def _get_context_based_mc_answer(self, question: str) -> str:
+    def _get_context_based_mc_answer(self, question: str, max_choice: int) -> str:
         """컨텍스트 기반 객관식 답변 생성"""
         context = self._analyze_mc_context(question)
         
         # 학습된 패턴에서 유사 질문 찾기
-        pattern_key = f"{context['is_negative']}_{context['is_positive']}_{len(context['domain_hints'])}"
+        pattern_key = f"{context['is_negative']}_{context['is_positive']}_{len(context['domain_hints'])}_{max_choice}"
         
         if pattern_key in self.learning_data["mc_context_patterns"]:
             learned_distribution = self.learning_data["mc_context_patterns"][pattern_key]
             # 학습된 분포를 기반으로 가중치 적용
             weighted_choices = []
             for num, weight in learned_distribution.items():
-                weighted_choices.extend([num] * int(weight * 10))
+                if int(num) <= max_choice:  # 선택지 범위 내에서만
+                    weighted_choices.extend([num] * int(weight * 10))
             
             if weighted_choices:
                 return random.choice(weighted_choices)
@@ -232,18 +264,19 @@ class SimpleModelHandler:
         # 컨텍스트 기반 답변 선택 로직
         if context["is_negative"]:
             # 부정형 질문은 보통 마지막 선택지가 답인 경우가 많음
-            weights = [1, 1, 2, 3, 4]
+            weights = [1] * max_choice
+            weights[-1] += 2  # 마지막 선택지 가중치 증가
         elif context["is_positive"]:
             # 긍정형 질문은 앞쪽 선택지가 답인 경우가 많음
-            weights = [3, 3, 2, 1, 1]
+            weights = [3, 3] + [1] * (max_choice - 2)
         else:
             # 중립적 질문은 균등 분포
-            weights = [2, 2, 2, 2, 2]
+            weights = [2] * max_choice
         
         # 도메인 힌트에 따른 가중치 조정
-        if "security" in context["domain_hints"]:
+        if "security" in context["domain_hints"] and max_choice >= 3:
             weights[2] += 1  # 보안 관련은 3번이 많음
-        if "privacy" in context["domain_hints"]:
+        if "privacy" in context["domain_hints"] and max_choice >= 1:
             weights[0] += 1  # 개인정보는 1번이 많음
         
         # 가중치 기반 선택
@@ -253,12 +286,13 @@ class SimpleModelHandler:
         
         return random.choice(choices)
     
-    def _add_learning_record(self, question: str, answer: str, question_type: str, success: bool, quality_score: float = 0.0):
+    def _add_learning_record(self, question: str, answer: str, question_type: str, success: bool, max_choice: int = 5, quality_score: float = 0.0):
         """학습 기록 추가"""
         record = {
             "question": question[:200],  # 질문 요약
             "answer": answer[:300],      # 답변 요약
             "type": question_type,
+            "max_choice": max_choice,
             "timestamp": datetime.now().isoformat(),
             "quality_score": quality_score
         }
@@ -267,6 +301,17 @@ class SimpleModelHandler:
             self.learning_data["successful_answers"].append(record)
         else:
             self.learning_data["failed_answers"].append(record)
+            
+            # 선택지 범위 오류 기록
+            if question_type == "multiple_choice" and answer and answer.isdigit():
+                answer_num = int(answer)
+                if answer_num > max_choice:
+                    self.learning_data["choice_range_errors"].append({
+                        "question": question[:100],
+                        "answer": answer,
+                        "max_choice": max_choice,
+                        "timestamp": datetime.now().isoformat()
+                    })
         
         # 질문 패턴 학습
         domain = self._detect_domain(question)
@@ -278,9 +323,9 @@ class SimpleModelHandler:
         patterns["avg_quality"] = (patterns["avg_quality"] * (patterns["count"] - 1) + quality_score) / patterns["count"]
         
         # 객관식 컨텍스트 패턴 학습
-        if question_type == "multiple_choice" and success:
+        if question_type == "multiple_choice" and success and answer.isdigit():
             context = self._analyze_mc_context(question)
-            pattern_key = f"{context['is_negative']}_{context['is_positive']}_{len(context['domain_hints'])}"
+            pattern_key = f"{context['is_negative']}_{context['is_positive']}_{len(context['domain_hints'])}_{max_choice}"
             
             if pattern_key not in self.learning_data["mc_context_patterns"]:
                 self.learning_data["mc_context_patterns"][pattern_key] = {}
@@ -326,12 +371,12 @@ class SimpleModelHandler:
             if self.verbose:
                 print(f"워밍업 실패: {e}")
     
-    def generate_answer(self, question: str, question_type: str) -> str:
+    def generate_answer(self, question: str, question_type: str, max_choice: int = 5) -> str:
         """답변 생성"""
         
         # 프롬프트 생성
         if question_type == "multiple_choice":
-            prompt = self._create_enhanced_mc_prompt(question)
+            prompt = self._create_enhanced_mc_prompt(question, max_choice)
         else:
             prompt = self._create_korean_subj_prompt(question)
         
@@ -365,43 +410,53 @@ class SimpleModelHandler:
             
             # 후처리
             if question_type == "multiple_choice":
-                answer = self._process_enhanced_mc_answer(response, question)
-                self._add_learning_record(question, answer, question_type, True, 1.0)
-                return answer
+                answer = self._process_enhanced_mc_answer(response, question, max_choice)
+                # 선택지 범위 검증
+                if answer and answer.isdigit() and 1 <= int(answer) <= max_choice:
+                    self._add_learning_record(question, answer, question_type, True, max_choice, 1.0)
+                    return answer
+                else:
+                    # 범위 벗어난 경우 컨텍스트 기반 폴백
+                    fallback = self._get_context_based_mc_answer(question, max_choice)
+                    self._add_learning_record(question, answer, question_type, False, max_choice, 0.0)
+                    return fallback
             else:
                 answer = self._process_korean_subj_answer(response, question)
                 korean_ratio = self._calculate_korean_ratio(answer)
                 quality_score = self._calculate_answer_quality(answer, question)
                 success = korean_ratio > 0.7 and quality_score > 0.5
                 
-                self._add_learning_record(question, answer, question_type, success, quality_score)
+                self._add_learning_record(question, answer, question_type, success, max_choice, quality_score)
                 return answer
                 
         except Exception as e:
             if self.verbose:
                 print(f"모델 실행 오류: {e}")
-            fallback = self._get_fallback_answer(question_type, question)
-            self._add_learning_record(question, fallback, question_type, False, 0.3)
+            fallback = self._get_fallback_answer(question_type, question, max_choice)
+            self._add_learning_record(question, fallback, question_type, False, max_choice, 0.3)
             return fallback
     
-    def _create_enhanced_mc_prompt(self, question: str) -> str:
+    def _create_enhanced_mc_prompt(self, question: str, max_choice: int) -> str:
         """개선된 객관식 프롬프트 생성"""
         context = self._analyze_mc_context(question)
         
+        # 선택지 범위 명시
+        choice_range = "에서 ".join([str(i) for i in range(1, max_choice+1)]) + f"번 중"
+        
         # 컨텍스트에 따른 프롬프트 조정
         if context["is_negative"]:
-            instruction = "다음 중 해당하지 않거나 옳지 않은 것을 찾으세요."
+            instruction = f"다음 중 해당하지 않거나 옳지 않은 것을 {choice_range} 찾으세요."
         elif context["is_positive"]:
-            instruction = "다음 중 가장 적절하거나 옳은 것을 찾으세요."
+            instruction = f"다음 중 가장 적절하거나 옳은 것을 {choice_range} 찾으세요."
         else:
-            instruction = "정답을 선택하세요."
+            instruction = f"정답을 {choice_range} 선택하세요."
         
         prompts = [
             f"""다음은 금융보안 관련 문제입니다. {instruction}
 
 {question}
 
-위 문제를 신중히 분석하고, 1부터 5까지 중 하나의 정답을 선택하세요.
+위 문제를 신중히 분석하고, 1부터 {max_choice}까지 중 하나의 정답을 선택하세요.
 각 선택지를 꼼꼼히 검토한 후 정답 번호만 답하세요.
 
 정답:""",
@@ -411,7 +466,7 @@ class SimpleModelHandler:
 {question}
 
 {instruction}
-선택지를 모두 검토한 후 1, 2, 3, 4, 5 중 정답을 선택하세요.
+선택지를 모두 검토한 후 1부터 {max_choice}번 중 정답을 선택하세요.
 번호만 답하세요.
 
 답:""",
@@ -421,16 +476,12 @@ class SimpleModelHandler:
 문제: {question}
 
 {instruction}
-정답을 1, 2, 3, 4, 5 중 하나의 번호로만 답하세요.
+정답을 1부터 {max_choice}번 중 하나의 번호로만 답하세요.
 
 정답:"""
         ]
         
         return random.choice(prompts)
-    
-    def _create_mc_prompt(self, question: str) -> str:
-        """객관식 프롬프트 생성 (기본)"""
-        return self._create_enhanced_mc_prompt(question)
     
     def _create_korean_subj_prompt(self, question: str) -> str:
         """한국어 전용 주관식 프롬프트 생성"""
@@ -495,31 +546,20 @@ class SimpleModelHandler:
                 eos_token_id=self.tokenizer.eos_token_id
             )
     
-    def _process_enhanced_mc_answer(self, response: str, question: str) -> str:
+    def _process_enhanced_mc_answer(self, response: str, question: str, max_choice: int) -> str:
         """개선된 객관식 답변 처리"""
-        # 숫자 추출
-        numbers = re.findall(r'[1-5]', response)
-        if numbers:
-            answer = numbers[0]
-            self.answer_distribution[answer] += 1
-            self.total_mc_answers += 1
-            return answer
+        # 숫자 추출 (선택지 범위 내에서만)
+        numbers = re.findall(r'[1-9]', response)
+        for num in numbers:
+            if 1 <= int(num) <= max_choice:
+                # 답변 분포 업데이트
+                if max_choice in self.answer_distributions:
+                    self.answer_distributions[max_choice][num] += 1
+                    self.mc_answer_counts[max_choice] += 1
+                return num
         
-        # 폴백: 컨텍스트 기반 답변
-        return self._get_context_based_mc_answer(question)
-    
-    def _process_mc_answer(self, response: str) -> str:
-        """객관식 답변 처리 (기본)"""
-        # 숫자 추출
-        numbers = re.findall(r'[1-5]', response)
-        if numbers:
-            answer = numbers[0]
-            self.answer_distribution[answer] += 1
-            self.total_mc_answers += 1
-            return answer
-        
-        # 폴백: 분포 균등화
-        return self._get_balanced_mc_answer()
+        # 유효한 답변을 찾지 못한 경우 컨텍스트 기반 폴백
+        return self._get_context_based_mc_answer(question, max_choice)
     
     def _process_korean_subj_answer(self, response: str, question: str) -> str:
         """한국어 전용 주관식 답변 처리"""
@@ -616,29 +656,33 @@ class SimpleModelHandler:
         else:
             return ["법령", "규정", "관리", "조치", "절차"]
     
-    def _get_balanced_mc_answer(self) -> str:
+    def _get_balanced_mc_answer(self, max_choice: int) -> str:
         """균등 분포 객관식 답변"""
-        if self.total_mc_answers < 5:
-            return str(random.randint(1, 5))
+        if max_choice not in self.mc_answer_counts or self.mc_answer_counts[max_choice] < max_choice:
+            return str(random.randint(1, max_choice))
         
         # 현재 분포 확인
-        avg_count = self.total_mc_answers / 5
-        underused = [num for num in ["1", "2", "3", "4", "5"] 
-                    if self.answer_distribution[num] < avg_count * 0.7]
+        if max_choice in self.answer_distributions:
+            distribution = self.answer_distributions[max_choice]
+            avg_count = self.mc_answer_counts[max_choice] / max_choice
+            underused = [num for num in range(1, max_choice+1) 
+                        if distribution.get(str(num), 0) < avg_count * 0.7]
+            
+            if underused:
+                answer = str(random.choice(underused))
+            else:
+                answer = str(random.randint(1, max_choice))
+            
+            distribution[answer] += 1
+            self.mc_answer_counts[max_choice] += 1
+            return answer
         
-        if underused:
-            answer = random.choice(underused)
-        else:
-            answer = str(random.randint(1, 5))
-        
-        self.answer_distribution[answer] += 1
-        self.total_mc_answers += 1
-        return answer
+        return str(random.randint(1, max_choice))
     
-    def _get_fallback_answer(self, question_type: str, question: str = "") -> str:
+    def _get_fallback_answer(self, question_type: str, question: str = "", max_choice: int = 5) -> str:
         """폴백 답변"""
         if question_type == "multiple_choice":
-            return self._get_context_based_mc_answer(question)
+            return self._get_context_based_mc_answer(question, max_choice)
         else:
             return self._generate_korean_template_answer(question)
     
@@ -664,8 +708,8 @@ class SimpleModelHandler:
     def get_answer_stats(self) -> Dict:
         """답변 통계"""
         return {
-            "distribution": dict(self.answer_distribution),
-            "total_mc": self.total_mc_answers
+            "distributions": dict(self.answer_distributions),
+            "counts": dict(self.mc_answer_counts)
         }
     
     def get_learning_stats(self) -> Dict:
@@ -673,6 +717,7 @@ class SimpleModelHandler:
         return {
             "successful_count": len(self.learning_data["successful_answers"]),
             "failed_count": len(self.learning_data["failed_answers"]),
+            "choice_range_errors": len(self.learning_data["choice_range_errors"]),
             "question_patterns": dict(self.learning_data["question_patterns"]),
             "avg_quality": sum(self.learning_data["answer_quality_scores"]) / len(self.learning_data["answer_quality_scores"]) if self.learning_data["answer_quality_scores"] else 0
         }

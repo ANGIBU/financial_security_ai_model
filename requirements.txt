@@ -1,23 +1,23 @@
 # requirements.txt
 
-# 핵심 딥러닝 프레임워크
+# 핵심 딥러닝 프레임워크 (대회 환경 호환)
 torch==2.1.0
 transformers==4.36.0
 tokenizers==0.15.0
 accelerate==0.25.0
 safetensors==0.4.1
 
-# 데이터 처리
+# 데이터 처리 (필수)
 pandas==2.0.3
 numpy==1.24.3
 
-# HuggingFace 생태계
+# HuggingFace 생태계 (오프라인 환경 대응)
 huggingface-hub==0.19.4
 
-# 텍스트 처리
+# 텍스트 처리 및 정규식
 regex==2023.10.3
 
-# 한국어 처리
+# 한국어 처리 (선택적)
 konlpy==0.6.0
 soynlp==0.0.493
 
@@ -29,7 +29,10 @@ fsspec==2023.10.0
 pyyaml==6.0.1
 psutil==5.9.8
 
-# 오프라인 환경용
+# 메모리 관리 및 최적화
+gc-collector==1.0.3
+
+# 오프라인 환경 지원
 requests==2.31.0
 urllib3==2.1.0
 certifi==2023.11.17
@@ -41,6 +44,9 @@ setuptools==69.0.3
 wheel==0.42.0
 pip==23.3.1
 
-# 설치 명령어:
-# pip install torch==2.1.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-# pip install -r requirements.txt
+# 설치 순서:
+# 1. pip install torch==2.1.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# 2. pip install -r requirements.txt
+
+# 오프라인 환경 확인:
+# python -c "import os; os.environ['TRANSFORMERS_OFFLINE']='1'; import transformers; print('오프라인 모드 동작 확인')"
