@@ -82,12 +82,20 @@ def print_simplified_results(results: dict, output_file: str, test_size: int):
     print(f"처리 시간: {total_time_minutes:.1f}분")
     print(f"처리 문항: {results['total_questions']}개")
     
-    # 의도 일치 성공률 (주관식이 없어도 표시)
-    intent_success_rate = results.get('intent_match_success_rate', 0)
-    if intent_success_rate == 0 and results.get('subj_count', 0) == 0:
-        print(f"의도 일치 성공률: 0.0% (주관식 문항 없음)")
+    # 의도 일치 성공률 - 더 정밀한 계산
+    intent_total = results.get('subj_count', 0)  # 주관식 문항 수
+    if intent_total > 0:
+        # 실제 의도 분석된 문항 수와 성공한 문항 수 사용
+        intent_analyzed = results.get('intent_analysis_accuracy', 0)
+        intent_success = results.get('intent_match_success', 0) 
+        
+        if intent_analyzed > 0:
+            intent_success_rate = (intent_success / intent_analyzed) * 100
+            print(f"의도 일치 성공률: {intent_success_rate:.1f}% ({intent_success}/{intent_analyzed})")
+        else:
+            print(f"의도 일치 성공률: 0.0% (의도 분석 실패)")
     else:
-        print(f"의도 일치 성공률: {intent_success_rate:.1f}%")
+        print(f"의도 일치 성공률: 0.0% (주관식 문항 없음)")
 
 def estimate_performance_score(results: dict) -> float:
     """성능 점수 예측"""

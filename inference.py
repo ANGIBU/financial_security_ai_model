@@ -607,13 +607,6 @@ class FinancialAIInference:
         # 진행률 완료 후 줄바꿈
         print()
         
-        # 의도 일치 성공률만 출력 (핵심 지표)
-        if self.stats["intent_analysis_accuracy"] > 0:
-            intent_success_rate = (self.stats["intent_match_success"] / self.stats["intent_analysis_accuracy"]) * 100
-            print(f"의도 일치 성공률: {intent_success_rate:.1f}%")
-        else:
-            print("의도 일치 성공률: 0.0% (주관식 문항 없음)")
-        
         # 결과 저장 (간단한 저장 방식 사용)
         submission_df['Answer'] = answers
         save_success = self._simple_save_csv(submission_df, output_file)
