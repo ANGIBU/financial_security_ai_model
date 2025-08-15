@@ -33,7 +33,7 @@ def run_test(test_size: int = 50, verbose: bool = True):
     try:
         # AI 엔진 초기화
         print("\n시스템 초기화 중...")
-        engine = FinancialAIInference(verbose=False)  # verbose=False로 설정
+        engine = FinancialAIInference(verbose=True)  # verbose=True로 변경
         
         # 테스트 데이터 준비
         import pandas as pd

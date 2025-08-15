@@ -117,6 +117,11 @@ class FinancialAIInference:
                 intent_analysis = self.data_processor.analyze_question_intent(question)
                 self.stats["intent_analysis_accuracy"] += 1
                 
+                if self.verbose:
+                    primary_intent = intent_analysis.get("primary_intent", "일반")
+                    confidence = intent_analysis.get("intent_confidence", 0)
+                    print(f"의도 분석: {primary_intent} (신뢰도: {confidence:.2f})")
+                
                 # 고신뢰도 의도 분석 확인
                 if intent_analysis.get("intent_confidence", 0) >= self.optimization_config["intent_confidence_threshold"]:
                     self.stats["high_confidence_intent"] += 1
@@ -610,6 +615,11 @@ class FinancialAIInference:
         # 모델 신뢰도 계산
         reliability_score = self._calculate_model_reliability()
         print(f"\n모델 신뢰도: {reliability_score:.1f}%")
+        
+        # 의도 일치 성공률 항상 출력 (핵심 지표)
+        if self.stats["intent_analysis_accuracy"] > 0:
+            intent_success_rate = (self.stats["intent_match_success"] / self.stats["intent_analysis_accuracy"]) * 100
+            print(f"의도 일치 성공률: {intent_success_rate:.1f}%")
         
         # 강화된 통계 출력
         self._print_enhanced_stats()
