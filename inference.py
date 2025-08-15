@@ -117,11 +117,6 @@ class FinancialAIInference:
                 intent_analysis = self.data_processor.analyze_question_intent(question)
                 self.stats["intent_analysis_accuracy"] += 1
                 
-                if self.verbose:
-                    primary_intent = intent_analysis.get("primary_intent", "일반")
-                    confidence = intent_analysis.get("intent_confidence", 0)
-                    print(f"의도 분석: {primary_intent} (신뢰도: {confidence:.2f})")
-                
                 # 고신뢰도 의도 분석 확인
                 if intent_analysis.get("intent_confidence", 0) >= self.optimization_config["intent_confidence_threshold"]:
                     self.stats["high_confidence_intent"] += 1
@@ -612,17 +607,12 @@ class FinancialAIInference:
         # 진행률 완료 후 줄바꿈
         print()
         
-        # 모델 신뢰도 계산
-        reliability_score = self._calculate_model_reliability()
-        print(f"\n모델 신뢰도: {reliability_score:.1f}%")
-        
-        # 의도 일치 성공률 항상 출력 (핵심 지표)
+        # 의도 일치 성공률만 출력 (핵심 지표)
         if self.stats["intent_analysis_accuracy"] > 0:
             intent_success_rate = (self.stats["intent_match_success"] / self.stats["intent_analysis_accuracy"]) * 100
             print(f"의도 일치 성공률: {intent_success_rate:.1f}%")
-        
-        # 강화된 통계 출력
-        self._print_enhanced_stats()
+        else:
+            print("의도 일치 성공률: 0.0% (주관식 문항 없음)")
         
         # 결과 저장 (간단한 저장 방식 사용)
         submission_df['Answer'] = answers
@@ -635,66 +625,8 @@ class FinancialAIInference:
         return self._get_results_summary()
     
     def _print_enhanced_stats(self):
-        """강화된 통계 출력 (대폭 개선)"""
-        if not self.verbose:
-            return
-        
-        print("\n상세 통계:")
-        
-        # 의도 분석 통계 (강화)
-        if self.stats["intent_analysis_accuracy"] > 0:
-            intent_success_rate = (self.stats["intent_match_success"] / self.stats["intent_analysis_accuracy"]) * 100
-            print(f"  의도 일치 성공률: {intent_success_rate:.1f}%")
-            
-            # 고신뢰도 의도 분석 비율
-            high_conf_rate = (self.stats["high_confidence_intent"] / self.stats["intent_analysis_accuracy"]) * 100
-            print(f"  고신뢰도 의도 분석률: {high_conf_rate:.1f}%")
-        
-        # 최적화 성능 통계 (신규)
-        if self.stats["total"] > 0:
-            print(f"  의도별 특화 답변률: {(self.stats['intent_specific_answers'] / self.stats['total']) * 100:.1f}%")
-            print(f"  품질 개선 횟수: {self.stats['quality_improvement']}회")
-            print(f"  폴백 회피률: {(self.stats['fallback_avoidance'] / self.stats['total']) * 100:.1f}%")
-            
-            if self.stats["korean_enhancement"] > 0:
-                print(f"  한국어 품질 향상: {self.stats['korean_enhancement']}회")
-            
-            if self.stats["answer_length_optimization"] > 0:
-                print(f"  답변 길이 최적화: {self.stats['answer_length_optimization']}회")
-        
-        # 기관 관련 질문 통계
-        if self.stats["institution_questions"] > 0:
-            print(f"  기관 관련 질문: {self.stats['institution_questions']}개")
-        
-        # 템플릿 사용 통계
-        if self.stats["template_usage"] > 0:
-            template_rate = (self.stats["template_usage"] / self.stats["total"]) * 100
-            print(f"  템플릿 사용률: {template_rate:.1f}%")
-        
-        # 도메인별 의도 일치율 (신규)
-        if self.stats["domain_intent_match"]:
-            print("  도메인별 의도 일치율:")
-            for domain, stats in self.stats["domain_intent_match"].items():
-                if stats["total"] > 0:
-                    match_rate = (stats["matched"] / stats["total"]) * 100
-                    print(f"    {domain}: {match_rate:.1f}% ({stats['matched']}/{stats['total']})")
-        
-        # 의도별 품질 통계
-        if self.stats["answer_quality_by_intent"]:
-            print("  의도별 답변 품질:")
-            for intent, scores in self.stats["answer_quality_by_intent"].items():
-                if scores:
-                    avg_quality = sum(scores) / len(scores)
-                    print(f"    {intent}: {avg_quality:.2f} (평균)")
-        
-        # 템플릿 효과성 (신규)
-        if self.stats["template_effectiveness"]:
-            print("  템플릿 효과성 (상위 3개):")
-            sorted_templates = sorted(self.stats["template_effectiveness"].items(), 
-                                    key=lambda x: x[1]["avg_quality"], reverse=True)
-            for template_key, effectiveness in sorted_templates[:3]:
-                print(f"    {template_key}: 품질 {effectiveness['avg_quality']:.2f}, "
-                      f"한국어 {effectiveness['korean_ratio']:.2f}")
+        """상세 통계 출력 (모든 출력 제거)"""
+        pass
     
     def _get_results_summary(self) -> Dict:
         """결과 요약 (강화)"""

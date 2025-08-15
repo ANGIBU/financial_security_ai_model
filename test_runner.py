@@ -33,7 +33,7 @@ def run_test(test_size: int = 50, verbose: bool = True):
     try:
         # AI 엔진 초기화
         print("\n시스템 초기화 중...")
-        engine = FinancialAIInference(verbose=True)  # verbose=True로 변경
+        engine = FinancialAIInference(verbose=False)  # 최소 출력을 위해 False
         
         # 테스트 데이터 준비
         import pandas as pd
@@ -75,68 +75,19 @@ def run_test(test_size: int = 50, verbose: bool = True):
             engine.cleanup()
 
 def print_simplified_results(results: dict, output_file: str, test_size: int):
-    """핵심 결과만 간단 출력"""
+    """핵심 3개 지표만 출력"""
 
-    print("\n=== 테스트 완료 ===")
-    
-    # 기본 정보
+    # 기본 정보 3개만
     total_time_minutes = results['total_time'] / 60
     print(f"처리 시간: {total_time_minutes:.1f}분")
     print(f"처리 문항: {results['total_questions']}개")
     
-    # 핵심 성능 지표만 표시
-    print(f"\n=== 핵심 성능 지표 ===")
-    print(f"모델 성공률: {results['model_success_rate']:.1f}%")
-    print(f"한국어 준수율: {results['korean_compliance_rate']:.1f}%")
-    
-    # 의도 일치 성공률 - 핵심 지표
+    # 의도 일치 성공률 (주관식이 없어도 표시)
     intent_success_rate = results.get('intent_match_success_rate', 0)
-    print(f"의도 일치 성공률: {intent_success_rate:.1f}%")
-    
-    # 추가 중요 지표들
-    if results.get('choice_range_error_rate', 0) > 0:
-        print(f"선택지 범위 오류율: {results['choice_range_error_rate']:.1f}%")
-    
-    if results.get('validation_error_rate', 0) > 0:
-        print(f"검증 오류율: {results['validation_error_rate']:.1f}%")
-    
-    # 문항 분포 (간단히)
-    mc_count = results.get('mc_count', 0)
-    subj_count = results.get('subj_count', 0)
-    print(f"\n문항 분포: 객관식 {mc_count}개, 주관식 {subj_count}개")
-    
-    # 의도별 성과 (주관식이 있을 때만)
-    if subj_count > 0:
-        intent_quality = results.get('intent_quality_by_type', {})
-        if intent_quality:
-            print(f"\n=== 의도별 성과 ===")
-            for intent, quality in intent_quality.items():
-                print(f"{intent}: 품질 {quality:.2f}")
-    
-    # 성능 판정
-    print(f"\n=== 성능 평가 ===")
-    
-    # 의도 일치 성공률 기준 평가
-    if intent_success_rate >= 80:
-        intent_status = "우수"
-    elif intent_success_rate >= 60:
-        intent_status = "양호"
-    elif intent_success_rate >= 40:
-        intent_status = "보통"
+    if intent_success_rate == 0 and results.get('subj_count', 0) == 0:
+        print(f"의도 일치 성공률: 0.0% (주관식 문항 없음)")
     else:
-        intent_status = "개선 필요"
-    
-    print(f"의도 일치 성능: {intent_status}")
-    
-    # 전체 성능 예측
-    predicted_score = estimate_performance_score(results)
-    print(f"예상 점수: {predicted_score:.3f}")
-    
-    if predicted_score >= 0.65:
-        print("✅ 목표 점수 달성 가능")
-    else:
-        print("❌ 목표 점수 미달 - 개선 필요")
-        suggest_improvements(results)
+        print(f"의도 일치 성공률: {intent_success_rate:.1f}%")
 
 def estimate_performance_score(results: dict) -> float:
     """성능 점수 예측"""
