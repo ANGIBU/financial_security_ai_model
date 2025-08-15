@@ -11,8 +11,6 @@
 import os
 import time
 import gc
-import tempfile
-import shutil
 import pandas as pd
 from typing import Dict, List
 from pathlib import Path
@@ -249,51 +247,28 @@ class FinancialAIInference:
         
         return min(reliability, 100.0)
     
-    def _safe_save_csv(self, df: pd.DataFrame, filepath: str, max_retries: int = 3) -> bool:
-        """안전한 CSV 저장 (권한 오류 처리)"""
+    def _simple_save_csv(self, df: pd.DataFrame, filepath: str) -> bool:
+        """간단한 CSV 저장 (백업 파일 생성 안함)"""
         filepath = Path(filepath)
         
-        for attempt in range(max_retries):
-            try:
-                # 임시 파일로 먼저 저장
-                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv', encoding='utf-8-sig') as tmp_file:
-                    df.to_csv(tmp_file.name, index=False, encoding='utf-8-sig')
-                    temp_path = tmp_file.name
-                
-                # 대상 파일이 존재하면 백업
-                if filepath.exists():
-                    backup_path = filepath.with_suffix('.bak')
-                    if backup_path.exists():
-                        backup_path.unlink()
-                    shutil.move(str(filepath), str(backup_path))
-                
-                # 임시 파일을 대상 위치로 이동
-                shutil.move(temp_path, str(filepath))
-                
-                if self.verbose:
-                    print(f"\n결과 저장 완료: {filepath}")
-                return True
-                
-            except PermissionError as e:
-                if attempt < max_retries - 1:
-                    if self.verbose:
-                        print(f"\n파일 저장 권한 오류 (시도 {attempt + 1}/{max_retries}): {e}")
-                    time.sleep(1)  # 1초 대기 후 재시도
-                    
-                    # 대체 파일명 시도
-                    timestamp = int(time.time())
-                    filepath = filepath.parent / f"{filepath.stem}_{timestamp}{filepath.suffix}"
-                else:
-                    if self.verbose:
-                        print(f"\n파일 저장 실패: {e}")
-                    return False
-                    
-            except Exception as e:
-                if self.verbose:
-                    print(f"\n파일 저장 중 오류: {e}")
-                return False
-                
-        return False
+        try:
+            # 직접 저장 시도
+            df.to_csv(filepath, index=False, encoding='utf-8-sig')
+            
+            if self.verbose:
+                print(f"\n결과 저장 완료: {filepath}")
+            return True
+            
+        except PermissionError as e:
+            if self.verbose:
+                print(f"\n파일 저장 권한 오류: {e}")
+                print("파일이 다른 프로그램에서 열려있는지 확인하세요.")
+            return False
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"\n파일 저장 중 오류: {e}")
+            return False
     
     def execute_inference(self, test_file: str = "./test.csv", 
                          submission_file: str = "./sample_submission.csv",
@@ -343,19 +318,13 @@ class FinancialAIInference:
         reliability_score = self._calculate_model_reliability()
         print(f"\n모델 신뢰도: {reliability_score:.1f}%")
         
-        # 결과 저장 (안전한 저장 방식 사용)
+        # 결과 저장 (간단한 저장 방식 사용)
         submission_df['Answer'] = answers
-        save_success = self._safe_save_csv(submission_df, output_file)
+        save_success = self._simple_save_csv(submission_df, output_file)
         
         if not save_success:
-            # 저장 실패시 임시 디렉토리에 저장
-            temp_dir = Path(tempfile.gettempdir())
-            temp_file = temp_dir / f"inference_result_{int(time.time())}.csv"
-            try:
-                submission_df.to_csv(temp_file, index=False, encoding='utf-8-sig')
-                print(f"결과를 임시 디렉토리에 저장: {temp_file}")
-            except Exception as e:
-                print(f"임시 저장도 실패: {e}")
+            print(f"지정된 파일로 저장에 실패했습니다: {output_file}")
+            print("파일이 다른 프로그램에서 열려있거나 권한 문제일 수 있습니다.")
         
         return self._get_results_summary()
     
