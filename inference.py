@@ -89,6 +89,11 @@ class FinancialAIInference:
         try:
             # 1. 질문 분석 및 의도 파악
             question_type, max_choice = self.data_processor.extract_choice_range(question)
+            
+            # max_choice 검증 및 보정
+            if question_type == "multiple_choice" and max_choice <= 0:
+                max_choice = 5  # 기본값으로 설정
+            
             domain = self.data_processor.extract_domain(question)
             difficulty = self.data_processor.analyze_question_difficulty(question)
             
@@ -194,7 +199,7 @@ class FinancialAIInference:
             if self.verbose:
                 print(f"오류 발생: {e}")
             # 안전한 폴백 답변
-            fallback = self._get_safe_fallback(question, max_choice if 'max_choice' in locals() else 5)
+            fallback = self._get_safe_fallback(question, max_choice if 'max_choice' in locals() and max_choice > 0 else 5)
             self._update_comprehensive_stats("multiple_choice", "일반", "초급", time.time() - start_time)
             return fallback
     
@@ -316,6 +321,9 @@ class FinancialAIInference:
     def _get_safe_mc_answer(self, max_choice: int) -> str:
         """안전한 객관식 답변 생성"""
         import random
+        # max_choice 검증
+        if max_choice <= 0:
+            max_choice = 5
         return str(random.randint(1, max_choice))
     
     def _get_safe_fallback(self, question: str, max_choice: int) -> str:
@@ -341,16 +349,6 @@ class FinancialAIInference:
         
         # 난이도 통계
         self.stats["difficulty_stats"][difficulty] += 1
-    
-    def print_progress_bar(self, current: int, total: int, start_time: float, bar_length: int = 50):
-        """진행률 게이지바 출력"""
-        progress = current / total
-        filled_length = int(bar_length * progress)
-        bar = '█' * filled_length + '░' * (bar_length - filled_length)
-        
-        # 진행률 출력
-        percent = progress * 100
-        print(f"\r문항 처리: ({current}/{total}) 진행도: {percent:.0f}% [{bar}]", end='', flush=True)
     
     def _calculate_model_reliability(self) -> float:
         """모델 신뢰도 계산 (강화)"""
@@ -429,6 +427,9 @@ class FinancialAIInference:
         total_questions = len(test_df)
         inference_start_time = time.time()
         
+        # 진행률 표시 변수 초기화
+        last_percent = -1
+        
         for idx, row in test_df.iterrows():
             question = row['Question']
             question_id = row['ID']
@@ -437,8 +438,14 @@ class FinancialAIInference:
             answer = self.process_single_question(question, question_id)
             answers.append(answer)
             
-            # 진행도 표시
-            self.print_progress_bar(idx + 1, total_questions, inference_start_time)
+            # 통일된 진행률 표시 (test_runner 스타일)
+            current_percent = int((idx + 1) / total_questions * 100)
+            if current_percent != last_percent:
+                elapsed_time = time.time() - inference_start_time
+                filled_length = int(50 * (idx + 1) / total_questions)
+                bar = '█' * filled_length + '░' * (50 - filled_length)
+                print(f"\r문항 처리: ({idx + 1}/{total_questions}) 진행도: {current_percent}% [{bar}] ", end='', flush=True)
+                last_percent = current_percent
             
             # 메모리 관리 (50문항마다)
             if (idx + 1) % 50 == 0:

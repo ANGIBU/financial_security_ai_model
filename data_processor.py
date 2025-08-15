@@ -241,6 +241,47 @@ class SimpleDataProcessor:
         
         return intent_analysis
     
+    def analyze_question_difficulty(self, question: str) -> str:
+        """질문 난이도 분석"""
+        if not question:
+            return "초급"
+        
+        complexity_score = 0
+        
+        # 길이 기반 점수
+        length = len(question)
+        if length > 200:
+            complexity_score += 2
+        elif length > 100:
+            complexity_score += 1
+        
+        # 전문 용어 개수
+        technical_terms = [
+            "개인정보보호법", "전자금융거래법", "자본시장법", "ISMS",
+            "트로이목마", "원격접근도구", "침입탐지시스템", "침입방지시스템",
+            "개인정보영향평가", "개인정보관리체계", "분쟁조정위원회"
+        ]
+        
+        term_count = sum(1 for term in technical_terms if term in question)
+        complexity_score += term_count
+        
+        # 도메인 복잡도
+        domain_count = 0
+        for domain, keywords in self.domain_keywords.items():
+            if any(keyword in question for keyword in keywords):
+                domain_count += 1
+        
+        if domain_count >= 2:
+            complexity_score += 1
+        
+        # 난이도 결정
+        if complexity_score >= 4:
+            return "고급"
+        elif complexity_score >= 2:
+            return "중급"
+        else:
+            return "초급"
+    
     def extract_choice_range(self, question: str) -> Tuple[str, int]:
         """선택지 범위 추출 (개선)"""
         question_type = self.analyze_question_type(question)
