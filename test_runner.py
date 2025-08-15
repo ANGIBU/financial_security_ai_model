@@ -2,9 +2,9 @@
 
 """
 테스트 실행기
-- 성능 평가 및 분석
+- 시스템 테스트 실행
+- 성능 측정 및 분석
 - 결과 검증
-- 품질 모니터링
 """
 
 import os
@@ -33,7 +33,7 @@ def run_test(test_size: int = 50, verbose: bool = True):
     try:
         # AI 엔진 초기화
         print("\n시스템 초기화 중...")
-        engine = FinancialAIInference(verbose=False)
+        engine = FinancialAIInference(verbose=False)  # 초기화시 verbose=False로 설정
         
         # 테스트 데이터 준비
         import pandas as pd
@@ -81,36 +81,13 @@ def print_test_results(results: dict, output_file: str, test_size: int):
 
     print("테스트 완료")
     
-    # 성능 지표 출력
+    # 기본 정보만 출력
     total_time_minutes = results['total_time'] / 60
     
-    print(f"\n성능 지표:")
+    print(f"\n기본 정보:")
     print(f"  처리 시간: {total_time_minutes:.1f}분")
     print(f"  처리 문항: {results['total_questions']}개")
-    print(f"  모델 신뢰도: {results.get('model_reliability', 0):.1f}%")
     print(f"  결과 파일: {output_file}")
-    
-    # 상세 성능 분석
-    if results.get('mc_count', 0) > 0:
-        print(f"\n객관식 성능:")
-        print(f"  처리 문항: {results['mc_count']}개")
-        if results.get('choice_range_error_rate', 0) > 0:
-            print(f"  범위 오류율: {results['choice_range_error_rate']:.1f}%")
-    
-    if results.get('subj_count', 0) > 0:
-        print(f"\n주관식 성능:")
-        print(f"  처리 문항: {results['subj_count']}개")
-        if results.get('avg_quality_score', 0) > 0:
-            print(f"  평균 품질 점수: {results['avg_quality_score']:.2f}")
-        if results.get('intent_match_accuracy_rate', 0) > 0:
-            print(f"  의도 일치 정확도: {results['intent_match_accuracy_rate']:.1f}%")
-    
-    # Self-Consistency 성능
-    if results.get('self_consistency_usage_rate', 0) > 0:
-        print(f"\nSelf-Consistency 성능:")
-        print(f"  적용률: {results['self_consistency_usage_rate']:.1f}%")
-        if results.get('avg_confidence_score', 0) > 0:
-            print(f"  평균 신뢰도: {results['avg_confidence_score']:.2f}")
 
 def select_test_size():
     """테스트 문항 수 선택"""
