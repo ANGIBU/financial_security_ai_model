@@ -75,19 +75,25 @@ def run_test(test_size: int = 50, verbose: bool = True):
             engine.cleanup()
 
 def print_simplified_results(results: dict, output_file: str, test_size: int):
-    """핵심 3개 지표만 출력"""
+    """핵심 3개 지표만 출력 (정확한 계산)"""
 
-    # 기본 정보 3개만
+    # 기본 정보
     total_time_minutes = results['total_time'] / 60
     print(f"처리 시간: {total_time_minutes:.1f}분")
     print(f"처리 문항: {results['total_questions']}개")
     
-    # 의도 일치 성공률 (주관식이 없어도 표시)
-    intent_success_rate = results.get('intent_match_success_rate', 0)
-    if intent_success_rate == 0 and results.get('subj_count', 0) == 0:
-        print(f"의도 일치 성공률: 0.0% (주관식 문항 없음)")
+    # 의도 일치 성공률 정확한 계산
+    subj_count = results.get('subj_count', 0)
+    intent_analysis_total = results.get('processing_stats', {}).get('intent_analysis_accuracy', {}).get('total', 0)
+    intent_analysis_correct = results.get('processing_stats', {}).get('intent_analysis_accuracy', {}).get('correct', 0)
+    intent_match_success = results.get('processing_stats', {}).get('intent_match_accuracy', {}).get('correct', 0)
+    intent_match_total = results.get('processing_stats', {}).get('intent_match_accuracy', {}).get('total', 0)
+    
+    if subj_count > 0 and intent_match_total > 0:
+        precise_intent_rate = (intent_match_success / intent_match_total) * 100
+        print(f"의도 일치 성공률: {precise_intent_rate:.1f}%")
     else:
-        print(f"의도 일치 성공률: {intent_success_rate:.1f}%")
+        print(f"의도 일치 성공률: 0.0% (주관식 문항 없음)")
 
 def estimate_performance_score(results: dict) -> float:
     """성능 점수 예측"""
