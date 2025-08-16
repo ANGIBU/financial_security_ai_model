@@ -15,14 +15,20 @@ from pathlib import Path
 current_dir = Path(__file__).parent.absolute()
 sys.path.append(str(current_dir))
 
+# 설정 파일 import
+from config import TEST_CONFIG, FILE_VALIDATION, DEFAULT_FILES
 from inference import FinancialAIInference
 
-def run_test(test_size: int = 50, verbose: bool = True):
+def run_test(test_size: int = None, verbose: bool = True):
     """테스트 실행"""
     
+    # 기본 테스트 크기 설정
+    if test_size is None:
+        test_size = TEST_CONFIG['default_test_size']
+    
     # 파일 존재 확인
-    test_file = "./test.csv"
-    submission_file = "./sample_submission.csv"
+    test_file = DEFAULT_FILES['test_file']
+    submission_file = DEFAULT_FILES['submission_file']
     
     for file_path in [test_file, submission_file]:
         if not os.path.exists(file_path):
@@ -37,8 +43,8 @@ def run_test(test_size: int = 50, verbose: bool = True):
         
         # 테스트 데이터 준비
         import pandas as pd
-        test_df = pd.read_csv(test_file)
-        submission_df = pd.read_csv(submission_file)
+        test_df = pd.read_csv(test_file, encoding=FILE_VALIDATION['encoding'])
+        submission_df = pd.read_csv(submission_file, encoding=FILE_VALIDATION['encoding'])
         
         print(f"전체 데이터: {len(test_df)}개 문항")
         print(f"테스트 크기: {test_size}개 문항")
@@ -48,14 +54,14 @@ def run_test(test_size: int = 50, verbose: bool = True):
             test_df = test_df.head(test_size)
             temp_submission = submission_df.head(test_size).copy()
             
-            output_file = "./test_result.csv"
+            output_file = DEFAULT_FILES['test_output_file']
             results = engine.execute_inference_with_data(
                 test_df, 
                 temp_submission, 
                 output_file
             )
         else:
-            output_file = "./test_result.csv"
+            output_file = DEFAULT_FILES['test_output_file']
             results = engine.execute_inference(
                 test_file,
                 submission_file,
@@ -252,10 +258,12 @@ def analyze_domain_performance(results: dict):
 def select_test_size():
     """테스트 문항 수 선택"""
     print("\n테스트할 문항 수를 선택하세요:")
-    print("1. 10문항 (빠른 테스트)")
-    print("2. 50문항 (기본 테스트)")
-    print("3. 100문항 (정밀 테스트)")
-    print("4. 515문항 (전체 테스트)")
+    
+    test_options = TEST_CONFIG['test_sizes']
+    print(f"1. {test_options['quick']}문항 (빠른 테스트)")
+    print(f"2. {test_options['basic']}문항 (기본 테스트)")
+    print(f"3. {test_options['detailed']}문항 (정밀 테스트)")
+    print(f"4. {test_options['full']}문항 (전체 테스트)")
     print()
     
     while True:
@@ -263,13 +271,13 @@ def select_test_size():
             choice = input("선택 (1-4): ").strip()
             
             if choice == "1":
-                return 10
+                return test_options['quick']
             elif choice == "2":
-                return 50
+                return test_options['basic']
             elif choice == "3":
-                return 100
+                return test_options['detailed']
             elif choice == "4":
-                return 515
+                return test_options['full']
             else:
                 print("잘못된 선택입니다. 1, 2, 3, 4 중 하나를 입력하세요.")
                 
@@ -290,7 +298,7 @@ def main():
     success = run_test(test_size, verbose=True)
     
     if success:
-        print(f"\n테스트 완료 - 결과 파일: ./test_result.csv")
+        print(f"\n테스트 완료 - 결과 파일: {DEFAULT_FILES['test_output_file']}")
     else:
         print("\n테스트 실패")
         sys.exit(1)

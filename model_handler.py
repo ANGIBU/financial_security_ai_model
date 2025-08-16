@@ -16,6 +16,7 @@ import gc
 import random
 import pickle
 import os
+import json
 from datetime import datetime
 from typing import Dict, Optional, Tuple, List
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
@@ -23,123 +24,126 @@ from pathlib import Path
 import warnings
 warnings.filterwarnings("ignore")
 
+# 설정 파일 import
+from config import (
+    DEFAULT_MODEL_NAME, MODEL_CONFIG, GENERATION_CONFIG, 
+    OPTIMIZATION_CONFIG, PKL_DIR, JSON_CONFIG_FILES,
+    MEMORY_CONFIG, get_device
+)
+
 class SimpleModelHandler:
     """모델 핸들러"""
     
-    def __init__(self, model_name: str = "upstage/SOLAR-10.7B-Instruct-v1.0", verbose: bool = False):
-        self.model_name = model_name
+    def __init__(self, model_name: str = None, verbose: bool = False):
+        self.model_name = model_name or DEFAULT_MODEL_NAME
         self.verbose = verbose
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = get_device()
         
         # pkl 저장 폴더 생성
-        self.pkl_dir = Path("./pkl")
+        self.pkl_dir = PKL_DIR
         self.pkl_dir.mkdir(exist_ok=True)
         
-        # 답변 분포 추적
+        # JSON 설정 파일에서 데이터 로드
+        self._load_json_configs()
+        
+        # 성능 최적화 설정
+        self.optimization_config = OPTIMIZATION_CONFIG
+        
+        # 학습 데이터 저장
+        self.learning_data = self.learning_data_structure.copy()
+        
+        # 이전 학습 데이터 로드
+        self._load_learning_data()
+        
+        if verbose:
+            print(f"모델 로딩: {self.model_name}")
+            print(f"디바이스: {self.device}")
+        
+        # 토크나이저 로드
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.model_name,
+            trust_remote_code=MODEL_CONFIG['trust_remote_code'],
+            use_fast=MODEL_CONFIG['use_fast_tokenizer']
+        )
+        
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        
+        # 모델 로드
+        self.model = AutoModelForCausalLM.from_pretrained(
+            self.model_name,
+            torch_dtype=getattr(torch, MODEL_CONFIG['torch_dtype']),
+            device_map=MODEL_CONFIG['device_map'],
+            trust_remote_code=MODEL_CONFIG['trust_remote_code']
+        )
+        
+        self.model.eval()
+        
+        # 워밍업
+        self._warmup()
+        
+        if verbose:
+            print("모델 로딩 완료")
+        
+        # 학습 데이터 로드 현황
+        if len(self.learning_data["successful_answers"]) > 0 and verbose:
+            print(f"이전 학습 데이터 로드: 성공 {len(self.learning_data['successful_answers'])}개, 실패 {len(self.learning_data['failed_answers'])}개")
+    
+    def _load_json_configs(self):
+        """JSON 설정 파일들 로드"""
+        try:
+            # model_config.json 로드
+            with open(JSON_CONFIG_FILES['model_config'], 'r', encoding='utf-8') as f:
+                model_config = json.load(f)
+            
+            # 모델 관련 데이터 할당
+            self.mc_context_patterns = model_config['mc_context_patterns']
+            self.intent_specific_prompts = model_config['intent_specific_prompts']
+            self.answer_distributions = model_config['answer_distribution_default'].copy()
+            self.mc_answer_counts = model_config['mc_answer_counts_default'].copy()
+            self.learning_data_structure = model_config['learning_data_structure']
+            
+            print("모델 설정 파일 로드 완료")
+            
+        except FileNotFoundError as e:
+            print(f"설정 파일을 찾을 수 없습니다: {e}")
+            self._load_default_configs()
+        except json.JSONDecodeError as e:
+            print(f"JSON 파일 파싱 오류: {e}")
+            self._load_default_configs()
+        except Exception as e:
+            print(f"설정 파일 로드 중 오류: {e}")
+            self._load_default_configs()
+    
+    def _load_default_configs(self):
+        """기본 설정 로드 (JSON 파일 로드 실패 시)"""
+        print("기본 설정으로 대체합니다.")
+        
+        # 최소한의 기본 설정
+        self.mc_context_patterns = {
+            "negative_keywords": ["해당하지.*않는", "적절하지.*않는", "옳지.*않는"],
+            "positive_keywords": ["맞는.*것", "옳은.*것", "적절한.*것"],
+            "domain_specific_patterns": {}
+        }
+        
+        self.intent_specific_prompts = {
+            "기관_묻기": ["다음 질문에서 요구하는 특정 기관명을 정확히 답변하세요."],
+            "특징_묻기": ["해당 항목의 핵심적인 특징들을 구체적으로 나열하고 설명하세요."],
+            "지표_묻기": ["탐지 지표와 징후를 중심으로 구체적으로 나열하고 설명하세요."],
+            "방안_묻기": ["구체적인 대응 방안과 해결책을 제시하세요."],
+            "절차_묻기": ["단계별 절차를 순서대로 설명하세요."],
+            "조치_묻기": ["필요한 보안조치와 대응조치를 설명하세요."]
+        }
+        
         self.answer_distributions = {
             3: {"1": 0, "2": 0, "3": 0},
             4: {"1": 0, "2": 0, "3": 0, "4": 0},
             5: {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
         }
+        
         self.mc_answer_counts = {3: 0, 4: 0, 5: 0}
         
-        # 객관식 패턴 분석
-        self.mc_context_patterns = {
-            "negative_keywords": [
-                "해당하지.*않는", "적절하지.*않는", "옳지.*않는",
-                "틀린", "잘못된", "부적절한", "아닌.*것"
-            ],
-            "positive_keywords": [
-                "맞는.*것", "옳은.*것", "적절한.*것", 
-                "올바른.*것", "해당하는.*것", "정확한.*것",
-                "가장.*적절한", "가장.*옳은"
-            ],
-            "domain_specific_patterns": {
-                "금융투자": {
-                    "keywords": ["금융투자업", "투자자문업", "투자매매업", "투자중개업", "소비자금융업", "보험중개업"],
-                    "common_answers": ["1", "5"]
-                },
-                "위험관리": {
-                    "keywords": ["위험관리", "위험수용", "위험대응", "수행인력", "재해복구"],
-                    "common_answers": ["2", "3"]
-                },
-                "개인정보보호": {
-                    "keywords": ["개인정보", "정보주체", "만 14세", "법정대리인", "PIMS"],
-                    "common_answers": ["2", "4"]
-                },
-                "전자금융": {
-                    "keywords": ["전자금융", "분쟁조정", "금융감독원", "한국은행"],
-                    "common_answers": ["4"]
-                },
-                "사이버보안": {
-                    "keywords": ["SBOM", "악성코드", "보안", "소프트웨어"],
-                    "common_answers": ["1", "3", "5"]
-                }
-            }
-        }
-        
-        # 의도별 특화 프롬프트 패턴
-        self.intent_specific_prompts = {
-            "기관_묻기": [
-                "다음 질문에서 요구하는 특정 기관명을 정확히 답변하세요. 전자금융분쟁조정위원회, 개인정보보호위원회, 금융감독원 등 구체적인 기관명을 포함해야 합니다.",
-                "질문에서 묻고 있는 기관이나 조직의 정확한 명칭을 한국어로 답변하세요. 분쟁조정, 신고접수, 감독업무를 담당하는 기관의 정확한 명칭을 제시하세요.",
-                "해당 분야의 관련 기관을 구체적으로 명시하여 답변하세요. 금융감독원 내 전자금융분쟁조정위원회, 개인정보보호위원회 산하 개인정보침해신고센터 등을 정확히 명시하세요.",
-                "분쟁조정이나 신고접수를 담당하는 기관명을 정확히 제시하세요. 소속기관과 함께 구체적인 기관명을 명시해야 합니다.",
-                "관련 법령에 따라 업무를 담당하는 기관의 정확한 명칭을 답변하세요. 전자금융거래법, 개인정보보호법 등에 따른 담당기관을 명시하세요."
-            ],
-            "특징_묻기": [
-                "트로이 목마 기반 원격제어 악성코드의 주요 특징과 특성을 체계적으로 설명하세요. 은밀성, 지속성, 원격제어 기능 등을 포함하세요.",
-                "해당 항목의 핵심적인 특징들을 구체적으로 나열하고 설명하세요. 기술적 특성과 동작 원리를 중심으로 설명하세요.",
-                "특징과 성질을 중심으로 상세히 기술하세요. 정상 프로그램으로 위장하는 특성, 사용자 자발적 설치, 외부 제어 등을 설명하세요.",
-                "고유한 특성과 차별화 요소를 포함하여 설명하세요. 다른 악성코드와 구별되는 특징을 중심으로 기술하세요.",
-                "주요 특징을 분류하여 체계적으로 제시하세요. 설치 방식, 동작 특성, 탐지 회피 기법 등으로 분류하여 설명하세요."
-            ],
-            "지표_묻기": [
-                "탐지 지표와 징후를 중심으로 구체적으로 나열하고 설명하세요. 네트워크 트래픽, 시스템 활동, 파일 변화 등의 지표를 포함하세요.",
-                "주요 지표들을 체계적으로 분류하여 제시하세요. 기술적 지표와 행위적 지표로 구분하여 설명하세요.",
-                "관찰 가능한 지표와 패턴을 중심으로 답변하세요. 비정상적인 네트워크 연결, 시스템 성능 변화, 파일 시스템 변조 등을 설명하세요.",
-                "식별 가능한 신호와 징후를 구체적으로 설명하세요. 원격 접속 흔적, 의심스러운 프로세스, 레지스트리 변경 등을 포함하세요.",
-                "모니터링과 탐지에 활용할 수 있는 지표를 제시하세요. 실시간 모니터링과 사후 분석에 사용할 수 있는 지표들을 설명하세요."
-            ],
-            "방안_묻기": [
-                "구체적인 대응 방안과 해결책을 제시하세요. 기술적 대응방안과 관리적 대응방안을 모두 포함하세요.",
-                "실무적이고 실행 가능한 방안들을 중심으로 답변하세요. 딥페이크 기술 악용 대비 방안, 금융권 보안 강화 방안 등을 구체적으로 제시하세요.",
-                "체계적인 관리 방안을 단계별로 설명하세요. 예방, 탐지, 대응, 복구 단계별 방안을 제시하세요.",
-                "효과적인 대처 방안과 예방책을 함께 제시하세요. 사전 예방조치와 사후 대응조치를 균형있게 설명하세요.",
-                "실제 적용 가능한 구체적 방안을 설명하세요. 조직 차원의 대응체계와 기술적 보안조치를 포함하세요."
-            ],
-            "절차_묻기": [
-                "단계별 절차를 순서대로 설명하세요. 첫 번째 단계부터 마지막 단계까지 논리적 순서로 제시하세요.",
-                "처리 과정을 체계적으로 기술하세요. 각 단계별 담당자와 처리 내용을 명확히 설명하세요.",
-                "진행 절차와 각 단계의 내용을 상세히 설명하세요. 필요한 서류와 처리 기간을 포함하세요.",
-                "업무 프로세스를 단계별로 제시하세요. 신청에서 완료까지의 전체 과정을 설명하세요.",
-                "수행 절차를 논리적 순서에 따라 설명하세요. 각 단계의 목적과 주요 활동을 포함하세요."
-            ],
-            "조치_묻기": [
-                "필요한 보안조치와 대응조치를 설명하세요. 기술적 조치와 관리적 조치를 구분하여 제시하세요.",
-                "예방조치와 사후조치를 포함하여 답변하세요. 사전 예방을 위한 조치와 사고 발생 시 조치를 설명하세요.",
-                "적절한 대응조치 방안을 구체적으로 제시하세요. 즉시 조치사항과 중장기 조치사항을 구분하여 설명하세요.",
-                "보안강화 조치와 관리조치를 설명하세요. 시스템 보안조치와 운영 관리조치를 포함하세요.",
-                "효과적인 조치 방안을 체계적으로 기술하세요. 조치의 우선순위와 시행 방법을 포함하세요."
-            ],
-            "법령_묻기": [
-                "관련 법령과 규정을 근거로 설명하세요. 개인정보보호법, 전자금융거래법, 자본시장법 등의 구체적 조항을 인용하세요.",
-                "법적 근거와 조항을 포함하여 답변하세요. 해당 법령의 정확한 명칭과 조항 번호를 제시하세요.",
-                "해당 법률의 주요 내용을 설명하세요. 법령의 목적과 적용 범위를 포함하여 기술하세요.",
-                "관련 규정과 기준을 중심으로 기술하세요. 법령에 따른 의무사항과 준수 기준을 설명하세요.",
-                "법령상 요구사항과 의무사항을 설명하세요. 위반 시 제재사항과 함께 설명하세요."
-            ],
-            "정의_묻기": [
-                "정확한 정의와 개념을 설명하세요. 법적 정의와 기술적 정의를 구분하여 제시하세요.",
-                "용어의 의미와 개념을 명확히 제시하세요. 관련 법령에서의 정의와 일반적 의미를 설명하세요.",
-                "개념적 정의와 실무적 의미를 함께 설명하세요. 이론적 정의와 실제 적용 사례를 포함하세요.",
-                "해당 용어의 정확한 뜻과 범위를 기술하세요. 포함되는 범위와 제외되는 범위를 명확히 하세요.",
-                "정의와 함께 구체적 예시를 포함하여 설명하세요. 실제 사례를 통해 개념을 명확히 하세요."
-            ]
-        }
-        
-        # 학습 데이터 저장
-        self.learning_data = {
+        self.learning_data_structure = {
             "successful_answers": [],
             "failed_answers": [],
             "question_patterns": {},
@@ -154,147 +158,6 @@ class SimpleModelHandler:
             "negative_vs_positive_patterns": {},
             "choice_distribution_learning": {}
         }
-        
-        # 이전 학습 데이터 로드
-        self._load_learning_data()
-        
-        # 성능 최적화 설정
-        self.optimization_config = {
-            "intent_confidence_threshold": 0.6,
-            "quality_threshold": 0.7,
-            "korean_ratio_threshold": 0.8,
-            "max_retry_attempts": 2,
-            "template_preference": True,
-            "adaptive_prompt": True,
-            "mc_context_weighting": True,
-            "domain_specific_optimization": True
-        }
-        
-        if verbose:
-            print(f"모델 로딩: {model_name}")
-            print(f"디바이스: {self.device}")
-        
-        # 토크나이저 로드
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_name,
-            trust_remote_code=True,
-            use_fast=True
-        )
-        
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        
-        # 모델 로드
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.bfloat16,
-            device_map="auto",
-            trust_remote_code=True
-        )
-        
-        self.model.eval()
-        
-        # 한국어 전용 주관식 답변 템플릿
-        self.korean_templates = {
-            "개인정보보호": {
-                "기관_묻기": [
-                    "개인정보보호위원회가 개인정보 보호에 관한 업무를 총괄하며, 개인정보침해신고센터에서 신고 접수 및 상담 업무를 담당합니다.",
-                    "개인정보보호위원회는 개인정보 보호 정책 수립과 감시 업무를 수행하는 중앙 행정기관이며, 개인정보 분쟁조정위원회에서 관련 분쟁의 조정 업무를 담당합니다.",
-                    "개인정보 침해 관련 신고 및 상담은 개인정보보호위원회 산하 개인정보침해신고센터에서 담당하고 있습니다.",
-                    "개인정보 관련 분쟁의 조정은 개인정보보호위원회 내 개인정보 분쟁조정위원회에서 담당하며, 피해구제와 분쟁해결 업무를 수행합니다."
-                ],
-                "일반": [
-                    "개인정보보호법에 따라 정보주체의 권리를 보장하고 개인정보처리자는 수집부터 파기까지 전 과정에서 적절한 보호조치를 이행해야 합니다.",
-                    "개인정보 처리 시 정보주체의 동의를 받고 목적 범위 내에서만 이용하며 개인정보보호위원회의 기준에 따른 안전성 확보조치를 수립해야 합니다.",
-                    "개인정보 수집 시 수집목적과 이용범위를 명확히 고지하고 정보주체의 명시적 동의를 받아야 하며, 수집된 개인정보는 목적 달성 후 지체없이 파기해야 합니다."
-                ]
-            },
-            "전자금융": {
-                "기관_묻기": [
-                    "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 금융감독원 내에 설치되어 운영됩니다.",
-                    "금융감독원 내 전자금융분쟁조정위원회가 이용자의 분쟁조정 신청을 접수하고 처리하는 업무를 수행합니다.",
-                    "전자금융거래법에 따라 금융감독원의 전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁의 조정 업무를 담당하고 있습니다.",
-                    "전자금융 분쟁조정은 금융감독원에 설치된 전자금융분쟁조정위원회에서 신청할 수 있으며, 이용자 보호를 위한 분쟁해결 업무를 수행합니다."
-                ],
-                "일반": [
-                    "전자금융거래법에 따라 전자금융업자는 이용자의 전자금융거래 안전성 확보를 위한 보안조치를 시행하고 금융감독원의 감독을 받아야 합니다.",
-                    "전자금융분쟁조정위원회에서 전자금융거래 분쟁조정 업무를 담당하며 이용자는 관련 법령에 따라 분쟁조정을 신청할 수 있습니다.",
-                    "전자금융업자는 접근매체의 위조나 변조를 방지하기 위한 대책을 강구하고 이용자에게 안전한 거래환경을 제공해야 합니다."
-                ]
-            },
-            "사이버보안": {
-                "특징_묻기": [
-                    "트로이 목마 기반 원격접근도구는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하며, 은밀성과 지속성을 특징으로 합니다.",
-                    "해당 악성코드는 사용자를 속여 시스템에 침투하여 외부 공격자가 원격으로 제어하는 특성을 가지며, 시스템 깊숙이 숨어서 장기간 활동하면서 정보 수집과 원격 제어 기능을 수행합니다.",
-                    "트로이 목마는 유용한 프로그램으로 가장하여 사용자가 직접 설치하도록 유도하고, 설치 후 악의적인 기능을 수행하는 특징을 가집니다. 원격 접근 기능을 통해 시스템을 외부에서 조작할 수 있습니다.",
-                    "원격접근 도구의 주요 특징은 은밀한 설치, 지속적인 연결 유지, 시스템 전반에 대한 제어권 획득, 사용자 모르게 정보 수집 등이며, 탐지를 회피하기 위한 다양한 기법을 사용합니다."
-                ],
-                "지표_묻기": [
-                    "네트워크 트래픽 모니터링에서 비정상적인 외부 통신 패턴, 시스템 동작 분석에서 비인가 프로세스 실행, 파일 생성 및 수정 패턴의 이상 징후, 입출력 장치에 대한 비정상적 접근 등이 주요 탐지 지표입니다.",
-                    "원격 접속 흔적, 의심스러운 네트워크 연결, 시스템 파일 변조, 레지스트리 수정, 비정상적인 메모리 사용 패턴, 알려지지 않은 프로세스 실행 등을 통해 탐지할 수 있습니다.",
-                    "시스템 성능 저하, 예상치 못한 네트워크 활동, 방화벽 로그의 이상 패턴, 파일 시스템 변경 사항, 사용자 계정의 비정상적 활동 등이 주요 탐지 지표로 활용됩니다.",
-                    "비정상적인 아웃바운드 연결, 시스템 리소스 과다 사용, 백그라운드 프로세스 증가, 보안 소프트웨어 비활성화 시도, 시스템 설정 변경 등의 징후를 종합적으로 분석해야 합니다."
-                ],
-                "방안_묻기": [
-                    "딥페이크 기술 악용에 대비하여 다층 방어체계 구축, 실시간 딥페이크 탐지 시스템 도입, 직원 교육 및 인식 개선, 생체인증 강화, 다중 인증 체계 구축 등의 종합적 대응방안이 필요합니다.",
-                    "네트워크 분할을 통한 격리, 접근권한 최소화 원칙 적용, 행위 기반 탐지 시스템 구축, 사고 대응 절차 수립, 백업 및 복구 체계 마련 등의 보안 강화 방안을 수립해야 합니다.",
-                    "엔드포인트 보안 강화, 네트워크 트래픽 모니터링, 사용자 인식 개선 교육, 보안 정책 수립 및 준수, 정기적인 보안 점검 등을 통해 종합적인 보안 관리체계를 구축해야 합니다."
-                ],
-                "일반": [
-                    "사이버보안 위협에 대응하기 위해서는 다층 방어체계를 구축하고 실시간 모니터링과 침입탐지시스템을 운영해야 합니다.",
-                    "보안정책을 수립하고 정기적인 보안교육과 훈련을 실시하며 취약점 점검과 보안패치를 지속적으로 수행해야 합니다.",
-                    "악성코드 탐지를 위한 행위 기반 분석과 시그니처 기반 탐지를 병행하고, 네트워크 트래픽 모니터링을 통해 이상 징후를 조기에 발견해야 합니다."
-                ]
-            },
-            "정보보안": {
-                "방안_묻기": [
-                    "정보보안관리체계 구축을 위해 보안정책 수립, 위험분석, 보안대책 구현, 사후관리의 절차를 체계적으로 운영해야 합니다.",
-                    "접근통제 정책을 수립하고 사용자별 권한을 관리하며 로그 모니터링과 정기적인 보안감사를 통해 보안수준을 유지해야 합니다.",
-                    "정보자산 분류체계를 구축하고 중요도에 따른 차등 보안조치를 적용하며, 정기적인 보안교육과 인식제고 프로그램을 운영해야 합니다."
-                ],
-                "일반": [
-                    "정보보안관리체계 구축을 위해 보안정책 수립, 위험분석, 보안대책 구현, 사후관리의 절차를 체계적으로 운영해야 합니다.",
-                    "접근통제 정책을 수립하고 사용자별 권한을 관리하며 로그 모니터링과 정기적인 보안감사를 통해 보안수준을 유지해야 합니다."
-                ]
-            },
-            "금융투자": {
-                "일반": [
-                    "자본시장법에 따라 금융투자업자는 투자자 보호와 시장 공정성 확보를 위한 내부통제기준을 수립하고 준수해야 합니다.",
-                    "금융투자업 영위 시 투자자의 투자성향과 위험도를 평가하고 적합한 상품을 권유하는 적합성 원칙을 준수해야 합니다.",
-                    "투자자문업자는 고객의 투자목적과 재정상황을 종합적으로 고려하여 적절한 투자자문을 제공하고 이해상충을 방지해야 합니다."
-                ]
-            },
-            "위험관리": {
-                "방안_묻기": [
-                    "위험관리 체계 구축을 위해 위험식별, 위험평가, 위험대응, 위험모니터링의 단계별 절차를 수립하고 운영해야 합니다.",
-                    "내부통제시스템을 구축하고 정기적인 위험평가를 실시하여 잠재적 위험요소를 사전에 식별하고 대응방안을 마련해야 합니다.",
-                    "위험관리 정책과 절차를 수립하고 위험한도를 설정하여 관리하며, 위험관리 조직과 책임체계를 명확히 정의해야 합니다."
-                ],
-                "일반": [
-                    "위험관리 체계 구축을 위해 위험식별, 위험평가, 위험대응, 위험모니터링의 단계별 절차를 수립하고 운영해야 합니다.",
-                    "내부통제시스템을 구축하고 정기적인 위험평가를 실시하여 잠재적 위험요소를 사전에 식별하고 대응방안을 마련해야 합니다."
-                ]
-            },
-            "일반": {
-                "일반": [
-                    "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다.",
-                    "전문적인 보안 정책을 수립하고 정기적인 점검과 평가를 실시하여 보안 수준을 유지해야 합니다.",
-                    "법적 요구사항을 준수하며 효과적인 보안 조치를 시행하고 관련 교육을 실시해야 합니다.",
-                    "위험 요소를 식별하고 적절한 대응 방안을 마련하여 체계적으로 관리해야 합니다.",
-                    "조직의 정책과 절차에 따라 업무를 수행하고 지속적인 개선활동을 실시해야 합니다."
-                ]
-            }
-        }
-        
-        # 워밍업
-        self._warmup()
-        
-        if verbose:
-            print("모델 로딩 완료")
-        
-        # 학습 데이터 로드 현황
-        if len(self.learning_data["successful_answers"]) > 0 and verbose:
-            print(f"이전 학습 데이터 로드: 성공 {len(self.learning_data['successful_answers'])}개, 실패 {len(self.learning_data['failed_answers'])}개")
     
     def _load_learning_data(self):
         """이전 학습 데이터 로드"""
@@ -316,14 +179,14 @@ class SimpleModelHandler:
         learning_file = self.pkl_dir / "learning_data.pkl"
         
         try:
-            # 저장할 데이터 정리 (최근 1000개까지만)
+            # 저장할 데이터 정리 (최근 데이터만)
             save_data = {
-                "successful_answers": self.learning_data["successful_answers"][-1000:],
-                "failed_answers": self.learning_data["failed_answers"][-500:],
+                "successful_answers": self.learning_data["successful_answers"][-MEMORY_CONFIG['max_learning_records']['successful_answers']:],
+                "failed_answers": self.learning_data["failed_answers"][-MEMORY_CONFIG['max_learning_records']['failed_answers']:],
                 "question_patterns": self.learning_data["question_patterns"],
-                "answer_quality_scores": self.learning_data["answer_quality_scores"][-1000:],
+                "answer_quality_scores": self.learning_data["answer_quality_scores"][-MEMORY_CONFIG['max_learning_records']['quality_scores']:],
                 "mc_context_patterns": self.learning_data["mc_context_patterns"],
-                "choice_range_errors": self.learning_data["choice_range_errors"][-100:],
+                "choice_range_errors": self.learning_data["choice_range_errors"][-MEMORY_CONFIG['max_learning_records']['choice_range_errors']:],
                 "intent_based_answers": self.learning_data["intent_based_answers"],
                 "domain_specific_learning": self.learning_data["domain_specific_learning"],
                 "intent_prompt_effectiveness": self.learning_data["intent_prompt_effectiveness"],
@@ -673,118 +536,6 @@ class SimpleModelHandler:
         
         return selected_prompt
     
-    def _add_learning_record(self, question: str, answer: str, question_type: str, success: bool, max_choice: int = 5, quality_score: float = 0.0, intent_analysis: Dict = None):
-        """학습 기록 추가"""
-        record = {
-            "question": question[:200],
-            "answer": answer[:300],
-            "type": question_type,
-            "max_choice": max_choice,
-            "timestamp": datetime.now().isoformat(),
-            "quality_score": quality_score
-        }
-        
-        if success:
-            self.learning_data["successful_answers"].append(record)
-            
-            # 의도별 성공 답변 저장
-            if intent_analysis and question_type == "subjective":
-                primary_intent = intent_analysis.get("primary_intent", "일반")
-                if primary_intent not in self.learning_data["intent_based_answers"]:
-                    self.learning_data["intent_based_answers"][primary_intent] = []
-                
-                intent_record = {
-                    "question": question[:150],
-                    "answer": answer[:200],
-                    "quality": quality_score,
-                    "confidence": intent_analysis.get("intent_confidence", 0.0),
-                    "answer_type": intent_analysis.get("answer_type_required", "설명형"),
-                    "timestamp": datetime.now().isoformat()
-                }
-                self.learning_data["intent_based_answers"][primary_intent].append(intent_record)
-                
-                # 최근 50개만 유지
-                if len(self.learning_data["intent_based_answers"][primary_intent]) > 50:
-                    self.learning_data["intent_based_answers"][primary_intent] = \
-                        self.learning_data["intent_based_answers"][primary_intent][-50:]
-                
-                # 고품질 답변은 템플릿으로 저장
-                if quality_score > 0.85:
-                    if primary_intent not in self.learning_data["high_quality_templates"]:
-                        self.learning_data["high_quality_templates"][primary_intent] = []
-                    
-                    template_record = {
-                        "answer_template": answer[:250],
-                        "quality": quality_score,
-                        "usage_count": 0,
-                        "timestamp": datetime.now().isoformat()
-                    }
-                    self.learning_data["high_quality_templates"][primary_intent].append(template_record)
-                    
-                    # 최근 20개만 유지
-                    if len(self.learning_data["high_quality_templates"][primary_intent]) > 20:
-                        self.learning_data["high_quality_templates"][primary_intent] = \
-                            sorted(self.learning_data["high_quality_templates"][primary_intent], 
-                                  key=lambda x: x["quality"], reverse=True)[:20]
-        else:
-            self.learning_data["failed_answers"].append(record)
-            
-            # 선택지 범위 오류 기록
-            if question_type == "multiple_choice" and answer and answer.isdigit():
-                answer_num = int(answer)
-                if answer_num > max_choice:
-                    self.learning_data["choice_range_errors"].append({
-                        "question": question[:100],
-                        "answer": answer,
-                        "max_choice": max_choice,
-                        "timestamp": datetime.now().isoformat()
-                    })
-        
-        # 질문 패턴 학습
-        domain = self._detect_domain(question)
-        if domain not in self.learning_data["question_patterns"]:
-            self.learning_data["question_patterns"][domain] = {"count": 0, "avg_quality": 0.0}
-        
-        patterns = self.learning_data["question_patterns"][domain]
-        patterns["count"] += 1
-        patterns["avg_quality"] = (patterns["avg_quality"] * (patterns["count"] - 1) + quality_score) / patterns["count"]
-        
-        # 품질 점수 기록
-        self.learning_data["answer_quality_scores"].append(quality_score)
-    
-    def _calculate_korean_ratio(self, text: str) -> float:
-        """한국어 비율 계산"""
-        if not text:
-            return 0.0
-        
-        korean_chars = len(re.findall(r'[가-힣]', text))
-        total_chars = len(re.sub(r'[^\w가-힣]', '', text))
-        
-        if total_chars == 0:
-            return 0.0
-        
-        return korean_chars / total_chars
-    
-    def _warmup(self):
-        """모델 워밍업"""
-        try:
-            test_prompt = "테스트"
-            inputs = self.tokenizer(test_prompt, return_tensors="pt")
-            if self.device == "cuda":
-                inputs = inputs.to(self.model.device)
-            
-            with torch.no_grad():
-                _ = self.model.generate(
-                    **inputs,
-                    max_new_tokens=5,
-                    do_sample=False
-                )
-            if self.verbose:
-                print("모델 워밍업 완료")
-        except Exception as e:
-            if self.verbose:
-                print(f"워밍업 실패: {e}")
-    
     def generate_answer(self, question: str, question_type: str, max_choice: int = 5, intent_analysis: Dict = None) -> str:
         """답변 생성"""
         
@@ -969,24 +720,11 @@ class SimpleModelHandler:
     
     def _get_generation_config(self, question_type: str) -> GenerationConfig:
         """생성 설정"""
-        if question_type == "multiple_choice":
-            return GenerationConfig(
-                max_new_tokens=15,
-                temperature=0.3,
-                top_p=0.8,
-                do_sample=True,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id
-            )
-        else:
-            return GenerationConfig(
-                max_new_tokens=350,
-                temperature=0.6,
-                top_p=0.9,
-                do_sample=True,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id
-            )
+        config_dict = GENERATION_CONFIG[question_type].copy()
+        config_dict['pad_token_id'] = self.tokenizer.pad_token_id
+        config_dict['eos_token_id'] = self.tokenizer.eos_token_id
+        
+        return GenerationConfig(**config_dict)
     
     def _process_enhanced_mc_answer(self, response: str, question: str, max_choice: int, domain: str = "일반") -> str:
         """객관식 답변 처리"""
@@ -1079,13 +817,6 @@ class SimpleModelHandler:
                         best_template["usage_count"] += 1
                         return best_template["answer_template"]
             
-            # 도메인과 의도에 맞는 템플릿 사용
-            if domain in self.korean_templates and isinstance(self.korean_templates[domain], dict):
-                if primary_intent in self.korean_templates[domain]:
-                    return random.choice(self.korean_templates[domain][primary_intent])
-                elif "일반" in self.korean_templates[domain]:
-                    return random.choice(self.korean_templates[domain]["일반"])
-            
             # 학습된 의도별 성공 답변 활용
             if primary_intent in self.learning_data["intent_based_answers"]:
                 successful_answers = self.learning_data["intent_based_answers"][primary_intent]
@@ -1096,19 +827,7 @@ class SimpleModelHandler:
                         selected = random.choice(best_answers)
                         return selected["answer"]
         
-        # 도메인별 기본 템플릿
-        if domain in self.korean_templates:
-            if isinstance(self.korean_templates[domain], dict):
-                if "일반" in self.korean_templates[domain]:
-                    templates = self.korean_templates[domain]["일반"]
-                else:
-                    templates = list(self.korean_templates[domain].values())[0]
-            else:
-                templates = self.korean_templates[domain]
-            
-            return random.choice(templates)
-        
-        # 최종 폴백
+        # 기본 폴백
         return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
     
     def _calculate_answer_quality(self, answer: str, question: str, intent_analysis: Dict = None) -> float:
@@ -1203,33 +922,6 @@ class SimpleModelHandler:
         else:
             return ["법령", "규정", "관리", "조치", "절차"]
     
-    def _get_balanced_mc_answer(self, max_choice: int) -> str:
-        """균등 분포 객관식 답변"""
-        # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
-        if max_choice <= 0:
-            max_choice = 5
-        
-        if max_choice not in self.mc_answer_counts or self.mc_answer_counts[max_choice] < max_choice:
-            return str(random.randint(1, max_choice))
-        
-        # 현재 분포 확인
-        if max_choice in self.answer_distributions:
-            distribution = self.answer_distributions[max_choice]
-            avg_count = self.mc_answer_counts[max_choice] / max_choice
-            underused = [num for num in range(1, max_choice+1) 
-                        if distribution.get(str(num), 0) < avg_count * 0.7]
-            
-            if underused:
-                answer = str(random.choice(underused))
-            else:
-                answer = str(random.randint(1, max_choice))
-            
-            distribution[answer] += 1
-            self.mc_answer_counts[max_choice] += 1
-            return answer
-        
-        return str(random.randint(1, max_choice))
-    
     def _get_fallback_answer(self, question_type: str, question: str = "", max_choice: int = 5, intent_analysis: Dict = None, domain: str = "일반") -> str:
         """폴백 답변"""
         if question_type == "multiple_choice":
@@ -1258,6 +950,118 @@ class SimpleModelHandler:
             return "금융투자"
         else:
             return "일반"
+    
+    def _calculate_korean_ratio(self, text: str) -> float:
+        """한국어 비율 계산"""
+        if not text:
+            return 0.0
+        
+        korean_chars = len(re.findall(r'[가-힣]', text))
+        total_chars = len(re.sub(r'[^\w가-힣]', '', text))
+        
+        if total_chars == 0:
+            return 0.0
+        
+        return korean_chars / total_chars
+    
+    def _add_learning_record(self, question: str, answer: str, question_type: str, success: bool, max_choice: int = 5, quality_score: float = 0.0, intent_analysis: Dict = None):
+        """학습 기록 추가"""
+        record = {
+            "question": question[:200],
+            "answer": answer[:300],
+            "type": question_type,
+            "max_choice": max_choice,
+            "timestamp": datetime.now().isoformat(),
+            "quality_score": quality_score
+        }
+        
+        if success:
+            self.learning_data["successful_answers"].append(record)
+            
+            # 의도별 성공 답변 저장
+            if intent_analysis and question_type == "subjective":
+                primary_intent = intent_analysis.get("primary_intent", "일반")
+                if primary_intent not in self.learning_data["intent_based_answers"]:
+                    self.learning_data["intent_based_answers"][primary_intent] = []
+                
+                intent_record = {
+                    "question": question[:150],
+                    "answer": answer[:200],
+                    "quality": quality_score,
+                    "confidence": intent_analysis.get("intent_confidence", 0.0),
+                    "answer_type": intent_analysis.get("answer_type_required", "설명형"),
+                    "timestamp": datetime.now().isoformat()
+                }
+                self.learning_data["intent_based_answers"][primary_intent].append(intent_record)
+                
+                # 최근 50개만 유지
+                if len(self.learning_data["intent_based_answers"][primary_intent]) > 50:
+                    self.learning_data["intent_based_answers"][primary_intent] = \
+                        self.learning_data["intent_based_answers"][primary_intent][-50:]
+                
+                # 고품질 답변은 템플릿으로 저장
+                if quality_score > 0.85:
+                    if primary_intent not in self.learning_data["high_quality_templates"]:
+                        self.learning_data["high_quality_templates"][primary_intent] = []
+                    
+                    template_record = {
+                        "answer_template": answer[:250],
+                        "quality": quality_score,
+                        "usage_count": 0,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    self.learning_data["high_quality_templates"][primary_intent].append(template_record)
+                    
+                    # 최근 20개만 유지
+                    if len(self.learning_data["high_quality_templates"][primary_intent]) > 20:
+                        self.learning_data["high_quality_templates"][primary_intent] = \
+                            sorted(self.learning_data["high_quality_templates"][primary_intent], 
+                                  key=lambda x: x["quality"], reverse=True)[:20]
+        else:
+            self.learning_data["failed_answers"].append(record)
+            
+            # 선택지 범위 오류 기록
+            if question_type == "multiple_choice" and answer and answer.isdigit():
+                answer_num = int(answer)
+                if answer_num > max_choice:
+                    self.learning_data["choice_range_errors"].append({
+                        "question": question[:100],
+                        "answer": answer,
+                        "max_choice": max_choice,
+                        "timestamp": datetime.now().isoformat()
+                    })
+        
+        # 질문 패턴 학습
+        domain = self._detect_domain(question)
+        if domain not in self.learning_data["question_patterns"]:
+            self.learning_data["question_patterns"][domain] = {"count": 0, "avg_quality": 0.0}
+        
+        patterns = self.learning_data["question_patterns"][domain]
+        patterns["count"] += 1
+        patterns["avg_quality"] = (patterns["avg_quality"] * (patterns["count"] - 1) + quality_score) / patterns["count"]
+        
+        # 품질 점수 기록
+        self.learning_data["answer_quality_scores"].append(quality_score)
+    
+    def _warmup(self):
+        """모델 워밍업"""
+        try:
+            test_prompt = "테스트"
+            inputs = self.tokenizer(test_prompt, return_tensors="pt")
+            if self.device == "cuda":
+                inputs = inputs.to(self.model.device)
+            
+            with torch.no_grad():
+                _ = self.model.generate(
+                    **inputs,
+                    max_new_tokens=5,
+                    do_sample=False
+                )
+            if self.verbose:
+                print("모델 워밍업 완료")
+        except Exception as e:
+            if self.verbose:
+                print(f"워밍업 실패: {e}")
     
     def get_answer_stats(self) -> Dict:
         """답변 통계"""

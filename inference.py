@@ -16,9 +16,12 @@ import pandas as pd
 from typing import Dict, List
 from pathlib import Path
 
-# 오프라인 설정
-os.environ['TRANSFORMERS_OFFLINE'] = '1'
-os.environ['HF_DATASETS_OFFLINE'] = '1'
+# 설정 파일 import
+from config import (
+    setup_environment, DEFAULT_MODEL_NAME, OPTIMIZATION_CONFIG, 
+    MEMORY_CONFIG, TIME_LIMITS, PROGRESS_CONFIG, DEFAULT_FILES,
+    STATS_CONFIG, FILE_VALIDATION
+)
 
 # 현재 디렉토리 설정
 current_dir = Path(__file__).parent.absolute()
@@ -34,6 +37,9 @@ class FinancialAIInference:
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
         self.start_time = time.time()
+        
+        # 환경 설정 초기화
+        setup_environment()
         
         if verbose:
             print("추론 시스템 초기화")
@@ -87,19 +93,8 @@ class FinancialAIInference:
             "negative_positive_balance": {"negative": 0, "positive": 0, "neutral": 0}
         }
         
-        # 성능 최적화 설정
-        self.optimization_config = {
-            "intent_confidence_threshold": 0.6,
-            "quality_threshold": 0.7,
-            "korean_ratio_threshold": 0.8,
-            "max_retry_attempts": 2,
-            "template_preference": True,
-            "adaptive_prompt": True,
-            "mc_pattern_priority": True,
-            "domain_specific_optimization": True,
-            "institution_question_priority": True,
-            "mc_context_weighting": True
-        }
+        # 성능 최적화 설정 (config.py에서 로드)
+        self.optimization_config = OPTIMIZATION_CONFIG
         
         if verbose:
             print("초기화 완료")
@@ -546,7 +541,7 @@ class FinancialAIInference:
         # 난이도 통계
         self.stats["difficulty_stats"][difficulty] += 1
     
-    def print_progress_bar(self, current: int, total: int, start_time: float, bar_length: int = 50):
+    def print_progress_bar(self, current: int, total: int, start_time: float, bar_length: int = PROGRESS_CONFIG['bar_length']):
         """진행률 게이지바 출력"""
         progress = current / total
         filled_length = int(bar_length * progress)
@@ -600,7 +595,7 @@ class FinancialAIInference:
         filepath = Path(filepath)
         
         try:
-            df.to_csv(filepath, index=False, encoding='utf-8-sig')
+            df.to_csv(filepath, index=False, encoding=FILE_VALIDATION['encoding'])
             
             if self.verbose:
                 print(f"\n결과 저장 완료: {filepath}")
@@ -617,10 +612,15 @@ class FinancialAIInference:
                 print(f"\n파일 저장 중 오류: {e}")
             return False
     
-    def execute_inference(self, test_file: str = "./test.csv", 
-                         submission_file: str = "./sample_submission.csv",
-                         output_file: str = "./final_submission.csv") -> Dict:
+    def execute_inference(self, test_file: str = None, 
+                         submission_file: str = None,
+                         output_file: str = None) -> Dict:
         """전체 추론 실행"""
+        
+        # 기본 파일 경로 사용
+        test_file = test_file or DEFAULT_FILES['test_file']
+        submission_file = submission_file or DEFAULT_FILES['submission_file']
+        output_file = output_file or DEFAULT_FILES['output_file']
         
         # 데이터 로드
         try:
@@ -633,8 +633,10 @@ class FinancialAIInference:
     
     def execute_inference_with_data(self, test_df: pd.DataFrame, 
                                    submission_df: pd.DataFrame,
-                                   output_file: str = "./final_submission.csv") -> Dict:
+                                   output_file: str = None) -> Dict:
         """데이터프레임으로 추론 실행"""
+        
+        output_file = output_file or DEFAULT_FILES['output_file']
         
         print(f"\n데이터 로드 완료: {len(test_df)}개 문항")
         
@@ -651,10 +653,11 @@ class FinancialAIInference:
             answers.append(answer)
             
             # 진행도 표시
-            self.print_progress_bar(idx + 1, total_questions, inference_start_time)
+            if (idx + 1) % PROGRESS_CONFIG['update_frequency'] == 0:
+                self.print_progress_bar(idx + 1, total_questions, inference_start_time)
             
             # 메모리 관리
-            if (idx + 1) % 50 == 0:
+            if (idx + 1) % MEMORY_CONFIG['gc_frequency'] == 0:
                 gc.collect()
         
         print()

@@ -11,42 +11,16 @@ safetensors==0.4.1
 pandas==2.0.3
 numpy==1.24.3
 
-# HuggingFace 생태계 (오프라인 환경 대응)
-huggingface-hub==0.19.4
-
-# 텍스트 처리 및 정규식
-regex==2023.10.3
-
-# 한국어 처리 (선택적)
-konlpy==0.6.0
-soynlp==0.0.493
-
-# 시스템 유틸리티
-typing-extensions==4.8.0
+# 기본 패키지 (transformers 의존성)
 packaging==23.2
 filelock==3.13.1
-fsspec==2023.10.0
 pyyaml==6.0.1
-psutil==5.9.8
+typing-extensions==4.8.0
+regex==2023.10.3
 
-# 메모리 관리 및 최적화
-gc-collector==1.0.3
-
-# 오프라인 환경 지원
-requests==2.31.0
-urllib3==2.1.0
-certifi==2023.11.17
-charset-normalizer==3.3.2
-idna==3.6
-
-# 기본 도구
-setuptools==69.0.3
-wheel==0.42.0
-pip==23.3.1
-
-# 설치 순서:
-# 1. pip install torch==2.1.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-# 2. pip install -r requirements.txt
-
-# 오프라인 환경 확인:
-# python -c "import os; os.environ['TRANSFORMERS_OFFLINE']='1'; import transformers; print('오프라인 모드 동작 확인')"
+# 설치 가이드:
+# 1. PyTorch 설치 (CUDA 11.8 지원):
+#    pip install torch==2.1.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# 
+# 2. 나머지 패키지 설치:
+#    pip install -r requirements.txt
