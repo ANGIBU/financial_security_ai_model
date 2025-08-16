@@ -22,10 +22,9 @@ OFFLINE_MODE = {
     'HF_DATASETS_OFFLINE': '1'
 }
 
-# === 디렉토리 설정 ===
+# === 디렉터리 설정 ===
 BASE_DIR = Path(__file__).parent.absolute()
 PKL_DIR = BASE_DIR / "pkl"
-DATA_DIR = BASE_DIR / "data"
 JSON_CONFIG_DIR = BASE_DIR / "configs"
 
 # 기본 파일 경로
@@ -47,39 +46,99 @@ MODEL_CONFIG = {
 # 생성 설정
 GENERATION_CONFIG = {
     'multiple_choice': {
-        'max_new_tokens': 15,
-        'temperature': 0.3,
-        'top_p': 0.8,
-        'do_sample': True
+        'max_new_tokens': 10,
+        'temperature': 0.1,
+        'top_p': 0.7,
+        'do_sample': True,
+        'repetition_penalty': 1.1,
+        'pad_token_id': None,
+        'eos_token_id': None
     },
     'subjective': {
-        'max_new_tokens': 350,
-        'temperature': 0.6,
-        'top_p': 0.9,
-        'do_sample': True
+        'max_new_tokens': 200,
+        'temperature': 0.3,
+        'top_p': 0.8,
+        'do_sample': True,
+        'repetition_penalty': 1.15,
+        'pad_token_id': None,
+        'eos_token_id': None
     }
+}
+
+# === 텍스트 정리 설정 ===
+TEXT_CLEANUP_CONFIG = {
+    'remove_brackets': True,
+    'remove_english': True,
+    'fix_korean_typos': True,
+    'normalize_spacing': True,
+    'remove_special_chars': True,
+    'korean_only_mode': True
+}
+
+# 한국어 오타 수정 매핑
+KOREAN_TYPO_MAPPING = {
+    '전자금윋': '전자금융',
+    '과롷': '괄호',
+    '캉터': '컴퓨터',
+    '트래픁': '트래픽',
+    '윋': '융',
+    '롷': '호',
+    '픁': '픽',
+    '터': '터',
+    '웋': '웅',
+    '솓': '소프트',
+    '하웨': '하드웨어',
+    '네됴크': '네트워크',
+    '액세': '액세스',
+    '메세': '메시지',
+    '오류메': '오류 메시지',
+    '리소': '리소스'
 }
 
 # === 성능 최적화 설정 ===
 OPTIMIZATION_CONFIG = {
     'intent_confidence_threshold': 0.6,
     'quality_threshold': 0.7,
-    'korean_ratio_threshold': 0.8,
-    'max_retry_attempts': 2,
+    'korean_ratio_threshold': 0.9,
+    'max_retry_attempts': 3,
     'template_preference': True,
     'adaptive_prompt': True,
     'mc_pattern_priority': True,
     'domain_specific_optimization': True,
     'institution_question_priority': True,
-    'mc_context_weighting': True
+    'mc_context_weighting': True,
+    'text_cleanup_enabled': True,
+    'typo_correction_enabled': True,
+    'bracket_removal_enabled': True,
+    'english_removal_enabled': True
 }
 
 # === 한국어 처리 설정 ===
 KOREAN_REQUIREMENTS = {
-    'min_korean_ratio': 0.8,
-    'max_english_ratio': 0.1,
+    'min_korean_ratio': 0.9,
+    'max_english_ratio': 0.05,
     'min_length': 30,
-    'max_length': 500
+    'max_length': 400,
+    'allow_numbers': True,
+    'allow_punctuation': True,
+    'strict_korean_only': True
+}
+
+# === 신뢰도 평가 설정 ===
+RELIABILITY_CONFIG = {
+    'base_accuracy': 0.75,  # 기준 정답률
+    'confidence_factors': {
+        'mc_success_weight': 0.3,      # 객관식 성공률 가중치
+        'korean_compliance_weight': 0.2,  # 한국어 준수율 가중치
+        'intent_match_weight': 0.3,    # 의도 일치율 가중치
+        'quality_weight': 0.2          # 품질 점수 가중치
+    },
+    'reliability_thresholds': {
+        'excellent': 90.0,    # 우수
+        'good': 80.0,         # 양호
+        'acceptable': 70.0,   # 허용
+        'poor': 60.0          # 미흡
+    }
 }
 
 # === 메모리 관리 설정 ===
@@ -98,7 +157,7 @@ MEMORY_CONFIG = {
 TIME_LIMITS = {
     'total_inference_minutes': 270,  # 4시간 30분
     'warmup_timeout': 30,  # 워밍업 제한시간 (초)
-    'single_question_timeout': 30  # 단일 질문 제한시간 (초)
+    'single_question_timeout': 25  # 단일 질문 제한시간 (초)
 }
 
 # === 진행률 표시 설정 ===
@@ -118,7 +177,7 @@ LOGGING_CONFIG = {
 # === 템플릿 품질 평가 기준 ===
 TEMPLATE_QUALITY_CRITERIA = {
     'length_range': (50, 400),
-    'korean_ratio_min': 0.9,
+    'korean_ratio_min': 0.95,
     'structure_keywords': ["법", "규정", "조치", "관리", "절차", "기준"],
     'intent_keywords': {
         "기관_묻기": ["위원회", "기관", "담당", "업무"],
@@ -180,7 +239,6 @@ def get_device():
 def ensure_directories():
     """필요한 디렉토리 생성"""
     PKL_DIR.mkdir(exist_ok=True)
-    DATA_DIR.mkdir(exist_ok=True)
     JSON_CONFIG_DIR.mkdir(exist_ok=True)
 
 # === 설정 검증 함수 ===
@@ -199,6 +257,15 @@ def validate_config():
     # 최적화 임계값 검증
     if not 0 <= OPTIMIZATION_CONFIG['intent_confidence_threshold'] <= 1:
         errors.append("intent_confidence_threshold는 0과 1 사이여야 합니다")
+    
+    # 신뢰도 설정 검증
+    if not 0 <= RELIABILITY_CONFIG['base_accuracy'] <= 1:
+        errors.append("base_accuracy는 0과 1 사이여야 합니다")
+    
+    confidence_factors = RELIABILITY_CONFIG['confidence_factors']
+    total_weight = sum(confidence_factors.values())
+    if abs(total_weight - 1.0) > 0.01:
+        errors.append(f"confidence_factors의 총 가중치는 1.0이어야 합니다 (현재: {total_weight})")
     
     if errors:
         raise ValueError(f"설정 오류: {'; '.join(errors)}")

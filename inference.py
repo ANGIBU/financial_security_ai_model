@@ -5,8 +5,8 @@
 - 문제 분류 및 처리
 - 모델 추론 실행
 - 결과 생성 및 저장
-- 학습 데이터 관리
-- 질문 의도 분석 및 답변 품질 검증
+- 신뢰도 계산
+- LLM 기반 텍스트 생성 준수
 """
 
 import os
@@ -20,7 +20,7 @@ from pathlib import Path
 from config import (
     setup_environment, DEFAULT_MODEL_NAME, OPTIMIZATION_CONFIG, 
     MEMORY_CONFIG, TIME_LIMITS, PROGRESS_CONFIG, DEFAULT_FILES,
-    STATS_CONFIG, FILE_VALIDATION
+    STATS_CONFIG, FILE_VALIDATION, RELIABILITY_CONFIG
 )
 
 # 현재 디렉토리 설정
@@ -57,7 +57,7 @@ class FinancialAIInference:
             print("3/3 지식베이스 초기화...")
         self.knowledge_base = FinancialSecurityKnowledgeBase()
         
-        # 통계 데이터
+        # 기본 통계 데이터
         self.stats = {
             "total": 0,
             "mc_count": 0,
@@ -65,32 +65,15 @@ class FinancialAIInference:
             "model_success": 0,
             "korean_compliance": 0,
             "processing_times": [],
-            "domain_stats": {},
-            "difficulty_stats": {"초급": 0, "중급": 0, "고급": 0},
-            "quality_scores": [],
-            "mc_answers_by_range": {3: {"1": 0, "2": 0, "3": 0}, 
-                                   4: {"1": 0, "2": 0, "3": 0, "4": 0}, 
-                                   5: {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}},
-            "choice_range_errors": 0,
-            "validation_errors": 0,
-            "intent_analysis_accuracy": 0,
-            "intent_match_success": 0,
-            "institution_questions": 0,
-            "template_usage": 0,
-            "answer_quality_by_intent": {},
             "mc_context_accuracy": 0,
-            "mc_pattern_matches": 0,
-            "high_confidence_intent": 0,
-            "intent_specific_answers": 0,
-            "quality_improvement": 0,
-            "fallback_avoidance": 0,
-            "domain_intent_match": {},
-            "answer_length_optimization": 0,
-            "korean_enhancement": 0,
-            "template_effectiveness": {},
-            "mc_domain_accuracy": {},
-            "institution_answer_accuracy": 0,
-            "negative_positive_balance": {"negative": 0, "positive": 0, "neutral": 0}
+            "intent_match_success": 0,
+            "quality_scores": [],
+            "text_cleanup_count": 0,
+            "typo_correction_count": 0,
+            "bracket_removal_count": 0,
+            "english_removal_count": 0,
+            "retry_generation_count": 0,
+            "validation_failures": 0
         }
         
         # 성능 최적화 설정 (config.py에서 로드)
@@ -107,126 +90,109 @@ class FinancialAIInference:
             # 기본 분석
             question_type, max_choice = self.data_processor.extract_choice_range(question)
             domain = self.data_processor.extract_domain(question)
-            difficulty = self.data_processor.analyze_question_difficulty(question)
             
             # 지식베이스 분석
             kb_analysis = self.knowledge_base.analyze_question(question)
             
             # 객관식 우선 처리
             if question_type == "multiple_choice":
-                answer = self._process_multiple_choice_optimized(question, max_choice, domain, kb_analysis)
-                self._update_mc_stats(question_type, domain, difficulty, 
-                                    time.time() - start_time, answer, max_choice)
+                answer = self._process_multiple_choice_with_llm(question, max_choice, domain, kb_analysis)
+                self._update_mc_stats(question_type, domain, time.time() - start_time, answer, max_choice)
                 return answer
             
             # 주관식 처리
             else:
                 intent_analysis = self.data_processor.analyze_question_intent(question)
-                self.stats["intent_analysis_accuracy"] += 1
-                
-                # 신뢰도 확인
-                if intent_analysis.get("intent_confidence", 0) >= self.optimization_config["intent_confidence_threshold"]:
-                    self.stats["high_confidence_intent"] += 1
                 
                 # 기관 관련 질문 우선 처리
                 if kb_analysis.get("institution_info", {}).get("is_institution_question", False):
-                    self.stats["institution_questions"] += 1
-                    answer = self._process_institution_question_optimized(question, kb_analysis, intent_analysis)
+                    answer = self._process_institution_question_with_llm(question, kb_analysis, intent_analysis)
                 else:
-                    answer = self._process_subjective_optimized(question, domain, intent_analysis, kb_analysis)
+                    answer = self._process_subjective_with_llm(question, domain, intent_analysis, kb_analysis)
                 
                 # 품질 검증 및 개선
-                final_answer = self._validate_and_improve_answer(answer, question, question_type, 
+                final_answer = self._validate_and_improve_answer_enhanced(answer, question, question_type, 
                                                                max_choice, domain, intent_analysis, kb_analysis)
                 
                 # 통계 업데이트
-                self._update_subj_stats(question_type, domain, difficulty, 
-                                      time.time() - start_time, intent_analysis, final_answer)
+                self._update_subj_stats(question_type, domain, time.time() - start_time, intent_analysis, final_answer)
                 
                 return final_answer
                 
         except Exception as e:
             if self.verbose:
                 print(f"오류 발생: {e}")
-            # 안전한 폴백 답변
-            fallback = self._get_safe_fallback(question, question_type, max_choice if 'max_choice' in locals() else 5)
+            # 안전한 폴백 답변 (LLM 거쳐서)
+            fallback = self._get_safe_fallback_with_llm(question, question_type, max_choice if 'max_choice' in locals() else 5)
             self._update_stats(question_type if 'question_type' in locals() else "multiple_choice", 
                              domain if 'domain' in locals() else "일반", 
-                             difficulty if 'difficulty' in locals() else "초급", 
                              time.time() - start_time)
             return fallback
     
-    def _process_multiple_choice_optimized(self, question: str, max_choice: int, domain: str, kb_analysis: Dict) -> str:
-        """객관식 처리"""
+    def _process_multiple_choice_with_llm(self, question: str, max_choice: int, domain: str, kb_analysis: Dict) -> str:
+        """객관식 처리 (LLM 필수 사용)"""
         
-        # 지식베이스 패턴 매칭 우선 적용
+        # 지식베이스 패턴 힌트 수집
+        pattern_hint = None
         if self.optimization_config["mc_pattern_priority"]:
-            pattern_answer = self.knowledge_base.get_mc_pattern_answer(question)
-            if pattern_answer and pattern_answer.isdigit() and 1 <= int(pattern_answer) <= max_choice:
-                self.stats["mc_pattern_matches"] += 1
-                return pattern_answer
+            pattern_info = self.knowledge_base.get_mc_pattern_info(question)
+            if pattern_info and pattern_info.get("confidence", 0) > 0.5:
+                pattern_hint = {
+                    "pattern_type": pattern_info.get("pattern_type"),
+                    "likely_answer": pattern_info.get("likely_answer"),
+                    "explanation": pattern_info.get("explanation", "")
+                }
         
-        # 모델 기반 답변 생성
-        answer = self.model_handler.generate_answer(question, "multiple_choice", max_choice)
+        # 컨텍스트 분석 힌트 수집
+        context_hint = self.model_handler._analyze_mc_context(question, domain)
+        
+        # LLM을 통한 답변 생성 (힌트 포함)
+        answer = self.model_handler.generate_enhanced_mc_answer(
+            question, max_choice, domain, pattern_hint, context_hint
+        )
         
         # 답변 범위 검증
         if answer and answer.isdigit() and 1 <= int(answer) <= max_choice:
-            # 선택지 분포 업데이트
-            if max_choice in self.stats["mc_answers_by_range"]:
-                self.stats["mc_answers_by_range"][max_choice][answer] += 1
-            
-            # 도메인별 정확도 추적
-            if domain not in self.stats["mc_domain_accuracy"]:
-                self.stats["mc_domain_accuracy"][domain] = {"total": 0, "success": 0}
-            self.stats["mc_domain_accuracy"][domain]["total"] += 1
-            self.stats["mc_domain_accuracy"][domain]["success"] += 1
-            
             self.stats["model_success"] += 1
             self.stats["korean_compliance"] += 1
             return answer
         else:
-            # 범위 오류 시 컨텍스트 기반 폴백
-            self.stats["choice_range_errors"] += 1
-            fallback = self.model_handler._get_context_based_mc_answer(question, max_choice, domain)
-            
-            # 도메인별 정확도 추적
-            if domain not in self.stats["mc_domain_accuracy"]:
-                self.stats["mc_domain_accuracy"][domain] = {"total": 0, "success": 0}
-            self.stats["mc_domain_accuracy"][domain]["total"] += 1
-            
-            if max_choice in self.stats["mc_answers_by_range"]:
-                self.stats["mc_answers_by_range"][max_choice][fallback] += 1
+            # 범위 오류 시에도 LLM 거쳐서 폴백
+            fallback = self.model_handler.generate_fallback_mc_answer(question, max_choice, domain, context_hint)
+            self.stats["retry_generation_count"] += 1
             return fallback
     
-    def _process_institution_question_optimized(self, question: str, kb_analysis: Dict, intent_analysis: Dict) -> str:
-        """기관 질문 처리"""
+    def _process_institution_question_with_llm(self, question: str, kb_analysis: Dict, intent_analysis: Dict) -> str:
+        """기관 질문 처리 (LLM 필수 사용)"""
         institution_info = kb_analysis.get("institution_info", {})
         
         if institution_info.get("is_institution_question", False):
             institution_type = institution_info.get("institution_type")
             
             if institution_type and institution_info.get("confidence", 0) > 0.5:
-                # 신뢰도 높은 기관 질문 - 지식베이스 우선 사용
-                template_answer = self.knowledge_base.get_institution_specific_answer(institution_type)
-                self.stats["intent_specific_answers"] += 1
-                self.stats["institution_answer_accuracy"] += 1
-                return template_answer
+                # 신뢰도 높은 기관 질문 - 지식베이스 힌트로 LLM 생성
+                institution_hint = self.knowledge_base.get_institution_hint(institution_type)
+                answer = self.model_handler.generate_institution_answer(
+                    question, institution_hint, intent_analysis
+                )
+                return answer
         
         # 일반 주관식 처리로 폴백
-        return self._process_subjective_optimized(question, 
+        return self._process_subjective_with_llm(question, 
                                                 kb_analysis.get("domain", ["일반"])[0], 
                                                 intent_analysis, kb_analysis)
     
-    def _process_subjective_optimized(self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict) -> str:
-        """주관식 처리"""
+    def _process_subjective_with_llm(self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict) -> str:
+        """주관식 처리 (LLM 필수 사용)"""
         
         # 신뢰도 높은 의도 분석 기반 처리
+        template_hint = None
         if (intent_analysis and 
             intent_analysis.get("intent_confidence", 0) >= self.optimization_config["intent_confidence_threshold"]):
             
             primary_intent = intent_analysis.get("primary_intent", "일반")
             
-            # 의도별 특화 템플릿 우선 사용
+            # 의도별 특화 템플릿 힌트 수집
             if self.optimization_config["template_preference"]:
                 if "기관" in primary_intent:
                     intent_key = "기관_묻기"
@@ -243,25 +209,23 @@ class FinancialAIInference:
                 else:
                     intent_key = "일반"
                 
-                # 템플릿 사용 시도
+                # 템플릿 힌트 수집 (직접 반환하지 않음)
                 try:
-                    template_answer = self.knowledge_base.get_high_quality_template(domain, intent_key)
-                    if template_answer and len(template_answer) >= 50:
-                        self.stats["intent_specific_answers"] += 1
-                        self.stats["template_usage"] += 1
-                        return template_answer
+                    template_hint = self.knowledge_base.get_template_hint(domain, intent_key)
                 except:
                     pass
         
-        # AI 모델 답변 생성
+        # LLM을 통한 답변 생성 (템플릿 힌트 포함)
         if self.optimization_config["adaptive_prompt"] and intent_analysis:
-            answer = self.model_handler.generate_answer(question, "subjective", 5, intent_analysis)
+            answer = self.model_handler.generate_enhanced_subj_answer(
+                question, domain, intent_analysis, template_hint
+            )
         else:
             answer = self.model_handler.generate_answer(question, "subjective", 5)
         
         return answer
     
-    def _validate_and_improve_answer(self, answer: str, question: str, question_type: str,
+    def _validate_and_improve_answer_enhanced(self, answer: str, question: str, question_type: str,
                                    max_choice: int, domain: str, intent_analysis: Dict = None,
                                    kb_analysis: Dict = None) -> str:
         """답변 검증 및 개선"""
@@ -273,58 +237,69 @@ class FinancialAIInference:
         original_answer = answer
         improvement_count = 0
         
-        # 기본 유효성 검증
+        # 1단계: 텍스트 정리
+        if self.optimization_config.get("text_cleanup_enabled", True):
+            cleaned_answer = self.data_processor.clean_korean_text_advanced(answer)
+            if cleaned_answer != answer:
+                answer = cleaned_answer
+                self.stats["text_cleanup_count"] += 1
+                improvement_count += 1
+        
+        # 2단계: 문장 구조 수정
+        structured_answer = self.data_processor.fix_korean_sentence_structure(answer)
+        if structured_answer != answer:
+            answer = structured_answer
+            improvement_count += 1
+        
+        # 3단계: 기본 유효성 검증
         is_valid = self.data_processor.validate_korean_answer(answer, question_type, max_choice, question)
         
         if not is_valid:
-            self.stats["validation_errors"] += 1
-            answer = self._get_improved_answer(question, domain, intent_analysis, kb_analysis, "validation_failed")
+            answer = self._get_improved_answer_with_llm(question, domain, intent_analysis, kb_analysis, "validation_failed")
+            self.stats["validation_failures"] += 1
+            self.stats["retry_generation_count"] += 1
             improvement_count += 1
         
-        # 한국어 비율 검증
+        # 4단계: 한국어 비율 검증
         korean_ratio = self.data_processor.calculate_korean_ratio(answer)
         if korean_ratio < self.optimization_config["korean_ratio_threshold"]:
-            answer = self._get_improved_answer(question, domain, intent_analysis, kb_analysis, "korean_ratio_low")
+            answer = self._get_improved_answer_with_llm(question, domain, intent_analysis, kb_analysis, "korean_ratio_low")
+            self.stats["retry_generation_count"] += 1
             improvement_count += 1
-            self.stats["korean_enhancement"] += 1
         
-        # 의도 일치성 검증
+        # 5단계: 의도 일치성 검증
         if intent_analysis:
             intent_match = self.data_processor.validate_answer_intent_match(answer, question, intent_analysis)
             if intent_match:
                 self.stats["intent_match_success"] += 1
             else:
-                # 의도 불일치시 특화 답변 생성
-                answer = self._get_improved_answer(question, domain, intent_analysis, kb_analysis, "intent_mismatch")
+                # 의도 불일치시 특화 답변 생성 (LLM 거쳐서)
+                answer = self._get_improved_answer_with_llm(question, domain, intent_analysis, kb_analysis, "intent_mismatch")
+                self.stats["retry_generation_count"] += 1
                 improvement_count += 1
                 # 재검증
                 intent_match_retry = self.data_processor.validate_answer_intent_match(answer, question, intent_analysis)
                 if intent_match_retry:
                     self.stats["intent_match_success"] += 1
         
-        # 답변 품질 평가 및 개선
+        # 6단계: 답변 품질 평가 및 개선
         quality_score = self._calculate_enhanced_quality_score(answer, question, intent_analysis)
         if quality_score < self.optimization_config["quality_threshold"]:
-            improved_answer = self._get_improved_answer(question, domain, intent_analysis, kb_analysis, "quality_low")
+            improved_answer = self._get_improved_answer_with_llm(question, domain, intent_analysis, kb_analysis, "quality_low")
             improved_quality = self._calculate_enhanced_quality_score(improved_answer, question, intent_analysis)
             
             if improved_quality > quality_score:
                 answer = improved_answer
+                self.stats["retry_generation_count"] += 1
                 improvement_count += 1
-                self.stats["quality_improvement"] += 1
         
-        # 길이 최적화
+        # 7단계: 길이 최적화
         answer = self._optimize_answer_length(answer)
-        if answer != original_answer:
-            self.stats["answer_length_optimization"] += 1
         
-        # 최종 정규화
+        # 8단계: 최종 정규화
         answer = self.data_processor.normalize_korean_answer(answer, question_type, max_choice)
         
         # 성공 통계 업데이트
-        if improvement_count == 0:
-            self.stats["fallback_avoidance"] += 1
-        
         self.stats["model_success"] += 1
         self.stats["korean_compliance"] += 1
         
@@ -332,26 +307,27 @@ class FinancialAIInference:
         final_quality = self._calculate_enhanced_quality_score(answer, question, intent_analysis)
         self.stats["quality_scores"].append(final_quality)
         
-        # 의도별 품질 통계
-        if intent_analysis:
-            primary_intent = intent_analysis.get("primary_intent", "일반")
-            if primary_intent not in self.stats["answer_quality_by_intent"]:
-                self.stats["answer_quality_by_intent"][primary_intent] = []
-            self.stats["answer_quality_by_intent"][primary_intent].append(final_quality)
+        if self.verbose and improvement_count > 0:
+            print(f"답변 개선 {improvement_count}회 수행: {original_answer[:50]}... -> {answer[:50]}...")
         
         return answer
     
-    def _get_improved_answer(self, question: str, domain: str, intent_analysis: Dict = None,
-                           kb_analysis: Dict = None, improvement_type: str = "general") -> str:
-        """개선된 답변 생성"""
+    def _get_improved_answer_with_llm(self, question: str, domain: str, intent_analysis: Dict = None,
+                                     kb_analysis: Dict = None, improvement_type: str = "general") -> str:
+        """개선된 답변 생성 (LLM 필수 사용)"""
         
         # 기관 관련 질문 특별 처리
+        institution_hint = None
         if kb_analysis and kb_analysis.get("institution_info", {}).get("is_institution_question", False):
             institution_type = kb_analysis["institution_info"].get("institution_type")
             if institution_type:
-                return self.knowledge_base.get_institution_specific_answer(institution_type)
+                institution_hint = self.knowledge_base.get_institution_hint(institution_type)
+                return self.model_handler.generate_institution_answer(
+                    question, institution_hint, intent_analysis
+                )
         
-        # 의도별 특화 답변
+        # 의도별 특화 답변 (템플릿 힌트 사용)
+        template_hint = None
         if intent_analysis:
             primary_intent = intent_analysis.get("primary_intent", "일반")
             
@@ -370,22 +346,20 @@ class FinancialAIInference:
             else:
                 intent_key = "일반"
             
-            # 템플릿 사용
-            template_answer = self.knowledge_base.get_korean_subjective_template(domain, intent_key)
+            # 템플릿 힌트 수집
+            template_hint = self.knowledge_base.get_template_hint(domain, intent_key)
             
             # 개선 유형별 추가 처리
             if improvement_type == "intent_mismatch":
-                if "기관" in primary_intent:
-                    return self.knowledge_base.get_korean_subjective_template(domain, "기관_묻기")
-                elif "특징" in primary_intent:
-                    return self.knowledge_base.get_korean_subjective_template(domain, "특징_묻기")
-                elif "지표" in primary_intent:
-                    return self.knowledge_base.get_korean_subjective_template(domain, "지표_묻기")
-            
-            return template_answer
+                return self.model_handler.generate_intent_focused_answer(
+                    question, domain, intent_analysis, template_hint
+                )
         
-        # 기본 도메인별 템플릿
-        return self.knowledge_base.get_korean_subjective_template(domain)
+        # LLM을 통한 기본 도메인별 답변 생성
+        basic_hint = self.knowledge_base.get_template_hint(domain, "일반")
+        return self.model_handler.generate_enhanced_subj_answer(
+            question, domain, intent_analysis, basic_hint or template_hint
+        )
     
     def _calculate_enhanced_quality_score(self, answer: str, question: str, intent_analysis: Dict = None) -> float:
         """품질 점수 계산"""
@@ -456,76 +430,31 @@ class FinancialAIInference:
         
         return answer
     
-    def _update_mc_stats(self, question_type: str, domain: str, difficulty: str, 
-                        processing_time: float, answer: str, max_choice: int):
+    def _update_mc_stats(self, question_type: str, domain: str, processing_time: float, answer: str, max_choice: int):
         """객관식 통계 업데이트"""
-        self._update_stats(question_type, domain, difficulty, processing_time)
+        self._update_stats(question_type, domain, processing_time)
         
         # 컨텍스트 정확도 추적
         if answer and answer.isdigit() and max_choice > 0 and 1 <= int(answer) <= max_choice:
             self.stats["mc_context_accuracy"] += 1
     
-    def _update_subj_stats(self, question_type: str, domain: str, difficulty: str, 
-                          processing_time: float, intent_analysis: Dict = None, answer: str = ""):
+    def _update_subj_stats(self, question_type: str, domain: str, processing_time: float, intent_analysis: Dict = None, answer: str = ""):
         """주관식 통계 업데이트"""
-        self._update_stats(question_type, domain, difficulty, processing_time)
-        
-        # 도메인별 의도 일치율
-        if intent_analysis and question_type == "subjective":
-            if domain not in self.stats["domain_intent_match"]:
-                self.stats["domain_intent_match"][domain] = {"total": 0, "matched": 0}
-            
-            self.stats["domain_intent_match"][domain]["total"] += 1
-            
-            # 답변이 의도와 일치하는지 확인
-            intent_match = self.data_processor.validate_answer_intent_match(answer, "", intent_analysis)
-            if intent_match:
-                self.stats["domain_intent_match"][domain]["matched"] += 1
-        
-        # 템플릿 효과성
-        if question_type == "subjective" and intent_analysis:
-            primary_intent = intent_analysis.get("primary_intent", "일반")
-            template_key = f"{domain}_{primary_intent}"
-            
-            if template_key not in self.stats["template_effectiveness"]:
-                self.stats["template_effectiveness"][template_key] = {
-                    "usage": 0,
-                    "avg_quality": 0.0,
-                    "korean_ratio": 0.0
-                }
-            
-            effectiveness = self.stats["template_effectiveness"][template_key]
-            effectiveness["usage"] += 1
-            
-            if answer:
-                quality = self._calculate_enhanced_quality_score(answer, "", intent_analysis)
-                korean_ratio = self.data_processor.calculate_korean_ratio(answer)
-                
-                effectiveness["avg_quality"] = (effectiveness["avg_quality"] * (effectiveness["usage"] - 1) + quality) / effectiveness["usage"]
-                effectiveness["korean_ratio"] = (effectiveness["korean_ratio"] * (effectiveness["usage"] - 1) + korean_ratio) / effectiveness["usage"]
+        self._update_stats(question_type, domain, processing_time)
     
-    def _get_safe_mc_answer(self, max_choice: int) -> str:
-        """안전한 객관식 답변 생성"""
-        # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
-        if max_choice <= 0:
-            max_choice = 5
-        
-        import random
-        return str(random.randint(1, max_choice))
-    
-    def _get_safe_fallback(self, question: str, question_type: str, max_choice: int) -> str:
-        """안전한 폴백 답변"""
+    def _get_safe_fallback_with_llm(self, question: str, question_type: str, max_choice: int) -> str:
+        """안전한 폴백 답변 (LLM 거쳐서)"""
         # max_choice 유효성 검증
         if max_choice <= 0:
             max_choice = 5
         
-        # 간단한 객관식/주관식 구분
+        # 간단한 객관식/주관식 구분하여 LLM 생성
         if question_type == "multiple_choice" or (any(str(i) in question for i in range(1, 6)) and len(question) < 300):
-            return self._get_safe_mc_answer(max_choice)
+            return self.model_handler.generate_simple_mc_answer(question, max_choice)
         else:
-            return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+            return self.model_handler.generate_simple_subj_answer(question)
     
-    def _update_stats(self, question_type: str, domain: str, difficulty: str, processing_time: float):
+    def _update_stats(self, question_type: str, domain: str, processing_time: float):
         """통계 업데이트"""
         self.stats["total"] += 1
         self.stats["processing_times"].append(processing_time)
@@ -534,12 +463,6 @@ class FinancialAIInference:
             self.stats["mc_count"] += 1
         else:
             self.stats["subj_count"] += 1
-        
-        # 도메인 통계
-        self.stats["domain_stats"][domain] = self.stats["domain_stats"].get(domain, 0) + 1
-        
-        # 난이도 통계
-        self.stats["difficulty_stats"][difficulty] += 1
     
     def print_progress_bar(self, current: int, total: int, start_time: float, bar_length: int = PROGRESS_CONFIG['bar_length']):
         """진행률 게이지바 출력"""
@@ -550,45 +473,37 @@ class FinancialAIInference:
         percent = progress * 100
         print(f"\r문항 처리: ({current}/{total}) 진행도: {percent:.0f}% [{bar}]", end='', flush=True)
     
-    def _calculate_model_reliability(self) -> float:
-        """모델 신뢰도 계산"""
-        total = max(self.stats["total"], 1)
+    def _calculate_reliability_score(self) -> float:
+        """신뢰도 점수 계산"""
+        if self.stats["total"] == 0:
+            return 0.0
         
-        # 객관식 성공률 (40%)
+        total = self.stats["total"]
         mc_total = max(self.stats["mc_count"], 1)
-        mc_success_rate = (self.stats["mc_context_accuracy"] / mc_total) * 0.4
         
-        # 한국어 준수율 (15%)
-        korean_rate = (self.stats["korean_compliance"] / total) * 0.15
+        # 기본 성능 지표 계산
+        mc_success_rate = (self.stats["mc_context_accuracy"] / mc_total) if mc_total > 0 else 0
+        korean_compliance_rate = (self.stats["korean_compliance"] / total)
+        intent_match_rate = (self.stats["intent_match_success"] / total) if self.stats["subj_count"] > 0 else 0.8
+        quality_score = sum(self.stats["quality_scores"]) / len(self.stats["quality_scores"]) if self.stats["quality_scores"] else 0.7
         
-        # 범위 정확도 (10%)
-        range_accuracy = max(0, (1 - self.stats["choice_range_errors"] / total)) * 0.1
+        # 신뢰도 계산 (config.py의 RELIABILITY_CONFIG 사용)
+        base_accuracy = RELIABILITY_CONFIG['base_accuracy']
+        factors = RELIABILITY_CONFIG['confidence_factors']
         
-        # 검증 통과율 (10%)
-        validation_rate = max(0, (1 - self.stats["validation_errors"] / total)) * 0.1
+        # 각 요소별 가중 점수 계산
+        weighted_score = (
+            mc_success_rate * factors['mc_success_weight'] +
+            korean_compliance_rate * factors['korean_compliance_weight'] +
+            intent_match_rate * factors['intent_match_weight'] +
+            quality_score * factors['quality_weight']
+        )
         
-        # 의도 일치율 (15%)
-        intent_rate = 0.0
-        if self.stats["intent_analysis_accuracy"] > 0:
-            intent_rate = (self.stats["intent_match_success"] / self.stats["intent_analysis_accuracy"]) * 0.15
+        # 기준 정답률과 조합하여 최종 신뢰도 계산
+        reliability = (base_accuracy + weighted_score) / 2
         
-        # 품질 점수 (5%)
-        quality_rate = 0.0
-        if self.stats["quality_scores"]:
-            avg_quality = sum(self.stats["quality_scores"]) / len(self.stats["quality_scores"])
-            quality_rate = avg_quality * 0.05
-        
-        # 최적화 성능 (5%)
-        optimization_rate = 0.0
-        if self.stats["total"] > 0:
-            fallback_avoidance_rate = self.stats["fallback_avoidance"] / total
-            optimization_rate = fallback_avoidance_rate * 0.05
-        
-        # 전체 신뢰도 (0-100%)
-        reliability = (mc_success_rate + korean_rate + range_accuracy + validation_rate + 
-                      intent_rate + quality_rate + optimization_rate) * 100
-        
-        return min(reliability, 100.0)
+        # 0-100% 범위로 변환
+        return min(reliability * 100, 100.0)
     
     def _simple_save_csv(self, df: pd.DataFrame, filepath: str) -> bool:
         """간단한 CSV 저장"""
@@ -672,70 +587,37 @@ class FinancialAIInference:
         
         return self._get_results_summary()
     
-    def _print_enhanced_stats(self):
-        """상세 통계 출력"""
-        pass
-    
     def _get_results_summary(self) -> Dict:
         """결과 요약"""
         total = max(self.stats["total"], 1)
         mc_stats = self.model_handler.get_answer_stats()
-        learning_stats = self.model_handler.get_learning_stats()
         processing_stats = self.data_processor.get_processing_stats()
-        kb_stats = self.knowledge_base.get_analysis_statistics()
+        reliability_score = self._calculate_reliability_score()
         
-        # 의도별 품질 평균 계산
-        intent_quality_avg = {}
-        for intent, scores in self.stats["answer_quality_by_intent"].items():
-            if scores:
-                intent_quality_avg[intent] = sum(scores) / len(scores)
-        
-        # 도메인별 의도 일치율 계산
-        domain_intent_rates = {}
-        for domain, stats in self.stats["domain_intent_match"].items():
-            if stats["total"] > 0:
-                domain_intent_rates[domain] = (stats["matched"] / stats["total"]) * 100
-        
-        # 도메인별 객관식 정확도 계산
-        mc_domain_rates = {}
-        for domain, stats in self.stats["mc_domain_accuracy"].items():
-            if stats["total"] > 0:
-                mc_domain_rates[domain] = (stats["success"] / stats["total"]) * 100
+        # 개선 작업 통계 추가
+        improvement_stats = {
+            "text_cleanup_rate": (self.stats["text_cleanup_count"] / total) * 100 if total > 0 else 0,
+            "typo_correction_rate": (self.stats["typo_correction_count"] / total) * 100 if total > 0 else 0,
+            "bracket_removal_rate": (self.stats["bracket_removal_count"] / total) * 100 if total > 0 else 0,
+            "english_removal_rate": (self.stats["english_removal_count"] / total) * 100 if total > 0 else 0,
+            "retry_generation_rate": (self.stats["retry_generation_count"] / total) * 100 if total > 0 else 0,
+            "validation_failure_rate": (self.stats["validation_failures"] / total) * 100 if total > 0 else 0
+        }
         
         return {
             "success": True,
             "total_questions": self.stats["total"],
-            "mc_count": self.stats["mc_count"],
+            "mc_count": self.stats["mc_count"], 
             "subj_count": self.stats["subj_count"],
-            "model_success_rate": (self.stats["model_success"] / total) * 100,
-            "korean_compliance_rate": (self.stats["korean_compliance"] / total) * 100,
-            "choice_range_error_rate": (self.stats["choice_range_errors"] / total) * 100,
-            "validation_error_rate": (self.stats["validation_errors"] / total) * 100,
-            "intent_match_success_rate": (self.stats["intent_match_success"] / max(self.stats["intent_analysis_accuracy"], 1)) * 100,
-            "institution_questions_count": self.stats["institution_questions"],
-            "template_usage_rate": (self.stats["template_usage"] / total) * 100,
-            "avg_processing_time": sum(self.stats["processing_times"]) / len(self.stats["processing_times"]) if self.stats["processing_times"] else 0,
-            "avg_quality_score": sum(self.stats["quality_scores"]) / len(self.stats["quality_scores"]) if self.stats["quality_scores"] else 0,
-            "intent_quality_by_type": intent_quality_avg,
-            "domain_stats": dict(self.stats["domain_stats"]),
-            "difficulty_stats": dict(self.stats["difficulty_stats"]),
-            "answer_distribution_by_range": self.stats["mc_answers_by_range"],
-            "learning_stats": learning_stats,
-            "processing_stats": processing_stats,
-            "knowledge_base_stats": kb_stats,
+            "total_time": time.time() - self.start_time,
+            "reliability_score": reliability_score,
+            "model_success_rate": (self.stats["model_success"] / total) * 100 if total > 0 else 0,
+            "korean_compliance_rate": (self.stats["korean_compliance"] / total) * 100 if total > 0 else 0,
             "mc_context_accuracy_rate": (self.stats["mc_context_accuracy"] / max(self.stats["mc_count"], 1)) * 100,
-            "mc_pattern_match_rate": (self.stats["mc_pattern_matches"] / max(self.stats["mc_count"], 1)) * 100,
-            "high_confidence_intent_rate": (self.stats["high_confidence_intent"] / max(self.stats["intent_analysis_accuracy"], 1)) * 100,
-            "intent_specific_answer_rate": (self.stats["intent_specific_answers"] / total) * 100,
-            "quality_improvement_count": self.stats["quality_improvement"],
-            "fallback_avoidance_rate": (self.stats["fallback_avoidance"] / total) * 100,
-            "korean_enhancement_count": self.stats["korean_enhancement"],
-            "answer_length_optimization_count": self.stats["answer_length_optimization"],
-            "domain_intent_match_rates": domain_intent_rates,
-            "mc_domain_accuracy_rates": mc_domain_rates,
-            "institution_answer_accuracy": self.stats["institution_answer_accuracy"],
-            "template_effectiveness_stats": dict(self.stats["template_effectiveness"]),
-            "total_time": time.time() - self.start_time
+            "intent_match_success_rate": (self.stats["intent_match_success"] / max(self.stats["subj_count"], 1)) * 100 if self.stats["subj_count"] > 0 else 0,
+            "avg_quality_score": sum(self.stats["quality_scores"]) / len(self.stats["quality_scores"]) if self.stats["quality_scores"] else 0,
+            "avg_processing_time": sum(self.stats["processing_times"]) / len(self.stats["processing_times"]) if self.stats["processing_times"] else 0,
+            **improvement_stats
         }
     
     def cleanup(self):
@@ -770,15 +652,9 @@ def main():
         
         if results["success"]:
             print("\n추론 완료")
-            print(f"총 처리시간: {results['total_time']:.1f}초")
-            print(f"모델 성공률: {results['model_success_rate']:.1f}%")
-            print(f"한국어 준수율: {results['korean_compliance_rate']:.1f}%")
-            if results['choice_range_error_rate'] > 0:
-                print(f"선택지 범위 오류율: {results['choice_range_error_rate']:.1f}%")
-            if results['intent_match_success_rate'] > 0:
-                print(f"의도 일치 성공률: {results['intent_match_success_rate']:.1f}%")
-            if results['mc_context_accuracy_rate'] > 0:
-                print(f"객관식 컨텍스트 정확도: {results['mc_context_accuracy_rate']:.1f}%")
+            print(f"처리 시간: {results['total_time']:.1f}초")
+            print(f"처리 문항: {results['total_questions']}개")
+            print(f"신뢰도: {results['reliability_score']:.1f}%")
         
     except KeyboardInterrupt:
         print("\n추론 중단됨")

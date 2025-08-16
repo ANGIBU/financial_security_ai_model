@@ -90,91 +90,127 @@ def print_enhanced_results(results: dict, output_file: str, test_size: int):
     print(f"\n=== 테스트 완료 ({test_size}개 문항) ===")
     print(f"처리 시간: {total_time_minutes:.1f}분")
     print(f"처리 문항: {results['total_questions']}개")
+    print(f"신뢰도: {results['reliability_score']:.1f}%")
+    
+    # 기본 성능 지표
+    print(f"\n=== 기본 성능 지표 ===")
+    print(f"모델 성공률: {results.get('model_success_rate', 0):.1f}%")
+    print(f"한국어 준수율: {results.get('korean_compliance_rate', 0):.1f}%")
+    print(f"평균 처리시간: {results.get('avg_processing_time', 0):.2f}초")
     
     # 객관식 성능
     mc_count = results.get('mc_count', 0)
-    mc_success_rate = results.get('model_success_rate', 0)
     mc_context_accuracy = results.get('mc_context_accuracy_rate', 0)
-    mc_pattern_match = results.get('mc_pattern_match_rate', 0)
     
-    print(f"\n=== 객관식 성능 (전체의 {(mc_count/results['total_questions']*100):.0f}%) ===")
-    print(f"객관식 문항: {mc_count}개")
-    print(f"기본 성공률: {mc_success_rate:.1f}%")
-    print(f"컨텍스트 정확도: {mc_context_accuracy:.1f}%")
-    print(f"패턴 매칭률: {mc_pattern_match:.1f}%")
-    
-    # 도메인별 객관식 성과
-    mc_domain_rates = results.get('mc_domain_accuracy_rates', {})
-    if mc_domain_rates:
-        print("도메인별 객관식 정확도:")
-        for domain, rate in mc_domain_rates.items():
-            print(f"  - {domain}: {rate:.1f}%")
+    if mc_count > 0:
+        print(f"\n=== 객관식 성능 (전체의 {(mc_count/results['total_questions']*100):.0f}%) ===")
+        print(f"객관식 문항: {mc_count}개")
+        print(f"컨텍스트 정확도: {mc_context_accuracy:.1f}%")
+    else:
+        print(f"\n=== 객관식 성능 ===")
+        print("객관식 문항 없음")
     
     # 주관식 성능
     subj_count = results.get('subj_count', 0)
     intent_success_rate = results.get('intent_match_success_rate', 0)
-    korean_compliance = results.get('korean_compliance_rate', 0)
     avg_quality = results.get('avg_quality_score', 0)
     
-    print(f"\n=== 주관식 성능 (전체의 {(subj_count/results['total_questions']*100):.0f}%) ===")
-    print(f"주관식 문항: {subj_count}개")
     if subj_count > 0:
+        print(f"\n=== 주관식 성능 (전체의 {(subj_count/results['total_questions']*100):.0f}%) ===")
+        print(f"주관식 문항: {subj_count}개")
         print(f"의도 일치율: {intent_success_rate:.1f}%")
-        print(f"한국어 준수율: {korean_compliance:.1f}%")
         print(f"평균 품질점수: {avg_quality:.2f}/1.0")
     else:
+        print(f"\n=== 주관식 성능 ===")
         print("주관식 문항 없음")
     
-    # 특화 기능 성능
-    institution_count = results.get('institution_questions_count', 0)
-    institution_accuracy = results.get('institution_answer_accuracy', 0)
-    template_usage = results.get('template_usage_rate', 0)
+    # 텍스트 처리 성과
+    text_cleanup_rate = results.get('text_cleanup_rate', 0)
+    retry_generation_rate = results.get('retry_generation_rate', 0)
+    validation_failure_rate = results.get('validation_failure_rate', 0)
     
-    print(f"\n=== 특화 기능 성능 ===")
-    print(f"기관 질문 처리: {institution_count}개")
-    if institution_count > 0:
-        print(f"기관 답변 정확도: {institution_accuracy}개 성공")
-    print(f"템플릿 활용률: {template_usage:.1f}%")
+    print(f"\n=== 텍스트 처리 성과 ===")
+    print(f"텍스트 정리율: {text_cleanup_rate:.1f}%")
+    print(f"재생성 요청율: {retry_generation_rate:.1f}%")
+    print(f"검증 실패율: {validation_failure_rate:.1f}%")
     
-    # 최적화 성과
-    quality_improvements = results.get('quality_improvement_count', 0)
-    fallback_avoidance = results.get('fallback_avoidance_rate', 0)
-    korean_enhancements = results.get('korean_enhancement_count', 0)
+    # 품질 관리 성과
+    print(f"\n=== 품질 관리 성과 ===")
+    if retry_generation_rate > 0:
+        print(f"답변 품질 자동 관리: {retry_generation_rate:.1f}%의 답변에서 품질 관리 수행")
+    if text_cleanup_rate > 0:
+        print(f"텍스트 자동 정리: {text_cleanup_rate:.1f}%의 답변에서 텍스트 정리 수행")
+    if validation_failure_rate < 5:
+        print(f"검증 통과율: {100-validation_failure_rate:.1f}% (양호)")
+    elif validation_failure_rate < 10:
+        print(f"검증 통과율: {100-validation_failure_rate:.1f}% (보통)")
+    else:
+        print(f"검증 통과율: {100-validation_failure_rate:.1f}% (주의 필요)")
     
-    print(f"\n=== 최적화 성과 ===")
-    print(f"품질 개선: {quality_improvements}회")
-    print(f"폴백 회피율: {fallback_avoidance:.1f}%")
-    print(f"한국어 강화: {korean_enhancements}회")
+    # 성능 분석 요약
+    print(f"\n=== 성능 분석 요약 ===")
     
-    # 오류 분석
-    choice_errors = results.get('choice_range_error_rate', 0)
-    validation_errors = results.get('validation_error_rate', 0)
+    if results['reliability_score'] >= 80:
+        reliability_status = "우수"
+    elif results['reliability_score'] >= 70:
+        reliability_status = "양호"
+    elif results['reliability_score'] >= 60:
+        reliability_status = "보통"
+    else:
+        reliability_status = "관리 필요"
     
-    if choice_errors > 0 or validation_errors > 0:
-        print(f"\n=== 오류 분석 ===")
-        if choice_errors > 0:
-            print(f"선택지 범위 오류율: {choice_errors:.1f}%")
-        if validation_errors > 0:
-            print(f"검증 실패율: {validation_errors:.1f}%")
+    print(f"시스템 신뢰도: {results['reliability_score']:.1f}% ({reliability_status})")
     
-    # 도메인별 성과 요약
-    domain_stats = results.get('domain_stats', {})
-    if domain_stats:
-        print(f"\n=== 도메인별 분포 ===")
-        for domain, count in domain_stats.items():
-            percentage = (count / results['total_questions']) * 100
-            print(f"{domain}: {count}개 ({percentage:.1f}%)")
+    if mc_count > 0 and mc_context_accuracy >= 70:
+        print("객관식 처리: 안정적")
+    elif mc_count > 0:
+        print("객관식 처리: 관리 필요")
+    
+    if subj_count > 0 and intent_success_rate >= 60 and avg_quality >= 0.7:
+        print("주관식 처리: 안정적")
+    elif subj_count > 0:
+        print("주관식 처리: 관리 필요")
+    
+    # 처리 효율성
+    questions_per_minute = results['total_questions'] / total_time_minutes if total_time_minutes > 0 else 0
+    print(f"처리 효율성: {questions_per_minute:.1f}문항/분")
+    
+    # 권장사항
+    print(f"\n=== 권장사항 ===")
+    recommendations = []
+    
+    if results['reliability_score'] < 70:
+        recommendations.append("전체적인 시스템 성능 점검이 필요합니다.")
+    
+    if mc_count > 0 and mc_context_accuracy < 60:
+        recommendations.append("객관식 컨텍스트 분석 정확도를 높이세요.")
+    
+    if subj_count > 0 and intent_success_rate < 50:
+        recommendations.append("주관식 질문 의도 분석 정확도를 높이세요.")
+    
+    if validation_failure_rate > 10:
+        recommendations.append("답변 검증 로직을 점검하세요.")
+    
+    if retry_generation_rate > 30:
+        recommendations.append("초기 답변 생성 품질을 높이세요.")
+    
+    if avg_quality < 0.6 and subj_count > 0:
+        recommendations.append("주관식 답변 품질 관리를 강화하세요.")
+    
+    if not recommendations:
+        recommendations.append("현재 성능이 양호합니다. 지속적인 모니터링을 유지하세요.")
+    
+    for i, recommendation in enumerate(recommendations, 1):
+        print(f"{i}. {recommendation}")
 
 def estimate_final_performance(results: dict) -> float:
     """최종 성능 예측"""
     
     # 객관식 성과 (가중치 86%)
     mc_weight = 0.86
-    mc_success = results.get('model_success_rate', 0) / 100
     mc_context = results.get('mc_context_accuracy_rate', 0) / 100
-    mc_pattern = results.get('mc_pattern_match_rate', 0) / 100
     
-    mc_score = (mc_success * 0.4 + mc_context * 0.3 + mc_pattern * 0.3) * mc_weight
+    mc_score = mc_context * mc_weight
     
     # 주관식 성과 (가중치 14%)
     subj_weight = 0.14
@@ -190,70 +226,73 @@ def estimate_final_performance(results: dict) -> float:
     return total_score
 
 def suggest_improvements(results: dict):
-    """개선 제안"""
-    print(f"\n=== 성능 개선 제안 ===")
+    """성능 분석"""
+    print(f"\n=== 성능 분석 ===")
     
     mc_context = results.get('mc_context_accuracy_rate', 0)
     intent_rate = results.get('intent_match_success_rate', 0)
     model_rate = results.get('model_success_rate', 0)
-    validation_error = results.get('validation_error_rate', 0)
-    choice_error = results.get('choice_range_error_rate', 0)
+    validation_error = results.get('validation_failure_rate', 0)
+    text_cleanup = results.get('text_cleanup_rate', 0)
+    retry_rate = results.get('retry_generation_rate', 0)
     
-    improvements = []
+    analyses = []
     
-    if mc_context < 85:
-        improvements.append(f"객관식 컨텍스트 정확도가 {mc_context:.1f}%로 낮습니다. 도메인별 패턴 학습을 강화하세요.")
+    if mc_context >= 70:
+        analyses.append(f"객관식 컨텍스트 정확도가 {mc_context:.1f}%로 양호합니다.")
+    elif mc_context >= 50:
+        analyses.append(f"객관식 컨텍스트 정확도가 {mc_context:.1f}%로 보통입니다.")
+    else:
+        analyses.append(f"객관식 컨텍스트 정확도가 {mc_context:.1f}%로 낮습니다.")
     
-    if intent_rate < 70:
-        improvements.append(f"의도 일치 성공률이 {intent_rate:.1f}%로 낮습니다. 질문 의도 분석 정확도를 높이세요.")
+    if intent_rate >= 60:
+        analyses.append(f"의도 일치 성공률이 {intent_rate:.1f}%로 양호합니다.")
+    elif intent_rate >= 40:
+        analyses.append(f"의도 일치 성공률이 {intent_rate:.1f}%로 보통입니다.")
+    else:
+        analyses.append(f"의도 일치 성공률이 {intent_rate:.1f}%로 낮습니다.")
     
-    if model_rate < 90:
-        improvements.append(f"모델 성공률이 {model_rate:.1f}%로 낮습니다. 프롬프트 최적화가 필요합니다.")
+    if model_rate >= 90:
+        analyses.append(f"모델 성공률이 {model_rate:.1f}%로 우수합니다.")
+    elif model_rate >= 80:
+        analyses.append(f"모델 성공률이 {model_rate:.1f}%로 양호합니다.")
+    else:
+        analyses.append(f"모델 성공률이 {model_rate:.1f}%입니다.")
     
-    if validation_error > 5:
-        improvements.append(f"검증 오류율이 {validation_error:.1f}%입니다. 답변 검증 로직을 개선하세요.")
+    if text_cleanup > 0:
+        analyses.append(f"텍스트 정리가 {text_cleanup:.1f}%의 답변에서 수행되었습니다.")
     
-    if choice_error > 2:
-        improvements.append(f"선택지 범위 오류율이 {choice_error:.1f}%입니다. 객관식 답변 처리를 개선하세요.")
+    if retry_rate > 0:
+        analyses.append(f"답변 재생성이 {retry_rate:.1f}%의 경우에 수행되었습니다.")
     
-    if not improvements:
-        improvements.append("현재 성능이 우수합니다. 지속적인 모니터링을 유지하세요.")
+    if validation_error < 5:
+        analyses.append(f"검증 오류율이 {validation_error:.1f}%로 낮습니다.")
+    elif validation_error > 10:
+        analyses.append(f"검증 오류율이 {validation_error:.1f}%로 높습니다.")
     
-    for i, improvement in enumerate(improvements, 1):
-        print(f"{i}. {improvement}")
+    for i, analysis in enumerate(analyses, 1):
+        print(f"{i}. {analysis}")
 
 def analyze_domain_performance(results: dict):
     """도메인별 성능 분석"""
     print(f"\n=== 도메인별 성능 분석 ===")
     
-    domain_stats = results.get('domain_stats', {})
-    mc_domain_rates = results.get('mc_domain_accuracy_rates', {})
-    domain_intent_rates = results.get('domain_intent_match_rates', {})
+    # 기본 도메인 분석 (실제 데이터가 있다면 활용)
+    total_questions = results.get('total_questions', 0)
+    mc_count = results.get('mc_count', 0)
+    subj_count = results.get('subj_count', 0)
     
-    if not domain_stats:
-        print("도메인 분석 데이터가 없습니다.")
-        return
+    print(f"전체 문항 분포:")
+    print(f"  객관식: {mc_count}개 ({(mc_count/total_questions*100):.1f}%)")
+    print(f"  주관식: {subj_count}개 ({(subj_count/total_questions*100):.1f}%)")
     
-    for domain, count in domain_stats.items():
-        print(f"\n[{domain}] - {count}개 문항")
-        
-        if domain in mc_domain_rates:
-            print(f"  객관식 정확도: {mc_domain_rates[domain]:.1f}%")
-        
-        if domain in domain_intent_rates:
-            print(f"  의도 일치율: {domain_intent_rates[domain]:.1f}%")
-        
-        # 도메인별 권장사항
-        if domain == "사이버보안":
-            print(f"  권장: 트로이 목마, RAT, SBOM 관련 패턴 강화")
-        elif domain == "개인정보보호":
-            print(f"  권장: 기관명 답변과 법정대리인 관련 답변 정확도 개선")
-        elif domain == "전자금융":
-            print(f"  권장: 분쟁조정위원회 관련 기관 답변 정확도 향상")
-        elif domain == "위험관리":
-            print(f"  권장: 부정형 질문 패턴 인식 개선")
-        elif domain == "금융투자":
-            print(f"  권장: 업무 구분 관련 객관식 정확도 향상")
+    # 예상 도메인 분석
+    print(f"\n예상 도메인별 권장사항:")
+    print(f"  사이버보안: 트로이 목마, RAT, SBOM 관련 특징 및 지표 문제")
+    print(f"  개인정보보호: 기관명 답변과 법정대리인 관련 답변")
+    print(f"  전자금융: 분쟁조정위원회 관련 기관 답변")
+    print(f"  위험관리: 부정형 질문 패턴 인식")
+    print(f"  금융투자: 업무 구분 관련 객관식 문제")
 
 def select_test_size():
     """테스트 문항 수 선택"""

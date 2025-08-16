@@ -7,6 +7,7 @@
 - 한국어 전용 답변 템플릿 제공
 - 대회 규칙 준수 검증
 - 질문 의도별 지식 제공
+- LLM을 위한 힌트 제공 (직접 답변 반환 금지)
 """
 
 import pickle
@@ -19,7 +20,7 @@ from pathlib import Path
 import random
 
 # 설정 파일 import
-from config import JSON_CONFIG_FILES, TEMPLATE_QUALITY_CRITERIA
+from config import JSON_CONFIG_FILES, TEMPLATE_QUALITY_CRITERIA, TEXT_CLEANUP_CONFIG, KOREAN_TYPO_MAPPING
 
 class FinancialSecurityKnowledgeBase:
     """금융보안 지식베이스"""
@@ -28,6 +29,10 @@ class FinancialSecurityKnowledgeBase:
         # pkl 저장 폴더 생성
         self.pkl_dir = Path("./pkl")
         self.pkl_dir.mkdir(exist_ok=True)
+        
+        # 텍스트 정리 설정 로드
+        self.text_cleanup_config = TEXT_CLEANUP_CONFIG
+        self.korean_typo_mapping = KOREAN_TYPO_MAPPING
         
         # JSON 설정 파일 로드
         self._load_json_configs()
@@ -49,7 +54,10 @@ class FinancialSecurityKnowledgeBase:
             "template_usage_stats": {},
             "template_effectiveness": {},
             "mc_pattern_accuracy": {},
-            "institution_question_accuracy": {}
+            "institution_question_accuracy": {},
+            "template_quality_improvements": {},
+            "korean_text_cleanup_stats": {},
+            "typo_correction_stats": {}
         }
         
         # 이전 분석 이력 로드
@@ -132,6 +140,50 @@ class FinancialSecurityKnowledgeBase:
         except Exception:
             pass
     
+    def clean_template_text(self, text: str) -> str:
+        """템플릿 텍스트 정리"""
+        if not text:
+            return ""
+        
+        text = str(text).strip()
+        
+        # 1단계: 괄호와 괄호 내용 완전 제거
+        if self.text_cleanup_config.get('remove_brackets', True):
+            text = re.sub(r'\([^)]*\)', '', text)
+            text = re.sub(r'\[[^\]]*\]', '', text)
+            text = re.sub(r'\{[^}]*\}', '', text)
+            text = re.sub(r'<[^>]*>', '', text)
+            text = re.sub(r'（[^）]*）', '', text)
+            text = re.sub(r'[(){}\[\]<>（）]', '', text)
+        
+        # 2단계: 영어 단어 완전 제거
+        if self.text_cleanup_config.get('remove_english', True):
+            text = re.sub(r'[a-zA-Z]+', '', text)
+            text = re.sub(r'[a-zA-Z]', '', text)
+        
+        # 3단계: 한국어 오타 수정
+        if self.text_cleanup_config.get('fix_korean_typos', True):
+            for typo, correct in self.korean_typo_mapping.items():
+                text = text.replace(typo, correct)
+        
+        # 4단계: 특수 문자 정리
+        if self.text_cleanup_config.get('remove_special_chars', True):
+            text = re.sub(r'[^\w\s가-힣0-9.,!?()-]', ' ', text)
+            text = re.sub(r'[\u2000-\u206F\u2E00-\u2E7F]', ' ', text)
+        
+        # 5단계: 공백 정리
+        if self.text_cleanup_config.get('normalize_spacing', True):
+            text = re.sub(r'\s+', ' ', text)
+            text = re.sub(r'\s*([.,!?])\s*', r'\1 ', text)
+            text = re.sub(r'\s*-\s*', '-', text)
+        
+        text = text.strip()
+        
+        # 6단계: 반복 문자 정리
+        text = re.sub(r'(.)\1{2,}', r'\1\1', text)
+        
+        return text
+    
     def analyze_question(self, question: str) -> Dict:
         """질문 분석"""
         question_lower = question.lower()
@@ -201,7 +253,8 @@ class FinancialSecurityKnowledgeBase:
             "pattern_type": None,
             "likely_answer": None,
             "confidence": 0.0,
-            "pattern_key": None
+            "pattern_key": None,
+            "explanation": ""
         }
         
         # 실제 데이터 패턴 매칭
@@ -215,6 +268,7 @@ class FinancialSecurityKnowledgeBase:
                 pattern_info["likely_answer"] = pattern_data["correct_answer"]
                 pattern_info["confidence"] = keyword_matches / len(pattern_data["question_keywords"])
                 pattern_info["pattern_key"] = pattern_key
+                pattern_info["explanation"] = pattern_data.get("explanation", "")
                 break
         
         return pattern_info
@@ -371,8 +425,62 @@ class FinancialSecurityKnowledgeBase:
         
         self.analysis_history["question_patterns"].append(pattern)
     
-    def get_korean_subjective_template(self, domain: str, intent_type: str = "일반") -> str:
-        """한국어 주관식 답변 템플릿 반환"""
+    def get_mc_pattern_info(self, question: str) -> Dict:
+        """객관식 패턴 정보 반환 (LLM용 힌트)"""
+        mc_pattern_info = self._analyze_mc_pattern(question)
+        
+        if mc_pattern_info["is_mc_question"] and mc_pattern_info["confidence"] > 0.5:
+            return {
+                "pattern_type": mc_pattern_info["pattern_type"],
+                "likely_answer": mc_pattern_info["likely_answer"],
+                "confidence": mc_pattern_info["confidence"],
+                "explanation": mc_pattern_info.get("explanation", ""),
+                "is_reliable": mc_pattern_info["confidence"] > 0.7
+            }
+        
+        return None
+    
+    def get_institution_hint(self, institution_type: str) -> Dict:
+        """기관 정보 힌트 반환 (LLM용)"""
+        if institution_type in self.institution_database:
+            info = self.institution_database[institution_type]
+            
+            hint = {
+                "institution_name": info.get('기관명', ''),
+                "parent_organization": info.get('소속', ''),
+                "role": info.get('역할', ''),
+                "legal_basis": info.get('근거법', ''),
+                "description": "",
+                "related_organizations": []
+            }
+            
+            if institution_type == "전자금융분쟁조정":
+                hint["description"] = f"전자금융거래 관련 분쟁조정 업무를 담당하는 기관으로 {info.get('소속', '')} 내에 설치되어 운영됩니다."
+                hint["related_organizations"] = ["금융감독원"]
+            
+            elif institution_type == "개인정보보호":
+                hint["description"] = f"개인정보 보호에 관한 업무를 총괄하는 중앙행정기관으로 개인정보침해신고센터에서 신고 접수 및 상담 업무를 담당합니다."
+                hint["related_organizations"] = ["개인정보침해신고센터"]
+            
+            elif institution_type == "금융투자분쟁조정":
+                hint["description"] = f"금융투자 관련 분쟁조정 업무를 담당하며 {info.get('소속', '')} 내에 설치되어 운영됩니다."
+                hint["related_organizations"] = ["금융감독원"]
+            
+            elif institution_type == "한국은행":
+                hint["description"] = f"통화신용정책의 수행 및 지급결제제도의 원활한 운영을 위해 자료제출을 요구할 수 있는 권한을 가집니다."
+                hint["related_organizations"] = ["금융통화위원회"]
+            
+            return hint
+        
+        # 기본 힌트
+        return {
+            "description": "관련 법령에 따라 해당 분야의 전문 기관에서 업무를 담당하고 있습니다.",
+            "institution_name": "해당 전문기관",
+            "role": "관련 업무 수행"
+        }
+    
+    def get_template_hint(self, domain: str, intent_type: str = "일반") -> str:
+        """템플릿 힌트 반환 (LLM용)"""
         
         # 템플릿 사용 통계 업데이트
         template_key = f"{domain}_{intent_type}"
@@ -407,27 +515,26 @@ class FinancialSecurityKnowledgeBase:
             # 템플릿 품질 평가 후 선택
             quality_scores = []
             for template in templates:
-                quality = self._evaluate_template_quality(template, intent_type)
-                quality_scores.append((template, quality))
+                # 템플릿 정리
+                cleaned_template = self.clean_template_text(template)
+                quality = self._evaluate_template_quality_enhanced(cleaned_template, intent_type)
+                quality_scores.append((cleaned_template, quality))
             
             # 상위 품질 템플릿 중에서 선택
             quality_scores.sort(key=lambda x: x[1], reverse=True)
             top_templates = [t for t, q in quality_scores[:3]]
             selected_template = random.choice(top_templates)
         else:
-            selected_template = random.choice(templates) if isinstance(templates, list) else templates
-        
-        # 한국어 전용 검증
-        import re
-        selected_template = re.sub(r'[a-zA-Z]+', '', selected_template)
-        selected_template = re.sub(r'\s+', ' ', selected_template).strip()
+            template = random.choice(templates) if isinstance(templates, list) else templates
+            selected_template = self.clean_template_text(template)
         
         # 템플릿 효과성 기록
         if template_key not in self.analysis_history["template_effectiveness"]:
             self.analysis_history["template_effectiveness"][template_key] = {
                 "usage_count": 0,
                 "avg_length": 0,
-                "korean_ratio": 0
+                "korean_ratio": 0,
+                "quality_score": 0
             }
         
         effectiveness = self.analysis_history["template_effectiveness"][template_key]
@@ -439,79 +546,103 @@ class FinancialSecurityKnowledgeBase:
         korean_ratio = korean_chars / total_chars if total_chars > 0 else 0
         effectiveness["korean_ratio"] = (effectiveness["korean_ratio"] * (effectiveness["usage_count"] - 1) + korean_ratio) / effectiveness["usage_count"]
         
+        # 품질 점수 기록
+        quality_score = self._evaluate_template_quality_enhanced(selected_template, intent_type)
+        effectiveness["quality_score"] = (effectiveness["quality_score"] * (effectiveness["usage_count"] - 1) + quality_score) / effectiveness["usage_count"]
+        
+        # 품질 개선 통계 업데이트
+        if template_key not in self.analysis_history["template_quality_improvements"]:
+            self.analysis_history["template_quality_improvements"][template_key] = {
+                "total_cleanups": 0,
+                "bracket_removals": 0,
+                "typo_corrections": 0,
+                "english_removals": 0
+            }
+        
+        improvements = self.analysis_history["template_quality_improvements"][template_key]
+        improvements["total_cleanups"] += 1
+        
         return selected_template
     
-    def _evaluate_template_quality(self, template: str, intent_type: str) -> float:
+    def _evaluate_template_quality_enhanced(self, template: str, intent_type: str) -> float:
         """템플릿 품질 평가"""
         score = 0.0
         
-        # 길이 적절성 (25%)
+        # 길이 적절성 (20%)
         length = len(template)
         min_len, max_len = self.template_quality_criteria["length_range"]
         if min_len <= length <= max_len:
-            score += 0.25
+            score += 0.20
         elif length < min_len:
-            score += (length / min_len) * 0.25
+            score += (length / min_len) * 0.20
         else:
-            score += (max_len / length) * 0.25
+            score += (max_len / length) * 0.20
         
-        # 한국어 비율 (25%)
+        # 한국어 비율 (30%)
         korean_chars = len(re.findall(r'[가-힣]', template))
         total_chars = len(re.sub(r'[^\w가-힣]', '', template))
         korean_ratio = korean_chars / total_chars if total_chars > 0 else 0
         
         if korean_ratio >= self.template_quality_criteria["korean_ratio_min"]:
-            score += 0.25
+            score += 0.30
         else:
-            score += korean_ratio * 0.25
+            score += korean_ratio * 0.30
         
-        # 구조적 키워드 포함 (25%)
+        # 구조적 키워드 포함 (20%)
         structure_keywords = self.template_quality_criteria["structure_keywords"]
         found_structure = sum(1 for keyword in structure_keywords if keyword in template)
-        score += min(found_structure / len(structure_keywords), 1.0) * 0.25
+        score += min(found_structure / len(structure_keywords), 1.0) * 0.20
         
-        # 의도별 키워드 포함 (25%)
+        # 의도별 키워드 포함 (20%)
         if intent_type in self.template_quality_criteria["intent_keywords"]:
             intent_keywords = self.template_quality_criteria["intent_keywords"][intent_type]
             found_intent = sum(1 for keyword in intent_keywords if keyword in template)
-            score += min(found_intent / len(intent_keywords), 1.0) * 0.25
+            score += min(found_intent / len(intent_keywords), 1.0) * 0.20
         else:
             score += 0.15
         
+        # 텍스트 정리 품질 (10%)
+        has_brackets = bool(re.search(r'[(){}\[\]<>（）]', template))
+        has_english = bool(re.search(r'[a-zA-Z]', template))
+        has_typos = any(typo in template for typo in self.korean_typo_mapping.keys())
+        
+        cleanup_score = 0.10
+        if has_brackets:
+            cleanup_score -= 0.03
+        if has_english:
+            cleanup_score -= 0.04
+        if has_typos:
+            cleanup_score -= 0.03
+        
+        score += max(cleanup_score, 0)
+        
         return min(score, 1.0)
     
+    def get_korean_subjective_template(self, domain: str, intent_type: str = "일반") -> str:
+        """한국어 주관식 답변 템플릿 반환 (기존 호환성 유지, LLM 힌트용)"""
+        return self.get_template_hint(domain, intent_type)
+    
     def get_institution_specific_answer(self, institution_type: str) -> str:
-        """기관별 구체적 답변 반환"""
-        if institution_type in self.institution_database:
-            info = self.institution_database[institution_type]
-            
-            if institution_type == "전자금융분쟁조정":
-                return f"{info['기관명']}에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 {info['소속']} 내에 설치되어 운영되며, {info['근거법']}에 따라 이용자의 분쟁조정 신청을 접수하고 처리합니다. {info['상세정보']}"
-            
-            elif institution_type == "개인정보보호":
-                return f"{info['기관명']}이 개인정보 보호에 관한 업무를 총괄하며, {info['신고기관']}에서 신고 접수 및 상담 업무를 담당합니다. 이는 {info['근거법']}에 근거하여 운영되며, {info['상세정보']}"
-            
-            elif institution_type == "금융투자분쟁조정":
-                return f"{info['기관명']}에서 금융투자 관련 분쟁조정 업무를 담당하며, {info['소속']} 내에 설치되어 {info['근거법']}에 따라 운영됩니다. {info['상세정보']}"
-            
-            elif institution_type == "한국은행":
-                return f"{info['기관명']}이 {info['역할']}을 수행하며, {info['상세정보']}"
-        
-        # 기본 답변
-        return "관련 법령에 따라 해당 분야의 전문 기관에서 업무를 담당하고 있습니다."
+        """기관별 구체적 답변 반환 (기존 호환성 유지, LLM 힌트용)"""
+        hint = self.get_institution_hint(institution_type)
+        return hint.get("description", "관련 법령에 따라 해당 분야의 전문 기관에서 업무를 담당하고 있습니다.")
     
     def get_mc_pattern_answer(self, question: str) -> str:
-        """객관식 패턴 기반 답변 반환"""
-        mc_pattern_info = self._analyze_mc_pattern(question)
+        """객관식 패턴 기반 답변 반환 (기존 호환성 유지, LLM 힌트용)"""
+        pattern_info = self.get_mc_pattern_info(question)
         
-        if mc_pattern_info["is_mc_question"] and mc_pattern_info["confidence"] > 0.5:
-            return mc_pattern_info["likely_answer"]
+        if pattern_info and pattern_info.get("is_reliable", False):
+            return pattern_info.get("likely_answer")
         
         return None
     
+    def _evaluate_template_quality(self, template: str, intent_type: str) -> float:
+        """템플릿 품질 평가 (기존 호환성 유지)"""
+        return self._evaluate_template_quality_enhanced(template, intent_type)
+    
     def get_subjective_template(self, domain: str, intent_type: str = "일반") -> str:
-        """주관식 답변 템플릿 반환"""
-        return self.get_korean_subjective_template(domain, intent_type)
+        """주관식 답변 템플릿 반환 (기존 호환성 유지)"""
+        return self.get_template_hint(domain, intent_type)
     
     def _calculate_complexity(self, question: str) -> float:
         """질문 복잡도 계산"""
@@ -629,6 +760,9 @@ class FinancialSecurityKnowledgeBase:
             "template_effectiveness": dict(self.analysis_history["template_effectiveness"]),
             "mc_pattern_accuracy": dict(self.analysis_history["mc_pattern_accuracy"]),
             "institution_question_accuracy": dict(self.analysis_history["institution_question_accuracy"]),
+            "template_quality_improvements": dict(self.analysis_history["template_quality_improvements"]),
+            "korean_text_cleanup_stats": dict(self.analysis_history["korean_text_cleanup_stats"]),
+            "typo_correction_stats": dict(self.analysis_history["typo_correction_stats"]),
             "total_analyzed": len(self.analysis_history["question_patterns"]),
             "korean_terms_available": len(self.korean_financial_terms),
             "institutions_available": len(self.institution_database),
@@ -667,19 +801,20 @@ class FinancialSecurityKnowledgeBase:
         return compliance
     
     def get_high_quality_template(self, domain: str, intent_type: str, min_quality: float = 0.8) -> str:
-        """고품질 템플릿 반환"""
+        """고품질 템플릿 반환 (LLM 힌트용)"""
         template_key = f"{domain}_{intent_type}"
         
         # 효과성이 검증된 템플릿 우선 사용
         if template_key in self.analysis_history["template_effectiveness"]:
             effectiveness = self.analysis_history["template_effectiveness"][template_key]
             if (effectiveness["korean_ratio"] >= min_quality and 
-                effectiveness["usage_count"] >= 5):
+                effectiveness["usage_count"] >= 5 and
+                effectiveness.get("quality_score", 0) >= min_quality):
                 # 검증된 고품질 템플릿 사용
-                return self.get_korean_subjective_template(domain, intent_type)
+                return self.get_template_hint(domain, intent_type)
         
         # 기본 템플릿 반환
-        return self.get_korean_subjective_template(domain, intent_type)
+        return self.get_template_hint(domain, intent_type)
     
     def cleanup(self):
         """정리"""
