@@ -467,7 +467,7 @@ class FinancialAIInference:
         self._update_stats(question_type, domain, difficulty, processing_time)
         
         # 컨텍스트 정확도 추적
-        if answer and answer.isdigit() and 1 <= int(answer) <= max_choice:
+        if answer and answer.isdigit() and max_choice > 0 and 1 <= int(answer) <= max_choice:
             self.stats["mc_context_accuracy"] += 1
     
     def _update_subj_stats(self, question_type: str, domain: str, difficulty: str, 
@@ -511,11 +511,19 @@ class FinancialAIInference:
     
     def _get_safe_mc_answer(self, max_choice: int) -> str:
         """안전한 객관식 답변 생성"""
+        # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
+        if max_choice <= 0:
+            max_choice = 5
+        
         import random
         return str(random.randint(1, max_choice))
     
     def _get_safe_fallback(self, question: str, question_type: str, max_choice: int) -> str:
         """안전한 폴백 답변"""
+        # max_choice 유효성 검증
+        if max_choice <= 0:
+            max_choice = 5
+        
         # 간단한 객관식/주관식 구분
         if question_type == "multiple_choice" or (any(str(i) in question for i in range(1, 6)) and len(question) < 300):
             return self._get_safe_mc_answer(max_choice)

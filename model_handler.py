@@ -425,6 +425,10 @@ class SimpleModelHandler:
     
     def _get_context_based_mc_answer(self, question: str, max_choice: int, domain: str = "일반") -> str:
         """컨텍스트 기반 객관식 답변 생성"""
+        # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
+        if max_choice <= 0:
+            max_choice = 5
+        
         context = self._analyze_mc_context(question, domain)
         
         # 도메인별 학습된 패턴 적용
@@ -493,6 +497,10 @@ class SimpleModelHandler:
         choices = []
         for i, weight in enumerate(weights):
             choices.extend([str(i+1)] * weight)
+        
+        if not choices:
+            # weights가 비어있는 경우 기본값 사용
+            choices = [str(i+1) for i in range(max_choice)]
         
         selected = random.choice(choices)
         
@@ -566,7 +574,9 @@ class SimpleModelHandler:
             if templates:
                 best_template = max(templates, key=lambda x: x.get("quality", 0))
                 if best_template["quality"] > 0.8:
-                    return best_template["prompt"]
+                    # 'prompt' 키 대신 'answer_template' 키 사용
+                    if "answer_template" in best_template:
+                        return best_template["answer_template"]
         
         prompts = [
             f"""금융보안 전문가로서 다음 {domain} 관련 질문에 한국어로만 정확한 답변을 작성하세요.
@@ -853,6 +863,10 @@ class SimpleModelHandler:
     
     def _create_enhanced_mc_prompt(self, question: str, max_choice: int, domain: str = "일반") -> str:
         """객관식 프롬프트 생성"""
+        # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
+        if max_choice <= 0:
+            max_choice = 5
+        
         context = self._analyze_mc_context(question, domain)
         
         # 선택지 범위 명시
@@ -976,6 +990,10 @@ class SimpleModelHandler:
     
     def _process_enhanced_mc_answer(self, response: str, question: str, max_choice: int, domain: str = "일반") -> str:
         """객관식 답변 처리"""
+        # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
+        if max_choice <= 0:
+            max_choice = 5
+        
         # 숫자 추출 (선택지 범위 내에서만)
         numbers = re.findall(r'[1-9]', response)
         for num in numbers:
@@ -1187,6 +1205,10 @@ class SimpleModelHandler:
     
     def _get_balanced_mc_answer(self, max_choice: int) -> str:
         """균등 분포 객관식 답변"""
+        # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
+        if max_choice <= 0:
+            max_choice = 5
+        
         if max_choice not in self.mc_answer_counts or self.mc_answer_counts[max_choice] < max_choice:
             return str(random.randint(1, max_choice))
         
@@ -1211,6 +1233,9 @@ class SimpleModelHandler:
     def _get_fallback_answer(self, question_type: str, question: str = "", max_choice: int = 5, intent_analysis: Dict = None, domain: str = "일반") -> str:
         """폴백 답변"""
         if question_type == "multiple_choice":
+            # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
+            if max_choice <= 0:
+                max_choice = 5
             return self._get_context_based_mc_answer(question, max_choice, domain)
         else:
             return self._generate_intent_based_template_answer(question, intent_analysis)
