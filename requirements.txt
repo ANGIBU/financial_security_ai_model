@@ -18,6 +18,11 @@ pyyaml==6.0.1
 typing-extensions==4.8.0
 regex==2023.10.3
 
+# 추가 유틸리티 (성능 최적화)
+tqdm==4.66.1
+requests==2.31.0
+urllib3==2.0.7
+
 # 설치 가이드:
 # 1. PyTorch 설치 (CUDA 11.8 지원):
 #    pip install torch==2.1.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118

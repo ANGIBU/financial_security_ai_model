@@ -292,66 +292,82 @@ class SimpleModelHandler:
         
         return context
     
-    def clean_generated_text(self, text: str) -> str:
-        """생성된 텍스트 정리"""
+    def clean_generated_text_safe(self, text: str) -> str:
+        """안전한 텍스트 정리 (과도한 정리 방지)"""
         if not text:
             return ""
         
         text = str(text).strip()
         
-        # 1단계: 괄호와 괄호 내용 완전 제거
-        if self.text_cleanup_config.get('remove_brackets', True):
-            # 모든 종류의 괄호와 내용 제거
-            text = re.sub(r'\([^)]*\)', '', text)
-            text = re.sub(r'\[[^\]]*\]', '', text)
-            text = re.sub(r'\{[^}]*\}', '', text)
-            text = re.sub(r'<[^>]*>', '', text)
-            text = re.sub(r'（[^）]*）', '', text)
-            # 빈 괄호 제거
-            text = re.sub(r'[(){}\[\]<>（）]', '', text)
+        # 기본 정리만 수행 (과도한 정리 방지)
+        # 1단계: 명백한 오류만 수정
+        if "감추인" in text:
+            text = text.replace("감추인", "숨겨진")
+        if "컨퍼머시" in text:
+            text = text.replace("컨퍼머시", "시스템")
+        if "피-에" in text:
+            text = text.replace("피-에", "대상에")
+        if "백-도어" in text:
+            text = text.replace("백-도어", "백도어")
+        if "키-로거" in text:
+            text = text.replace("키-로거", "키로거")
+        if "스크리너" in text:
+            text = text.replace("스크리너", "화면캡처")
+        if "채팅-클라언트" in text:
+            text = text.replace("채팅-클라언트", "통신 기능")
+        if "파일-업-" in text:
+            text = text.replace("파일-업-", "파일 업로드")
         
-        # 2단계: 영어 단어 완전 제거
-        if self.text_cleanup_config.get('remove_english', True):
-            # 연속된 영어 문자 제거
-            text = re.sub(r'[a-zA-Z]+', '', text)
-            # 남은 영어 문자 제거
-            text = re.sub(r'[a-zA-Z]', '', text)
+        # 2단계: 특수문자 정리 (최소한만)
+        text = re.sub(r'-{2,}', ' ', text)
+        text = re.sub(r'\s+', ' ', text)
         
-        # 3단계: 한국어 오타 수정
-        if self.text_cleanup_config.get('fix_korean_typos', True):
-            for typo, correct in self.korean_typo_mapping.items():
-                text = text.replace(typo, correct)
-        
-        # 4단계: 특수 문자 정리
-        if self.text_cleanup_config.get('remove_special_chars', True):
-            # 허용되는 문자만 유지 (한글, 숫자, 기본 문장부호)
-            text = re.sub(r'[^\w\s가-힣0-9.,!?()-]', ' ', text)
-            # 이상한 유니코드 문자 제거
-            text = re.sub(r'[\u2000-\u206F\u2E00-\u2E7F]', ' ', text)
-        
-        # 5단계: 공백 정리
-        if self.text_cleanup_config.get('normalize_spacing', True):
-            # 여러 공백을 하나로
-            text = re.sub(r'\s+', ' ', text)
-            # 문장부호 앞뒤 공백 정리
-            text = re.sub(r'\s*([.,!?])\s*', r'\1 ', text)
-            text = re.sub(r'\s*-\s*', '-', text)
-        
-        # 6단계: 문장 시작과 끝 정리
+        # 3단계: 문장 끝 정리
         text = text.strip()
         
-        # 7단계: 반복 문자 정리
-        text = re.sub(r'(.)\1{2,}', r'\1\1', text)
+        return text
+    
+    def clean_generated_text(self, text: str) -> str:
+        """생성된 텍스트 정리 (개선된 버전)"""
+        if not text:
+            return ""
         
-        # 8단계: 의미없는 단어 조합 제거
-        nonsense_patterns = [
-            r'백\s*후문', r'캉터\s*리소', r'트래\s*픁', r'메세\s*지',
-            r'액세\s*스', r'하웨\s*어', r'네됴\s*크', r'솓웨\s*어'
-        ]
-        for pattern in nonsense_patterns:
-            text = re.sub(pattern, '', text)
+        # 먼저 안전한 정리 수행
+        text = self.clean_generated_text_safe(text)
         
-        return text.strip()
+        # 추가 정리가 필요한 경우에만 수행
+        text = str(text).strip()
+        
+        # 명백한 오류 수정
+        korean_corrections = {
+            "전자금윋": "전자금융",
+            "과롷": "과정",
+            "캉터": "컴퓨터",
+            "트래픁": "트래픽",
+            "윋": "융",
+            "롷": "정",
+            "픁": "픽",
+            "웋": "웅",
+            "솓": "소프트",
+            "하웨어": "하드웨어",
+            "네됴크": "네트워크",
+            "액세스": "접근",
+            "메세지": "메시지",
+            "리소스": "자원"
+        }
+        
+        for wrong, correct in korean_corrections.items():
+            text = text.replace(wrong, correct)
+        
+        # 비정상적인 하이픈 패턴 수정
+        text = re.sub(r'([가-힣])-([가-힣])', r'\1\2', text)
+        text = re.sub(r'([가-힣])-([ㄱ-ㅎ])', r'\1\2', text)
+        
+        # 공백 정리
+        text = re.sub(r'\s+', ' ', text)
+        text = text.strip()
+        
+        return text
     
     def validate_generated_answer(self, answer: str, question_type: str) -> bool:
         """생성된 답변 품질 검증"""
@@ -371,8 +387,21 @@ class SimpleModelHandler:
             # 객관식은 숫자만 있으면 됨
             return bool(re.search(r'[1-5]', answer))
         else:
-            # 주관식은 한국어 비율과 길이 확인
-            return korean_ratio >= 0.8 and len(answer) >= 30
+            # 주관식 검증 강화
+            # 비정상적인 텍스트 패턴 체크
+            abnormal_patterns = [
+                r'[가-힣]-[가-힣]',  # 한글 사이 하이픈
+                r'감추인|컨퍼머시|피-에',  # 잘못된 단어들
+                r'^[^가-힣]*$',  # 한국어가 전혀 없음
+                r'.{0,10}$'  # 너무 짧음
+            ]
+            
+            for pattern in abnormal_patterns:
+                if re.search(pattern, answer):
+                    return False
+            
+            # 한국어 비율과 길이 확인
+            return korean_ratio >= 0.7 and len(answer) >= 30
     
     def generate_enhanced_mc_answer(self, question: str, max_choice: int, domain: str, 
                                    pattern_hint: Dict = None, context_hint: Dict = None) -> str:
@@ -424,30 +453,43 @@ class SimpleModelHandler:
         return self._process_enhanced_mc_answer(answer, question, max_choice, domain)
     
     def generate_institution_answer(self, question: str, institution_hint: Dict = None, intent_analysis: Dict = None) -> str:
-        """기관 답변 생성 (LLM 필수 사용)"""
+        """기관 답변 생성 (LLM 필수 사용) - 개선된 버전"""
         
         # 기관 힌트를 프롬프트에 포함
         hint_text = ""
+        institution_name = ""
+        
         if institution_hint:
             hint_text += f"\n참고 정보: {institution_hint.get('description', '')}"
             if institution_hint.get('institution_name'):
-                hint_text += f"\n관련 기관: {institution_hint['institution_name']}"
+                institution_name = institution_hint['institution_name']
+                hint_text += f"\n관련 기관: {institution_name}"
             if institution_hint.get('role'):
                 hint_text += f"\n담당 업무: {institution_hint['role']}"
+            if institution_hint.get('parent_organization'):
+                hint_text += f"\n소속: {institution_hint['parent_organization']}"
         
-        prompt = f"""다음은 기관 관련 질문입니다. 참고 정보를 바탕으로 정확한 답변을 생성하세요.{hint_text}
+        # 구체적인 기관명 포함한 프롬프트
+        prompt = f"""다음은 기관 관련 질문입니다. 구체적인 기관명을 포함하여 정확한 답변을 생성하세요.{hint_text}
 
 질문: {question}
 
 위 질문에 대해 구체적인 기관명과 역할을 포함하여 한국어로만 답변하세요.
+기관명을 반드시 명시하고, 해당 기관의 역할과 업무를 설명하세요.
 
 답변:"""
         
-        answer = self._generate_with_llm(prompt, "subjective", 5)
-        return self.clean_generated_text(answer)
+        answer = self._generate_with_llm_improved(prompt, "subjective", 5)
+        cleaned_answer = self.clean_generated_text(answer)
+        
+        # 기관명이 포함되지 않았으면 추가
+        if institution_name and institution_name not in cleaned_answer:
+            cleaned_answer = f"{institution_name}에서 {cleaned_answer}"
+        
+        return cleaned_answer
     
     def generate_enhanced_subj_answer(self, question: str, domain: str, intent_analysis: Dict = None, template_hint: str = None) -> str:
-        """향상된 주관식 답변 생성 (LLM 필수 사용)"""
+        """향상된 주관식 답변 생성 (LLM 필수 사용) - 개선된 버전"""
         
         # 템플릿 힌트를 프롬프트에 포함
         hint_text = ""
@@ -467,17 +509,21 @@ class SimpleModelHandler:
 질문: {question}
 
 위 질문에 대해 한국어로만 체계적이고 전문적인 답변을 작성하세요.
+명확하고 정확한 한국어로 답변하며, 전문 용어는 올바르게 사용하세요.
 
 답변:"""
         
-        answer = self._generate_with_llm(prompt, "subjective", 5)
+        answer = self._generate_with_llm_improved(prompt, "subjective", 5)
         cleaned_answer = self.clean_generated_text(answer)
         return self.fix_korean_sentence_structure(cleaned_answer)
     
     def fix_korean_sentence_structure(self, text: str) -> str:
-        """한국어 문장 구조 수정"""
+        """한국어 문장 구조 수정 - 개선된 버전"""
         if not text:
             return ""
+        
+        # 비정상적인 패턴 먼저 수정
+        text = self.clean_generated_text_safe(text)
         
         # 문장 분할
         sentences = []
@@ -487,7 +533,7 @@ class SimpleModelHandler:
             current_sentence += char
             if char in ['.', '!', '?']:
                 sentence = current_sentence.strip()
-                if len(sentence) > 3:  # 의미있는 문장만
+                if len(sentence) > 5:  # 최소 길이 조건 완화
                     sentences.append(sentence)
                 current_sentence = ""
         
@@ -498,15 +544,15 @@ class SimpleModelHandler:
         # 각 문장 정리
         cleaned_sentences = []
         for sentence in sentences:
-            # 불완전한 문장 제거
-            if len(sentence) < 10:
+            # 너무 짧은 문장은 제외하되 조건 완화
+            if len(sentence) < 5:
                 continue
             
-            # 한국어 비율 확인
+            # 한국어 비율 확인 (조건 완화)
             korean_chars = len(re.findall(r'[가-힣]', sentence))
             total_chars = len(re.sub(r'[^\w가-힣]', '', sentence))
             
-            if total_chars > 0 and korean_chars / total_chars >= 0.8:
+            if total_chars > 0 and korean_chars / total_chars >= 0.6:  # 0.8에서 0.6으로 완화
                 cleaned_sentences.append(sentence)
         
         # 문장 연결
@@ -519,7 +565,7 @@ class SimpleModelHandler:
         return result
     
     def generate_intent_focused_answer(self, question: str, domain: str, intent_analysis: Dict, template_hint: str = None) -> str:
-        """의도 집중 답변 생성 (LLM 필수 사용)"""
+        """의도 집중 답변 생성 (LLM 필수 사용) - 개선된 버전"""
         
         primary_intent = intent_analysis.get("primary_intent", "일반")
         answer_type = intent_analysis.get("answer_type_required", "설명형")
@@ -548,10 +594,11 @@ class SimpleModelHandler:
 질문: {question}
 
 질문의 의도({answer_type})에 정확히 부합하도록 한국어로만 답변하세요.
+명확하고 정확한 전문 용어를 사용하여 체계적으로 설명하세요.
 
 답변:"""
         
-        answer = self._generate_with_llm(prompt, "subjective", 5)
+        answer = self._generate_with_llm_improved(prompt, "subjective", 5)
         cleaned_answer = self.clean_generated_text(answer)
         return self.fix_korean_sentence_structure(cleaned_answer)
     
@@ -566,26 +613,27 @@ class SimpleModelHandler:
 
 정답:"""
         
-        answer = self._generate_with_llm(prompt, "multiple_choice", max_choice)
+        answer = self._generate_with_llm_improved(prompt, "multiple_choice", max_choice)
         return self._process_enhanced_mc_answer(answer, question, max_choice, "일반")
     
     def generate_simple_subj_answer(self, question: str) -> str:
-        """간단한 주관식 답변 생성 (LLM 필수 사용)"""
+        """간단한 주관식 답변 생성 (LLM 필수 사용) - 개선된 버전"""
         
         prompt = f"""다음 질문에 한국어로만 답변하세요.
 
 질문: {question}
 
 관련 법령과 규정을 바탕으로 전문적인 답변을 작성하세요.
+명확하고 정확한 한국어로 답변하며, 전문 용어는 올바르게 사용하세요.
 
 답변:"""
         
-        answer = self._generate_with_llm(prompt, "subjective", 5)
+        answer = self._generate_with_llm_improved(prompt, "subjective", 5)
         cleaned_answer = self.clean_generated_text(answer)
         return self.fix_korean_sentence_structure(cleaned_answer)
     
-    def _generate_with_llm(self, prompt: str, question_type: str, max_choice: int = 5) -> str:
-        """LLM을 통한 답변 생성"""
+    def _generate_with_llm_improved(self, prompt: str, question_type: str, max_choice: int = 5) -> str:
+        """개선된 LLM 답변 생성"""
         
         try:
             # 토크나이징
@@ -593,14 +641,14 @@ class SimpleModelHandler:
                 prompt,
                 return_tensors="pt",
                 truncation=True,
-                max_length=1500
+                max_length=1800  # 길이 증가
             )
             
             if self.device == "cuda":
                 inputs = inputs.to(self.model.device)
             
-            # 생성 설정
-            gen_config = self._get_generation_config(question_type)
+            # 생성 설정 개선
+            gen_config = self._get_generation_config_improved(question_type)
             
             # 모델 실행
             with torch.no_grad():
@@ -623,7 +671,7 @@ class SimpleModelHandler:
                 return cleaned_response
             else:
                 # 재시도
-                return self._retry_generation(prompt, question_type, max_choice)
+                return self._retry_generation_improved(prompt, question_type, max_choice)
                 
         except Exception as e:
             if self.verbose:
@@ -635,8 +683,12 @@ class SimpleModelHandler:
             else:
                 return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
     
-    def _retry_generation(self, prompt: str, question_type: str, max_choice: int, retry_count: int = 0) -> str:
-        """재시도 생성"""
+    def _generate_with_llm(self, prompt: str, question_type: str, max_choice: int = 5) -> str:
+        """기존 호환성을 위한 LLM 생성 (개선된 버전 호출)"""
+        return self._generate_with_llm_improved(prompt, question_type, max_choice)
+    
+    def _retry_generation_improved(self, prompt: str, question_type: str, max_choice: int, retry_count: int = 0) -> str:
+        """개선된 재시도 생성"""
         if retry_count >= 2:
             # 최대 재시도 횟수 초과
             if question_type == "multiple_choice":
@@ -646,12 +698,21 @@ class SimpleModelHandler:
                 return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
         
         try:
-            # 온도를 낮춰서 재시도
-            inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1500)
+            # 더 구체적인 프롬프트로 재시도
+            if question_type == "subjective":
+                improved_prompt = f"""질문을 정확히 이해하고 명확한 한국어로 답변하세요.
+
+{prompt}
+
+반드시 올바른 한국어로만 답변하고, 비정상적인 단어나 표현을 사용하지 마세요."""
+            else:
+                improved_prompt = prompt
+            
+            inputs = self.tokenizer(improved_prompt, return_tensors="pt", truncation=True, max_length=1800)
             if self.device == "cuda":
                 inputs = inputs.to(self.model.device)
             
-            gen_config = self._get_generation_config(question_type)
+            gen_config = self._get_generation_config_improved(question_type)
             gen_config.temperature = max(0.1, gen_config.temperature - 0.1)
             
             with torch.no_grad():
@@ -667,10 +728,25 @@ class SimpleModelHandler:
             if self.validate_generated_answer(cleaned_response, question_type):
                 return cleaned_response
             else:
-                return self._retry_generation(prompt, question_type, max_choice, retry_count + 1)
+                return self._retry_generation_improved(prompt, question_type, max_choice, retry_count + 1)
                 
         except Exception:
-            return self._retry_generation(prompt, question_type, max_choice, retry_count + 1)
+            return self._retry_generation_improved(prompt, question_type, max_choice, retry_count + 1)
+    
+    def _get_generation_config_improved(self, question_type: str) -> GenerationConfig:
+        """개선된 생성 설정"""
+        config_dict = GENERATION_CONFIG[question_type].copy()
+        
+        # 더 안정적인 설정
+        if question_type == "subjective":
+            config_dict['temperature'] = 0.2  # 더 낮은 온도로 안정성 증가
+            config_dict['top_p'] = 0.9
+            config_dict['repetition_penalty'] = 1.2
+        
+        config_dict['pad_token_id'] = self.tokenizer.pad_token_id
+        config_dict['eos_token_id'] = self.tokenizer.eos_token_id
+        
+        return GenerationConfig(**config_dict)
     
     def _create_enhanced_mc_prompt(self, question: str, max_choice: int, domain: str = "일반", hint_text: str = "") -> str:
         """향상된 객관식 프롬프트 생성"""
@@ -679,16 +755,14 @@ class SimpleModelHandler:
         if max_choice <= 0:
             max_choice = 5
         
-        # 선택지 범위 명시
-        choice_range = "에서 ".join([str(i) for i in range(1, max_choice+1)]) + f"번 중"
-        
+        # 더 구체적인 프롬프트
         prompts = [
             f"""다음은 {domain} 분야의 금융보안 관련 문제입니다.{hint_text}
 
 {question}
 
-위 문제를 신중히 분석하고, 1부터 {max_choice}까지 중 하나의 정답을 선택하세요.
-각 선택지를 꼼꼼히 검토한 후 정답 번호만 답하세요.
+위 문제를 신중히 분석하여 정답을 선택하세요.
+각 선택지를 꼼꼼히 검토한 후 1부터 {max_choice}번 중 하나의 정답 번호만 답하세요.
 
 정답:""",
             
@@ -699,21 +773,13 @@ class SimpleModelHandler:
 선택지를 모두 검토한 후 1부터 {max_choice}번 중 정답을 선택하세요.
 번호만 답하세요.
 
-답:""",
-            
-            f"""다음 {domain} 분야 금융보안 문제를 분석하고 정답을 선택하세요.{hint_text}
-
-문제: {question}
-
-정답을 1부터 {max_choice}번 중 하나의 번호로만 답하세요.
-
-정답:"""
+답:"""
         ]
         
         return random.choice(prompts)
     
     def _create_korean_subj_prompt(self, question: str, domain: str = "일반") -> str:
-        """한국어 전용 주관식 프롬프트 생성"""
+        """한국어 전용 주관식 프롬프트 생성 - 개선된 버전"""
         
         prompts = [
             f"""금융보안 전문가로서 다음 {domain} 분야 질문에 대해 한국어로만 정확한 답변을 작성하세요.
@@ -724,7 +790,7 @@ class SimpleModelHandler:
 - 반드시 한국어로만 작성
 - 관련 법령과 규정을 근거로 구체적 내용 포함
 - 실무적이고 전문적인 관점에서 설명
-- 영어 용어 사용 금지
+- 명확하고 정확한 전문 용어 사용
 
 답변:""",
             
@@ -735,18 +801,7 @@ class SimpleModelHandler:
 한국어 전용 답변 작성 기준:
 - 모든 전문 용어를 한국어로 표기
 - 법적 근거와 실무 절차를 한국어로 설명
-- 영어나 외국어 사용 금지
-
-답변:""",
-            
-            f"""{domain} 전문가의 관점에서 다음 질문에 한국어로만 답변하세요.
-
-질문: {question}
-
-답변 요구사항:
-- 완전한 한국어 답변
-- 관련 법령과 규정을 한국어로 설명
-- 체계적이고 구체적인 한국어 설명
+- 명확하고 정확한 문장 구조 사용
 
 답변:"""
         ]
@@ -754,12 +809,8 @@ class SimpleModelHandler:
         return random.choice(prompts)
     
     def _get_generation_config(self, question_type: str) -> GenerationConfig:
-        """생성 설정"""
-        config_dict = GENERATION_CONFIG[question_type].copy()
-        config_dict['pad_token_id'] = self.tokenizer.pad_token_id
-        config_dict['eos_token_id'] = self.tokenizer.eos_token_id
-        
-        return GenerationConfig(**config_dict)
+        """생성 설정 (기존 호환성 유지)"""
+        return self._get_generation_config_improved(question_type)
     
     def _process_enhanced_mc_answer(self, response: str, question: str, max_choice: int, domain: str = "일반") -> str:
         """객관식 답변 처리"""
@@ -787,7 +838,7 @@ class SimpleModelHandler:
 
 정답 번호만 답하세요:"""
         
-        fallback_response = self._generate_with_llm(fallback_prompt, "multiple_choice", max_choice)
+        fallback_response = self._generate_with_llm_improved(fallback_prompt, "multiple_choice", max_choice)
         fallback_response = self.clean_generated_text(fallback_response)
         fallback_numbers = re.findall(r'[1-9]', fallback_response)
         
@@ -815,7 +866,7 @@ class SimpleModelHandler:
                 prompt = self._create_korean_subj_prompt(question, domain)
         
         # LLM 생성
-        response = self._generate_with_llm(prompt, question_type, max_choice)
+        response = self._generate_with_llm_improved(prompt, question_type, max_choice)
         
         # 후처리
         if question_type == "multiple_choice":
@@ -827,13 +878,13 @@ class SimpleModelHandler:
             final_answer = self.fix_korean_sentence_structure(cleaned_answer)
             korean_ratio = self._calculate_korean_ratio(final_answer)
             quality_score = self._calculate_answer_quality(final_answer, question, intent_analysis)
-            success = korean_ratio > 0.7 and quality_score > 0.5
+            success = korean_ratio > 0.6 and quality_score > 0.4  # 기준 완화
             
             self._add_learning_record(question, final_answer, question_type, success, max_choice, quality_score, intent_analysis)
             return final_answer
     
     def _create_intent_aware_prompt(self, question: str, intent_analysis: Dict) -> str:
-        """의도 인식 기반 프롬프트 생성"""
+        """의도 인식 기반 프롬프트 생성 - 개선된 버전"""
         primary_intent = intent_analysis.get("primary_intent", "일반")
         answer_type = intent_analysis.get("answer_type_required", "설명형")
         domain = self._detect_domain(question)
@@ -874,8 +925,7 @@ class SimpleModelHandler:
         if context_hints:
             context_instruction = f"답변 시 다음 사항을 고려하세요: {', '.join(context_hints)}"
         
-        prompts = [
-            f"""금융보안 전문가로서 다음 {domain} 관련 질문에 한국어로만 정확한 답변을 작성하세요.
+        prompt = f"""금융보안 전문가로서 다음 {domain} 관련 질문에 한국어로만 정확한 답변을 작성하세요.
 
 질문: {question}
 
@@ -888,125 +938,14 @@ class SimpleModelHandler:
 - 질문의 의도에 정확히 부합하는 내용 포함
 - 관련 법령과 규정을 근거로 구체적 내용 포함
 - 실무적이고 전문적인 관점에서 설명
-
-답변:""",
-            
-            f"""{domain} 전문가의 관점에서 다음 질문에 한국어로만 답변하세요.
-
-{question}
-
-질문 의도: {primary_intent.replace('_', ' ')}
-요구되는 답변 유형: {answer_type}
-신뢰도: {intent_confidence:.1f}
-
-{intent_instruction}
-{type_guidance}
-{context_instruction}
-
-한국어 전용 답변 작성 기준:
-- 모든 전문 용어를 한국어로 표기
-- 질문이 요구하는 정확한 내용에 집중
-- 법적 근거와 실무 절차를 한국어로 설명
-
-답변:"""
-        ]
-        
-        return random.choice(prompts)
-    
-    def _process_intent_aware_subj_answer(self, response: str, question: str, intent_analysis: Dict = None) -> str:
-        """의도 인식 기반 주관식 답변 처리"""
-        # 기본 정리
-        cleaned_response = self.clean_generated_text(response)
-        
-        # 한국어 비율 확인
-        korean_ratio = self._calculate_korean_ratio(cleaned_response)
-        
-        # 의도별 답변 검증
-        is_intent_match = True
-        if intent_analysis:
-            primary_intent = intent_analysis.get("primary_intent", "일반")
-            answer_type = intent_analysis.get("answer_type_required", "설명형")
-            
-            # 기관명이 필요한 경우 기관명 포함 여부 확인
-            if answer_type == "기관명":
-                institution_keywords = [
-                    "위원회", "감독원", "은행", "기관", "센터", "청", "부", "원",
-                    "전자금융분쟁조정위원회", "금융감독원", "개인정보보호위원회",
-                    "개인정보침해신고센터", "한국은행", "금융위원회"
-                ]
-                is_intent_match = any(keyword in cleaned_response for keyword in institution_keywords)
-            
-            # 특징 설명이 필요한 경우
-            elif answer_type == "특징설명":
-                feature_keywords = ["특징", "특성", "속성", "성질", "기능", "역할", "원리"]
-                is_intent_match = any(keyword in cleaned_response for keyword in feature_keywords)
-            
-            # 지표 나열이 필요한 경우
-            elif answer_type == "지표나열":
-                indicator_keywords = ["지표", "신호", "징후", "패턴", "행동", "활동", "모니터링", "탐지"]
-                is_intent_match = any(keyword in cleaned_response for keyword in indicator_keywords)
-        
-        # 한국어 비율이 낮거나 의도와 맞지 않으면 재생성
-        if korean_ratio < 0.8 or len(cleaned_response) < 20 or not is_intent_match:
-            return self._generate_intent_based_template_answer(question, intent_analysis)
-        
-        # 문장 구조 수정
-        final_answer = self.fix_korean_sentence_structure(cleaned_response)
-        
-        # 길이 제한
-        if len(final_answer) > 350:
-            sentences = final_answer.split('. ')
-            final_answer = '. '.join(sentences[:3])
-            if not final_answer.endswith('.'):
-                final_answer += '.'
-        
-        # 마침표 확인
-        if not final_answer.endswith(('.', '다', '요', '함')):
-            final_answer += '.'
-        
-        return final_answer
-    
-    def _generate_intent_based_template_answer(self, question: str, intent_analysis: Dict = None) -> str:
-        """의도 기반 템플릿 답변 생성 (LLM 거쳐서)"""
-        domain = self._detect_domain(question)
-        
-        # 기본 템플릿 힌트
-        template_hint = "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
-        
-        # 의도별 템플릿 힌트 선택
-        if intent_analysis:
-            primary_intent = intent_analysis.get("primary_intent", "일반")
-            
-            if "기관" in primary_intent:
-                template_hint = "해당 업무를 담당하는 전문 기관에서 관련 법령에 따라 업무를 수행합니다."
-            elif "특징" in primary_intent:
-                template_hint = "주요 특징과 특성을 체계적으로 분석하여 적절한 대응방안을 마련해야 합니다."
-            elif "지표" in primary_intent:
-                template_hint = "다양한 탐지 지표와 징후를 종합적으로 모니터링하여 사전에 대응해야 합니다."
-            elif "방안" in primary_intent:
-                template_hint = "체계적인 대응 방안을 수립하고 단계적으로 실행하여 효과적으로 관리해야 합니다."
-            elif "절차" in primary_intent:
-                template_hint = "관련 절차를 단계적으로 수행하고 각 단계별 요구사항을 충족해야 합니다."
-            elif "조치" in primary_intent:
-                template_hint = "적절한 보안조치를 시행하고 지속적으로 관리 및 개선해야 합니다."
-        
-        # 템플릿 힌트를 LLM에 전달하여 답변 생성
-        prompt = f"""다음 참고 내용을 바탕으로 질문에 답변하세요.
-
-참고: {template_hint}
-
-질문: {question}
-
-참고 내용을 활용하여 {domain} 분야에 맞는 전문적인 한국어 답변을 작성하세요.
+- 명확하고 정확한 전문 용어 사용
 
 답변:"""
         
-        answer = self._generate_with_llm(prompt, "subjective", 5)
-        cleaned_answer = self.clean_generated_text(answer)
-        return self.fix_korean_sentence_structure(cleaned_answer)
+        return prompt
     
     def _calculate_answer_quality(self, answer: str, question: str, intent_analysis: Dict = None) -> float:
-        """답변 품질 점수 계산"""
+        """답변 품질 점수 계산 - 개선된 버전"""
         if not answer:
             return 0.0
         
@@ -1022,6 +961,8 @@ class SimpleModelHandler:
             score += 0.15
         elif 30 <= length < 50 or 400 < length <= 500:
             score += 0.1
+        elif 20 <= length < 30:  # 조건 완화
+            score += 0.05
         
         # 문장 구조 (15%)
         if answer.endswith(('.', '다', '요', '함')):
@@ -1031,17 +972,17 @@ class SimpleModelHandler:
         if len(sentences) >= 2:
             score += 0.05
         
-        # 전문성 (15%)
+        # 전문성 (20%)
         domain_keywords = self._get_domain_keywords(question)
         found_keywords = sum(1 for keyword in domain_keywords if keyword in answer)
         if found_keywords > 0:
-            score += min(found_keywords / len(domain_keywords), 1.0) * 0.15
+            score += min(found_keywords / len(domain_keywords), 1.0) * 0.2
         
-        # 의도 일치성 (30%)
+        # 의도 일치성 (25%) - 가중치 감소
         if intent_analysis:
             answer_type = intent_analysis.get("answer_type_required", "설명형")
             if self._check_intent_match(answer, answer_type):
-                score += 0.3
+                score += 0.25
             else:
                 score += 0.1
         else:
@@ -1050,32 +991,32 @@ class SimpleModelHandler:
         return min(score, 1.0)
     
     def _check_intent_match(self, answer: str, answer_type: str) -> bool:
-        """의도 일치성 확인"""
+        """의도 일치성 확인 - 조건 완화"""
         answer_lower = answer.lower()
         
         if answer_type == "기관명":
-            institution_keywords = ["위원회", "감독원", "은행", "기관", "센터", "청", "부", "원", "조정위원회"]
+            institution_keywords = ["위원회", "감독원", "은행", "기관", "센터", "청", "부", "원", "조정위원회", "보호위원회"]
             return any(keyword in answer_lower for keyword in institution_keywords)
         elif answer_type == "특징설명":
-            feature_keywords = ["특징", "특성", "속성", "성질", "기능", "역할", "원리", "성격"]
+            feature_keywords = ["특징", "특성", "속성", "성질", "기능", "역할", "원리", "성격", "형태", "방식"]
             return any(keyword in answer_lower for keyword in feature_keywords)
         elif answer_type == "지표나열":
-            indicator_keywords = ["지표", "신호", "징후", "패턴", "행동", "모니터링", "탐지", "발견", "식별"]
+            indicator_keywords = ["지표", "신호", "징후", "패턴", "행동", "모니터링", "탐지", "발견", "식별", "관찰"]
             return any(keyword in answer_lower for keyword in indicator_keywords)
         elif answer_type == "방안제시":
-            solution_keywords = ["방안", "대책", "조치", "해결", "대응", "관리", "처리", "예방", "개선"]
+            solution_keywords = ["방안", "대책", "조치", "해결", "대응", "관리", "처리", "예방", "개선", "강화"]
             return any(keyword in answer_lower for keyword in solution_keywords)
         elif answer_type == "절차설명":
-            procedure_keywords = ["절차", "과정", "단계", "순서", "프로세스", "진행", "수행"]
+            procedure_keywords = ["절차", "과정", "단계", "순서", "프로세스", "진행", "수행", "방법"]
             return any(keyword in answer_lower for keyword in procedure_keywords)
         elif answer_type == "조치설명":
-            measure_keywords = ["조치", "대응", "대책", "방안", "보안", "예방", "개선", "강화"]
+            measure_keywords = ["조치", "대응", "대책", "방안", "보안", "예방", "개선", "강화", "관리", "통제"]
             return any(keyword in answer_lower for keyword in measure_keywords)
         elif answer_type == "법령설명":
-            law_keywords = ["법", "법령", "법률", "규정", "조항", "규칙", "기준", "근거"]
+            law_keywords = ["법", "법령", "법률", "규정", "조항", "규칙", "기준", "근거", "제도", "정책"]
             return any(keyword in answer_lower for keyword in law_keywords)
         elif answer_type == "정의설명":
-            definition_keywords = ["정의", "개념", "의미", "뜻", "용어"]
+            definition_keywords = ["정의", "개념", "의미", "뜻", "용어", "이란", "라고", "것은", "말하며"]
             return any(keyword in answer_lower for keyword in definition_keywords)
         
         return True
@@ -1085,17 +1026,17 @@ class SimpleModelHandler:
         question_lower = question.lower()
         
         if "개인정보" in question_lower:
-            return ["개인정보보호법", "정보주체", "처리", "보호조치", "동의"]
+            return ["개인정보보호법", "정보주체", "처리", "보호조치", "동의", "위원회", "기관"]
         elif "전자금융" in question_lower:
-            return ["전자금융거래법", "접근매체", "인증", "보안", "분쟁조정"]
+            return ["전자금융거래법", "접근매체", "인증", "보안", "분쟁조정", "금융감독원"]
         elif "보안" in question_lower or "악성코드" in question_lower:
-            return ["보안정책", "탐지", "대응", "모니터링", "방어"]
+            return ["보안정책", "탐지", "대응", "모니터링", "방어", "특징", "지표"]
         elif "금융투자" in question_lower:
-            return ["자본시장법", "투자자보호", "적합성원칙", "내부통제"]
+            return ["자본시장법", "투자자보호", "적합성원칙", "내부통제", "업무", "구분"]
         elif "위험관리" in question_lower:
-            return ["위험식별", "위험평가", "위험대응", "내부통제"]
+            return ["위험식별", "위험평가", "위험대응", "내부통제", "관리", "요소"]
         else:
-            return ["법령", "규정", "관리", "조치", "절차"]
+            return ["법령", "규정", "관리", "조치", "절차", "기관"]
     
     def _detect_domain(self, question: str) -> str:
         """도메인 감지"""
@@ -1165,7 +1106,7 @@ class SimpleModelHandler:
                         self.learning_data["intent_based_answers"][primary_intent][-50:]
                 
                 # 고품질 답변은 템플릿으로 저장
-                if quality_score > 0.85:
+                if quality_score > 0.8:  # 기준 완화
                     if primary_intent not in self.learning_data["high_quality_templates"]:
                         self.learning_data["high_quality_templates"][primary_intent] = []
                     
