@@ -13,7 +13,7 @@ import os
 import time
 import gc
 import pandas as pd
-from typing import Dict, List
+from typing import Dict, List, Optional
 from pathlib import Path
 
 # 설정 파일 import
@@ -107,8 +107,9 @@ class FinancialAIInference:
             else:
                 intent_analysis = self.data_processor.analyze_question_intent(question)
                 
-                # 기관 관련 질문 우선 처리 (강화)
-                if kb_analysis.get("institution_info", {}).get("is_institution_question", False):
+                # 기관 관련 질문 우선 처리 (강화) - 개선된 부분
+                institution_info = kb_analysis.get("institution_info", {}) if kb_analysis else {}
+                if institution_info.get("is_institution_question", False):
                     answer = self._process_institution_question_enhanced(question, kb_analysis, intent_analysis)
                 else:
                     answer = self._process_subjective_with_llm_enhanced(question, domain, intent_analysis, kb_analysis)
@@ -134,12 +135,12 @@ class FinancialAIInference:
                              time.time() - start_time)
             return fallback
     
-    def _process_multiple_choice_with_llm(self, question: str, max_choice: int, domain: str, kb_analysis: Dict) -> str:
+    def _process_multiple_choice_with_llm(self, question: str, max_choice: int, domain: str, kb_analysis: Optional[Dict]) -> str:
         """객관식 처리 (LLM 필수 사용)"""
         
         # 지식베이스 패턴 힌트 수집
         pattern_hint = None
-        if self.optimization_config["mc_pattern_priority"]:
+        if self.optimization_config["mc_pattern_priority"] and kb_analysis:
             pattern_info = self.knowledge_base.get_mc_pattern_info(question)
             if pattern_info and pattern_info.get("confidence", 0) > 0.5:
                 pattern_hint = {
@@ -167,12 +168,15 @@ class FinancialAIInference:
             self.stats["retry_generation_count"] += 1
             return fallback
     
-    def _process_institution_question_enhanced(self, question: str, kb_analysis: Dict, intent_analysis: Dict) -> str:
+    def _process_institution_question_enhanced(self, question: str, kb_analysis: Optional[Dict], intent_analysis: Optional[Dict]) -> str:
         """기관 질문 처리 (LLM 필수 사용) - 강화된 버전"""
+        if not kb_analysis:
+            return self._process_subjective_with_llm_enhanced(question, "일반", intent_analysis, kb_analysis)
+        
         institution_info = kb_analysis.get("institution_info", {})
         
         if institution_info.get("is_institution_question", False):
-            institution_type = institution_info.get("institution_type")
+            institution_type = institution_info.get("institution_type")  # 안전한 접근
             confidence = institution_info.get("confidence", 0.0)
             
             if institution_type and confidence > 0.5:
@@ -188,9 +192,9 @@ class FinancialAIInference:
                 return answer
         
         # 일반 주관식 처리로 폴백
-        return self._process_subjective_with_llm_enhanced(question, 
-                                                         kb_analysis.get("domain", ["일반"])[0], 
-                                                         intent_analysis, kb_analysis)
+        domain = kb_analysis.get("domain", ["일반"])
+        domain_str = domain[0] if isinstance(domain, list) and domain else "일반"
+        return self._process_subjective_with_llm_enhanced(question, domain_str, intent_analysis, kb_analysis)
     
     def _ensure_institution_name_included(self, answer: str, institution_hint: Dict, institution_type: str) -> str:
         """기관명 포함 여부 확인 및 보완"""
@@ -219,7 +223,7 @@ class FinancialAIInference:
         
         return answer
     
-    def _process_subjective_with_llm_enhanced(self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict) -> str:
+    def _process_subjective_with_llm_enhanced(self, question: str, domain: str, intent_analysis: Optional[Dict], kb_analysis: Optional[Dict]) -> str:
         """주관식 처리 (LLM 필수 사용) - 강화된 버전"""
         
         # 신뢰도 높은 의도 분석 기반 처리
@@ -263,8 +267,8 @@ class FinancialAIInference:
         return answer
     
     def _validate_and_improve_answer_enhanced_safe(self, answer: str, question: str, question_type: str,
-                                   max_choice: int, domain: str, intent_analysis: Dict = None,
-                                   kb_analysis: Dict = None) -> str:
+                                   max_choice: int, domain: str, intent_analysis: Optional[Dict] = None,
+                                   kb_analysis: Optional[Dict] = None) -> str:
         """답변 검증 및 개선 - 안전한 버전"""
         
         if question_type == "multiple_choice":
@@ -357,6 +361,7 @@ class FinancialAIInference:
         if not text:
             return True
         
+        import re
         critical_patterns = [
             r'감추인|컨퍼머시|피-에',  # 심각한 오타
             r'^[^가-힣]*$',  # 한국어가 전혀 없음
@@ -370,21 +375,23 @@ class FinancialAIInference:
         
         return False
     
-    def _get_improved_answer_with_llm_safe(self, question: str, domain: str, intent_analysis: Dict = None,
-                                     kb_analysis: Dict = None, improvement_type: str = "general") -> str:
+    def _get_improved_answer_with_llm_safe(self, question: str, domain: str, intent_analysis: Optional[Dict] = None,
+                                     kb_analysis: Optional[Dict] = None, improvement_type: str = "general") -> str:
         """개선된 답변 생성 (LLM 필수 사용) - 안전한 버전"""
         
         # 기관 관련 질문 특별 처리
         institution_hint = None
-        if kb_analysis and kb_analysis.get("institution_info", {}).get("is_institution_question", False):
-            institution_type = kb_analysis["institution_info"].get("institution_type")
-            if institution_type:
-                institution_hint = self.knowledge_base.get_institution_hint(institution_type)
-                answer = self.model_handler.generate_institution_answer(
-                    question, institution_hint, intent_analysis
-                )
-                # 기관명 포함 보장
-                return self._ensure_institution_name_included(answer, institution_hint, institution_type)
+        if kb_analysis:
+            institution_info = kb_analysis.get("institution_info", {})
+            if institution_info.get("is_institution_question", False):
+                institution_type = institution_info.get("institution_type")
+                if institution_type:
+                    institution_hint = self.knowledge_base.get_institution_hint(institution_type)
+                    answer = self.model_handler.generate_institution_answer(
+                        question, institution_hint, intent_analysis
+                    )
+                    # 기관명 포함 보장
+                    return self._ensure_institution_name_included(answer, institution_hint, institution_type)
         
         # 의도별 특화 답변 (템플릿 힌트 사용)
         template_hint = None
@@ -421,7 +428,7 @@ class FinancialAIInference:
             question, domain, intent_analysis, basic_hint or template_hint
         )
     
-    def _calculate_enhanced_quality_score_safe(self, answer: str, question: str, intent_analysis: Dict = None) -> float:
+    def _calculate_enhanced_quality_score_safe(self, answer: str, question: str, intent_analysis: Optional[Dict] = None) -> float:
         """품질 점수 계산 - 안전한 버전"""
         if not answer:
             return 0.0
@@ -498,7 +505,7 @@ class FinancialAIInference:
         if answer and answer.isdigit() and max_choice > 0 and 1 <= int(answer) <= max_choice:
             self.stats["mc_context_accuracy"] += 1
     
-    def _update_subj_stats(self, question_type: str, domain: str, processing_time: float, intent_analysis: Dict = None, answer: str = ""):
+    def _update_subj_stats(self, question_type: str, domain: str, processing_time: float, intent_analysis: Optional[Dict] = None, answer: str = ""):
         """주관식 통계 업데이트"""
         self._update_stats(question_type, domain, processing_time)
     
