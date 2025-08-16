@@ -1,5 +1,8 @@
 # requirements.txt
 
+# NumPy 버전 고정 (PyTorch 호환성)
+numpy<2.0.0,>=1.24.3
+
 # 핵심 딥러닝 프레임워크 (대회 환경 호환)
 torch==2.1.0
 transformers==4.36.0
@@ -9,7 +12,6 @@ safetensors==0.4.1
 
 # 데이터 처리 (필수)
 pandas==2.0.3
-numpy==1.24.3
 
 # 기본 패키지 (transformers 의존성)
 packaging==23.2
@@ -24,8 +26,16 @@ requests==2.31.0
 urllib3==2.0.7
 
 # 설치 가이드:
-# 1. PyTorch 설치 (CUDA 11.8 지원):
+# *** 중요: NumPy 버전 호환성 문제 해결 ***
+# 
+# 1. 기존 환경 정리 (권장):
+#    pip uninstall numpy torch transformers -y
+#
+# 2. NumPy 1.x 버전 먼저 설치:
+#    pip install "numpy<2.0.0,>=1.24.3"
+#
+# 3. PyTorch 설치 (CUDA 11.8 지원):
 #    pip install torch==2.1.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 # 
-# 2. 나머지 패키지 설치:
+# 4. 나머지 패키지 설치:
 #    pip install -r requirements.txt
