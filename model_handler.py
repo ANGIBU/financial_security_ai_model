@@ -292,60 +292,86 @@ class SimpleModelHandler:
         
         return context
     
-    def clean_generated_text_premium(self, text: str) -> str:
-        """프리미엄 텍스트 정리 - 오류 방지 강화"""
+    def detect_corrupted_text(self, text: str) -> bool:
+        """깨진 텍스트 감지 - 강화된 버전"""
+        if not text:
+            return True
+        
+        # 알려진 오류 패턴들 (실제 로그에서 발견된 패턴들)
+        corruption_patterns = [
+            r'감추인', r'컨퍼머시', r'피-에', r'백-도어', r'키-로거', r'스크리너',
+            r'채팅-클라언트', r'파일-업-', r'[가-힣]-[가-힣]{2,}', 
+            r'[가-힣]{1,2}-[가-힣]{1,2}', r'[가-힣]-[가-힣]-[가-힣]',
+            r'^[^가-힣]*$',  # 한국어가 전혀 없음
+            r'[가-힣]+[A-Za-z]+[가-힣]+[A-Za-z]+',  # 한영 혼재 패턴
+            r'[\u0000-\u001F]',  # 제어 문자
+            r'[^\w\s가-힣.,!?()[\]{}""''：；、。]',  # 허용되지 않은 특수문자
+        ]
+        
+        for pattern in corruption_patterns:
+            if re.search(pattern, text):
+                return True
+        
+        # 한국어 비율 확인
+        korean_chars = len(re.findall(r'[가-힣]', text))
+        total_chars = len(re.sub(r'[^\w가-힣]', '', text))
+        
+        if total_chars == 0:
+            return True
+        
+        korean_ratio = korean_chars / total_chars
+        if korean_ratio < 0.5:  # 한국어 비율이 50% 미만
+            return True
+        
+        return False
+    
+    def clean_generated_text_safe(self, text: str) -> str:
+        """안전한 텍스트 정리 - 오류 방지 우선"""
         if not text:
             return ""
         
         text = str(text).strip()
         
-        # 1단계: 생성 오류 감지 및 차단
-        error_patterns = [
-            r'감추인', r'컨퍼머시', r'피-에', r'백-도어', r'키-로거', r'스크리너',
-            r'채팅-클라언트', r'파일-업-', r'[가-힣]-[가-힣]{2,}', r'[가-힣]{1,2}-[가-힣]{1,2}'
-        ]
+        # 1단계: 깨진 텍스트 감지
+        if self.detect_corrupted_text(text):
+            return ""  # 깨진 텍스트면 빈 문자열 반환하여 재생성 유도
         
-        has_critical_errors = any(re.search(pattern, text) for pattern in error_patterns)
+        # 2단계: 최소한의 안전한 정리만 수행
+        # 연속된 공백 정리
+        text = re.sub(r'\s+', ' ', text)
         
-        if has_critical_errors:
-            # 심각한 오류가 있으면 기본 답변으로 대체
-            return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
-        
-        # 2단계: 안전한 기본 정리
-        # 정상적인 하이픈 사용은 유지, 비정상적인 패턴만 수정
-        text = re.sub(r'([가-힣])-([가-힣])\s', r'\1\2 ', text)  # 단어 중간 하이픈 제거
-        text = re.sub(r'\s-{2,}\s', ' ', text)  # 다중 하이픈 제거
-        text = re.sub(r'\s+', ' ', text)  # 공백 정리
+        # 시작/끝 공백 제거
         text = text.strip()
+        
+        # 제어 문자 제거
+        text = re.sub(r'[\u0000-\u001F\u007F]', '', text)
+        
+        # 3단계: 기본적인 문장 정리
+        # 문장 끝 정리
+        if text and not text.endswith(('.', '다', '요', '함', '니다')):
+            if any(text.endswith(suffix) for suffix in ['습니다', '입니다', '됩니다', '합니다']):
+                text += '.'
+            elif len(text) > 10:
+                text += '.'
         
         return text
     
-    def clean_generated_text_safe(self, text: str) -> str:
-        """안전한 텍스트 정리 (과도한 정리 방지)"""
-        if not text:
-            return ""
-        
-        # 먼저 프리미엄 정리 시도
-        return self.clean_generated_text_premium(text)
+    def clean_generated_text_premium(self, text: str) -> str:
+        """프리미엄 텍스트 정리 - 안전한 정리 우선"""
+        return self.clean_generated_text_safe(text)
     
     def clean_generated_text(self, text: str) -> str:
-        """생성된 텍스트 정리 (개선된 버전)"""
-        return self.clean_generated_text_premium(text)
+        """생성된 텍스트 정리 (안전 우선)"""
+        return self.clean_generated_text_safe(text)
     
     def validate_generated_answer(self, answer: str, question_type: str) -> bool:
         """생성된 답변 품질 검증 - 강화"""
         if not answer:
             return False
         
-        # 오류 패턴 검증 강화
-        error_patterns = [
-            r'감추인', r'컨퍼머시', r'피-에', r'백-도어', r'키-로거', r'스크리너',
-            r'채팅-클라언트', r'파일-업-', r'[가-힣]-[가-힣]{2,}'
-        ]
-        
-        for pattern in error_patterns:
-            if re.search(pattern, answer):
-                return False
+        # 깨진 텍스트 감지
+        if self.detect_corrupted_text(answer):
+            return False
         
         # 한국어 비율 확인
         korean_chars = len(re.findall(r'[가-힣]', answer))
@@ -361,7 +387,9 @@ class SimpleModelHandler:
             return bool(re.search(r'[1-5]', answer))
         else:
             # 주관식 검증 강화
-            return korean_ratio >= 0.8 and len(answer) >= 30 and not re.search(r'^[^가-힣]*$', answer)
+            return (korean_ratio >= 0.7 and 
+                    len(answer) >= 20 and 
+                    not self.detect_corrupted_text(answer))
     
     def generate_enhanced_mc_answer(self, question: str, max_choice: int, domain: str, 
                                    pattern_hint: Dict = None, context_hint: Dict = None) -> str:
@@ -385,7 +413,7 @@ class SimpleModelHandler:
         
         # LLM을 통한 답변 생성
         prompt = self._create_enhanced_mc_prompt(question, max_choice, domain, hint_text)
-        answer = self._generate_with_llm_robust(prompt, "multiple_choice", max_choice)
+        answer = self._generate_with_llm_stable(prompt, "multiple_choice", max_choice)
         
         # 후처리
         return self._process_enhanced_mc_answer(answer, question, max_choice, domain)
@@ -409,11 +437,11 @@ class SimpleModelHandler:
 
 정답:"""
         
-        answer = self._generate_with_llm_robust(prompt, "multiple_choice", max_choice)
+        answer = self._generate_with_llm_stable(prompt, "multiple_choice", max_choice)
         return self._process_enhanced_mc_answer(answer, question, max_choice, domain)
     
     def generate_institution_answer(self, question: str, institution_hint: Dict = None, intent_analysis: Dict = None) -> str:
-        """기관 답변 생성 (LLM 필수 사용) - 프리미엄 버전"""
+        """기관 답변 생성 (LLM 필수 사용) - 안정화 버전"""
         
         # 기관 힌트를 프롬프트에 포함
         hint_text = ""
@@ -429,19 +457,8 @@ class SimpleModelHandler:
             if institution_hint.get('parent_organization'):
                 hint_text += f"\n소속: {institution_hint['parent_organization']}"
         
-        # 금융분쟁조정 특별 처리
-        if "분쟁조정" in question.lower() and "신청" in question.lower():
-            prompt = f"""다음은 금융분쟁조정 관련 질문입니다. 정확한 기관명을 제시하세요.{hint_text}
-
-질문: {question}
-
-금융감독원 내에 설치된 전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다.
-이 정보를 바탕으로 정확한 기관명을 포함하여 한국어로만 답변하세요.
-
-답변:"""
-        else:
-            # 구체적인 기관명 포함한 프롬프트
-            prompt = f"""다음은 기관 관련 질문입니다. 구체적인 기관명을 포함하여 정확한 답변을 생성하세요.{hint_text}
+        # 안전한 기관 답변 생성
+        prompt = f"""다음은 기관 관련 질문입니다. 정확한 기관명을 포함하여 답변하세요.{hint_text}
 
 질문: {question}
 
@@ -450,14 +467,16 @@ class SimpleModelHandler:
 
 답변:"""
         
-        answer = self._generate_with_llm_robust(prompt, "subjective", 5)
-        cleaned_answer = self.clean_generated_text_premium(answer)
+        answer = self._generate_with_llm_stable(prompt, "subjective", 5)
+        cleaned_answer = self.clean_generated_text_safe(answer)
         
         # 검증 및 보완
         if not self.validate_generated_answer(cleaned_answer, "subjective"):
-            # 기관 관련 기본 답변으로 대체
+            # 기관 관련 안전한 폴백 답변
             if "분쟁조정" in question.lower():
                 return "금융감독원 금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다."
+            elif "개인정보" in question.lower() and "침해" in question.lower():
+                return "개인정보보호위원회 산하 개인정보침해신고센터에서 개인정보 침해신고 접수 업무를 담당합니다."
             else:
                 return "관련 법령에 따라 해당 분야의 전문 기관에서 업무를 담당하고 있습니다."
         
@@ -468,75 +487,53 @@ class SimpleModelHandler:
         return cleaned_answer
     
     def generate_enhanced_subj_answer(self, question: str, domain: str, intent_analysis: Dict = None, template_hint: str = None) -> str:
-        """향상된 주관식 답변 생성 (LLM 필수 사용) - 프리미엄 버전"""
+        """향상된 주관식 답변 생성 (LLM 필수 사용) - 안정화 버전"""
         
         # RAT 특징 질문 특별 처리
         if any(term in question.lower() for term in ["rat", "원격", "트로이", "악성코드"]) and any(term in question for term in ["특징", "지표"]):
-            return self._generate_rat_specific_answer(question, domain, intent_analysis)
+            return self._generate_rat_specific_answer_safe(question, domain, intent_analysis)
         
-        # 템플릿 힌트를 프롬프트에 포함
-        hint_text = ""
-        if template_hint:
-            hint_text += f"\n참고 내용: {template_hint}"
-        
-        if intent_analysis:
-            primary_intent = intent_analysis.get("primary_intent", "일반")
-            answer_type = intent_analysis.get("answer_type_required", "설명형")
-            
-            if primary_intent in self.intent_specific_prompts:
-                intent_instruction = random.choice(self.intent_specific_prompts[primary_intent])
-                hint_text += f"\n답변 지침: {intent_instruction}"
-        
-        prompt = f"""다음은 {domain} 분야의 전문 질문입니다. 참고 내용을 바탕으로 정확한 답변을 생성하세요.{hint_text}
+        # 간단하고 안전한 프롬프트 생성
+        prompt = f"""다음 {domain} 분야 질문에 대해 한국어로만 정확한 답변을 작성하세요.
 
 질문: {question}
 
-위 질문에 대해 한국어로만 체계적이고 전문적인 답변을 작성하세요.
-명확하고 정확한 한국어로 답변하며, 전문 용어는 올바르게 사용하세요.
-절대로 깨진 텍스트나 이상한 단어를 사용하지 마세요.
+답변 작성 시 다음 사항을 준수하세요:
+- 반드시 한국어로만 작성
+- 명확하고 정확한 전문 용어 사용
+- 관련 법령과 규정을 근거로 구체적 내용 포함
 
 답변:"""
         
-        answer = self._generate_with_llm_robust(prompt, "subjective", 5)
-        cleaned_answer = self.clean_generated_text_premium(answer)
+        answer = self._generate_with_llm_stable(prompt, "subjective", 5)
+        cleaned_answer = self.clean_generated_text_safe(answer)
         
         # 검증 및 재생성
         if not self.validate_generated_answer(cleaned_answer, "subjective"):
             return self._generate_safe_fallback_answer(question, domain, intent_analysis)
         
-        return self.fix_korean_sentence_structure(cleaned_answer)
+        return self.fix_korean_sentence_structure_safe(cleaned_answer)
     
-    def _generate_rat_specific_answer(self, question: str, domain: str, intent_analysis: Dict = None) -> str:
-        """RAT 특징 전용 답변 생성"""
-        prompt = f"""다음은 RAT(원격접근 트로이목마) 관련 질문입니다. 전문적이고 정확한 답변을 생성하세요.
+    def _generate_rat_specific_answer_safe(self, question: str, domain: str, intent_analysis: Dict = None) -> str:
+        """RAT 특징 전용 답변 생성 - 안정화 버전"""
+        
+        # 안전한 RAT 관련 프롬프트
+        prompt = f"""다음은 RAT(원격접근 트로이목마) 관련 질문입니다.
 
 질문: {question}
 
-RAT의 주요 특징과 탐지 지표에 대해 다음 내용을 포함하여 답변하세요:
-
-주요 특징:
-- 은폐성과 지속성
-- 원격제어 기능
-- 다양한 악성 기능 (키로깅, 화면 캡처 등)
-- 정상 프로그램 위장
-- 백도어 생성
-
-탐지 지표:
-- 비정상적인 네트워크 트래픽
-- 의심스러운 파일 생성
-- 장치 접근 흔적
-- 보안 우회 시도
-
-위 내용을 바탕으로 한국어로만 상세히 설명하세요.
+RAT의 주요 특징과 탐지 지표에 대해 한국어로만 답변하세요.
+주요 특징: 은폐성, 지속성, 원격제어 기능, 정상 프로그램 위장
+탐지 지표: 비정상적인 네트워크 트래픽, 의심스러운 파일 생성
 
 답변:"""
         
-        answer = self._generate_with_llm_robust(prompt, "subjective", 5)
-        cleaned_answer = self.clean_generated_text_premium(answer)
+        answer = self._generate_with_llm_stable(prompt, "subjective", 5)
+        cleaned_answer = self.clean_generated_text_safe(answer)
         
         if not self.validate_generated_answer(cleaned_answer, "subjective"):
             # RAT 전용 안전 답변
-            return "RAT 악성코드는 정상 프로그램으로 위장하여 시스템에 침투하는 원격제어 악성코드입니다. 주요 특징으로는 은폐성, 지속성, 원격제어 기능이 있으며, 키로깅과 화면 캡처 등의 악성 기능을 수행합니다. 탐지 지표로는 비정상적인 네트워크 트래픽, 의심스러운 파일 생성, 장치 접근 흔적 등이 있습니다."
+            return "RAT 악성코드는 정상 프로그램으로 위장하여 시스템에 침투하는 원격제어 악성코드입니다. 주요 특징으로는 은폐성과 지속성이 있으며, 탐지 지표로는 비정상적인 네트워크 트래픽과 의심스러운 파일 생성 등이 있습니다."
         
         return cleaned_answer
     
@@ -554,83 +551,47 @@ RAT의 주요 특징과 탐지 지표에 대해 다음 내용을 포함하여 �
         
         return domain_answers.get(domain, "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다.")
     
-    def fix_korean_sentence_structure(self, text: str) -> str:
-        """한국어 문장 구조 수정 - 프리미엄 버전"""
+    def fix_korean_sentence_structure_safe(self, text: str) -> str:
+        """한국어 문장 구조 수정 - 안전 버전"""
         if not text:
             return ""
         
-        # 먼저 프리미엄 정리
-        text = self.clean_generated_text_premium(text)
+        # 깨진 텍스트 확인
+        if self.detect_corrupted_text(text):
+            return ""
         
-        # 문장 분할
-        sentences = []
-        current_sentence = ""
+        # 최소한의 안전한 수정만 수행
+        text = text.strip()
         
-        for char in text:
-            current_sentence += char
-            if char in ['.', '!', '?']:
-                sentence = current_sentence.strip()
-                if len(sentence) > 10 and re.search(r'[가-힣]', sentence):
-                    sentences.append(sentence)
-                current_sentence = ""
+        # 문장 끝 처리
+        if text and not text.endswith(('.', '다', '요', '함', '니다')):
+            if len(text) > 10:
+                text += '.'
         
-        # 마지막 문장 처리
-        if current_sentence.strip():
-            sentence = current_sentence.strip()
-            if len(sentence) > 10 and re.search(r'[가-힣]', sentence):
-                sentences.append(sentence)
-        
-        # 문장 연결
-        result = ' '.join(sentences)
-        
-        # 마침표 확인
-        if result and not result.endswith(('.', '다', '요', '함')):
-            result += '.'
-        
-        return result
+        return text
     
     def generate_intent_focused_answer(self, question: str, domain: str, intent_analysis: Dict, template_hint: str = None) -> str:
-        """의도 집중 답변 생성 (LLM 필수 사용) - 프리미엄 버전"""
+        """의도 집중 답변 생성 (LLM 필수 사용) - 안정화 버전"""
         
         primary_intent = intent_analysis.get("primary_intent", "일반")
-        answer_type = intent_analysis.get("answer_type_required", "설명형")
         
-        # 의도별 특화 프롬프트
-        intent_prompt = ""
-        if "기관" in primary_intent:
-            intent_prompt = "구체적인 기관명과 소속을 명확히 제시하여"
-        elif "특징" in primary_intent:
-            intent_prompt = "주요 특징과 특성을 체계적으로 나열하여"
-        elif "지표" in primary_intent:
-            intent_prompt = "탐지 지표와 징후를 구체적으로 설명하여"
-        elif "방안" in primary_intent:
-            intent_prompt = "실행 가능한 구체적 방안을 제시하여"
-        elif "절차" in primary_intent:
-            intent_prompt = "단계별 절차를 순서대로 설명하여"
-        elif "조치" in primary_intent:
-            intent_prompt = "필요한 보안조치를 상세히 설명하여"
-        
-        hint_text = ""
-        if template_hint:
-            hint_text = f"\n참고 내용: {template_hint}"
-        
-        prompt = f"""다음 {domain} 분야 질문에 대해 {intent_prompt} 답변하세요.{hint_text}
+        # 안전한 의도별 프롬프트
+        prompt = f"""다음 {domain} 분야 질문에 대해 한국어로만 답변하세요.
 
 질문: {question}
 
-질문의 의도({answer_type})에 정확히 부합하도록 한국어로만 답변하세요.
+질문의 의도에 정확히 부합하도록 한국어로만 답변하세요.
 명확하고 정확한 전문 용어를 사용하여 체계적으로 설명하세요.
-절대로 깨진 텍스트나 이상한 단어를 사용하지 마세요.
 
 답변:"""
         
-        answer = self._generate_with_llm_robust(prompt, "subjective", 5)
-        cleaned_answer = self.clean_generated_text_premium(answer)
+        answer = self._generate_with_llm_stable(prompt, "subjective", 5)
+        cleaned_answer = self.clean_generated_text_safe(answer)
         
         if not self.validate_generated_answer(cleaned_answer, "subjective"):
             return self._generate_safe_fallback_answer(question, domain, intent_analysis)
         
-        return self.fix_korean_sentence_structure(cleaned_answer)
+        return self.fix_korean_sentence_structure_safe(cleaned_answer)
     
     def generate_simple_mc_answer(self, question: str, max_choice: int) -> str:
         """간단한 객관식 답변 생성 (LLM 필수 사용)"""
@@ -643,11 +604,11 @@ RAT의 주요 특징과 탐지 지표에 대해 다음 내용을 포함하여 �
 
 정답:"""
         
-        answer = self._generate_with_llm_robust(prompt, "multiple_choice", max_choice)
+        answer = self._generate_with_llm_stable(prompt, "multiple_choice", max_choice)
         return self._process_enhanced_mc_answer(answer, question, max_choice, "일반")
     
     def generate_simple_subj_answer(self, question: str) -> str:
-        """간단한 주관식 답변 생성 (LLM 필수 사용) - 프리미엄 버전"""
+        """간단한 주관식 답변 생성 (LLM 필수 사용) - 안정화 버전"""
         
         prompt = f"""다음 질문에 한국어로만 답변하세요.
 
@@ -655,20 +616,19 @@ RAT의 주요 특징과 탐지 지표에 대해 다음 내용을 포함하여 �
 
 관련 법령과 규정을 바탕으로 전문적인 답변을 작성하세요.
 명확하고 정확한 한국어로 답변하며, 전문 용어는 올바르게 사용하세요.
-절대로 깨진 텍스트나 이상한 단어를 사용하지 마세요.
 
 답변:"""
         
-        answer = self._generate_with_llm_robust(prompt, "subjective", 5)
-        cleaned_answer = self.clean_generated_text_premium(answer)
+        answer = self._generate_with_llm_stable(prompt, "subjective", 5)
+        cleaned_answer = self.clean_generated_text_safe(answer)
         
         if not self.validate_generated_answer(cleaned_answer, "subjective"):
             return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
         
-        return self.fix_korean_sentence_structure(cleaned_answer)
+        return self.fix_korean_sentence_structure_safe(cleaned_answer)
     
-    def _generate_with_llm_robust(self, prompt: str, question_type: str, max_choice: int = 5) -> str:
-        """강화된 LLM 답변 생성 - 오류 방지 특화"""
+    def _generate_with_llm_stable(self, prompt: str, question_type: str, max_choice: int = 5) -> str:
+        """안정화된 LLM 답변 생성 - 깨진 텍스트 방지 특화"""
         
         for attempt in range(3):  # 최대 3회 시도
             try:
@@ -677,14 +637,14 @@ RAT의 주요 특징과 탐지 지표에 대해 다음 내용을 포함하여 �
                     prompt,
                     return_tensors="pt",
                     truncation=True,
-                    max_length=1800
+                    max_length=1500  # 더 짧게 제한
                 )
                 
                 if self.device == "cuda":
                     inputs = inputs.to(self.model.device)
                 
-                # 생성 설정 최적화
-                gen_config = self._get_generation_config_robust(question_type, attempt)
+                # 안정화된 생성 설정
+                gen_config = self._get_stable_generation_config(question_type, attempt)
                 
                 # 모델 실행
                 with torch.no_grad():
@@ -699,12 +659,9 @@ RAT의 주요 특징과 탐지 지표에 대해 다음 내용을 포함하여 �
                     skip_special_tokens=True
                 ).strip()
                 
-                # 텍스트 정리 및 검증
-                cleaned_response = self.clean_generated_text_premium(response)
-                
-                # 품질 검증
-                if self.validate_generated_answer(cleaned_response, question_type):
-                    return cleaned_response
+                # 깨진 텍스트 확인
+                if not self.detect_corrupted_text(response):
+                    return response
                     
             except Exception as e:
                 if self.verbose:
@@ -718,19 +675,20 @@ RAT의 주요 특징과 탐지 지표에 대해 다음 내용을 포함하여 �
         else:
             return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
     
-    def _get_generation_config_robust(self, question_type: str, attempt: int = 0) -> GenerationConfig:
-        """강화된 생성 설정 - 시도별 최적화"""
+    def _get_stable_generation_config(self, question_type: str, attempt: int = 0) -> GenerationConfig:
+        """안정화된 생성 설정 - 깨진 텍스트 방지"""
         config_dict = GENERATION_CONFIG[question_type].copy()
         
-        # 시도별 설정 조정
+        # 안정화된 설정 (낮은 온도값)
         if question_type == "subjective":
-            base_temp = 0.2
-            config_dict['temperature'] = max(0.1, base_temp - (attempt * 0.05))
-            config_dict['top_p'] = 0.9
-            config_dict['repetition_penalty'] = 1.3 + (attempt * 0.1)
+            config_dict['temperature'] = 0.1  # 매우 낮은 온도
+            config_dict['top_p'] = 0.8
+            config_dict['repetition_penalty'] = 1.1
+            config_dict['max_new_tokens'] = 150  # 적당한 길이
         else:
-            config_dict['temperature'] = 0.1
+            config_dict['temperature'] = 0.05  # 더 낮은 온도
             config_dict['top_p'] = 0.7
+            config_dict['max_new_tokens'] = 5
         
         config_dict['pad_token_id'] = self.tokenizer.pad_token_id
         config_dict['eos_token_id'] = self.tokenizer.eos_token_id
@@ -740,11 +698,11 @@ RAT의 주요 특징과 탐지 지표에 대해 다음 내용을 포함하여 �
     # 기존 메서드들 (하위 호환성 유지)
     def _generate_with_llm_improved(self, prompt: str, question_type: str, max_choice: int = 5) -> str:
         """개선된 LLM 답변 생성 (호환성 유지)"""
-        return self._generate_with_llm_robust(prompt, question_type, max_choice)
+        return self._generate_with_llm_stable(prompt, question_type, max_choice)
     
     def _generate_with_llm(self, prompt: str, question_type: str, max_choice: int = 5) -> str:
         """기존 호환성을 위한 LLM 생성"""
-        return self._generate_with_llm_robust(prompt, question_type, max_choice)
+        return self._generate_with_llm_stable(prompt, question_type, max_choice)
     
     def _create_enhanced_mc_prompt(self, question: str, max_choice: int, domain: str = "일반", hint_text: str = "") -> str:
         """향상된 객관식 프롬프트 생성"""
@@ -752,35 +710,24 @@ RAT의 주요 특징과 탐지 지표에 대해 다음 내용을 포함하여 �
         if max_choice <= 0:
             max_choice = 5
         
-        prompts = [
-            f"""다음은 {domain} 분야의 금융보안 관련 문제입니다.{hint_text}
+        prompt = f"""다음은 {domain} 분야의 금융보안 관련 문제입니다.{hint_text}
 
 {question}
 
 위 문제를 신중히 분석하여 정답을 선택하세요.
-각 선택지를 꼼꼼히 검토한 후 1부터 {max_choice}번 중 하나의 정답 번호만 답하세요.
+1부터 {max_choice}번 중 하나의 정답 번호만 답하세요.
 
-정답:""",
-            
-            f"""금융보안 전문가로서 다음 {domain} 문제를 해결하세요.{hint_text}
-
-{question}
-
-선택지를 모두 검토한 후 1부터 {max_choice}번 중 정답을 선택하세요.
-번호만 답하세요.
-
-답:"""
-        ]
+정답:"""
         
-        return random.choice(prompts)
+        return prompt
     
     def _process_enhanced_mc_answer(self, response: str, question: str, max_choice: int, domain: str = "일반") -> str:
-        """객관식 답변 처리 - 강화"""
+        """객관식 답변 처리 - 안정화"""
         if max_choice <= 0:
             max_choice = 5
         
         # 텍스트 정리
-        response = self.clean_generated_text_premium(response)
+        response = self.clean_generated_text_safe(response)
         
         # 숫자 추출 (선택지 범위 내에서만)
         numbers = re.findall(r'[1-9]', response)
@@ -792,26 +739,11 @@ RAT의 주요 특징과 탐지 지표에 대해 다음 내용을 포함하여 �
                     self.mc_answer_counts[max_choice] += 1
                 return num
         
-        # 유효한 답변을 찾지 못한 경우 재시도
-        fallback_prompt = f"""다음 문제의 정답을 1부터 {max_choice}번 중에서 선택하세요.
-
-{question}
-
-정답 번호만 답하세요:"""
-        
-        fallback_response = self._generate_with_llm_robust(fallback_prompt, "multiple_choice", max_choice)
-        fallback_response = self.clean_generated_text_premium(fallback_response)
-        fallback_numbers = re.findall(r'[1-9]', fallback_response)
-        
-        for num in fallback_numbers:
-            if 1 <= int(num) <= max_choice:
-                return num
-        
         # 최종 폴백
         import random
         return str(random.randint(1, max_choice))
     
-    # 나머지 메서드들은 기존과 동일하게 유지하되 _generate_with_llm_robust 사용
+    # 나머지 메서드들은 기존과 동일하게 유지하되 _generate_with_llm_stable 사용
     def generate_answer(self, question: str, question_type: str, max_choice: int = 5, intent_analysis: Dict = None) -> str:
         """답변 생성 (기존 호환성 유지)"""
         
@@ -823,12 +755,12 @@ RAT의 주요 특징과 탐지 지표에 대해 다음 내용을 포함하여 �
             prompt = self._create_enhanced_mc_prompt(question, max_choice, domain)
         else:
             if intent_analysis:
-                prompt = self._create_intent_aware_prompt(question, intent_analysis)
+                prompt = self._create_intent_aware_prompt_safe(question, intent_analysis)
             else:
-                prompt = self._create_korean_subj_prompt(question, domain)
+                prompt = self._create_korean_subj_prompt_safe(question, domain)
         
         # LLM 생성
-        response = self._generate_with_llm_robust(prompt, question_type, max_choice)
+        response = self._generate_with_llm_stable(prompt, question_type, max_choice)
         
         # 후처리
         if question_type == "multiple_choice":
@@ -836,8 +768,8 @@ RAT의 주요 특징과 탐지 지표에 대해 다음 내용을 포함하여 �
             self._add_learning_record(question, answer, question_type, True, max_choice, 1.0, intent_analysis)
             return answer
         else:
-            cleaned_answer = self.clean_generated_text_premium(response)
-            final_answer = self.fix_korean_sentence_structure(cleaned_answer)
+            cleaned_answer = self.clean_generated_text_safe(response)
+            final_answer = self.fix_korean_sentence_structure_safe(cleaned_answer)
             
             # 품질 검증
             if not self.validate_generated_answer(final_answer, "subjective"):
@@ -850,89 +782,39 @@ RAT의 주요 특징과 탐지 지표에 대해 다음 내용을 포함하여 �
             self._add_learning_record(question, final_answer, question_type, success, max_choice, quality_score, intent_analysis)
             return final_answer
     
-    def _create_intent_aware_prompt(self, question: str, intent_analysis: Dict) -> str:
-        """의도 인식 기반 프롬프트 생성 - 프리미엄 버전"""
-        primary_intent = intent_analysis.get("primary_intent", "일반")
-        answer_type = intent_analysis.get("answer_type_required", "설명형")
+    def _create_intent_aware_prompt_safe(self, question: str, intent_analysis: Dict) -> str:
+        """의도 인식 기반 프롬프트 생성 - 안전 버전"""
         domain = self._detect_domain(question)
-        context_hints = intent_analysis.get("context_hints", [])
-        intent_confidence = intent_analysis.get("intent_confidence", 0.0)
-        
-        # 의도별 특화 프롬프트 선택
-        if primary_intent in self.intent_specific_prompts:
-            if intent_confidence > 0.7:
-                available_prompts = self.intent_specific_prompts[primary_intent]
-                intent_instruction = random.choice(available_prompts)
-            else:
-                intent_instruction = "다음 질문에 정확하고 상세하게 답변하세요."
-        else:
-            intent_instruction = "다음 질문에 정확하고 상세하게 답변하세요."
-        
-        # 답변 유형별 추가 지침
-        type_guidance = ""
-        if answer_type == "기관명":
-            type_guidance = "구체적인 기관명이나 조직명을 반드시 포함하여 답변하세요. 해당 기관의 정확한 명칭과 소속을 명시하세요."
-        elif answer_type == "특징설명":
-            type_guidance = "주요 특징과 특성을 체계적으로 나열하고 설명하세요. 각 특징의 의미와 중요성을 포함하세요."
-        elif answer_type == "지표나열":
-            type_guidance = "관찰 가능한 지표와 탐지 방법을 구체적으로 제시하세요. 각 지표의 의미와 활용방법을 설명하세요."
-        
-        # 컨텍스트 힌트 활용
-        context_instruction = ""
-        if context_hints:
-            context_instruction = f"답변 시 다음 사항을 고려하세요: {', '.join(context_hints)}"
         
         prompt = f"""금융보안 전문가로서 다음 {domain} 관련 질문에 한국어로만 정확한 답변을 작성하세요.
 
 질문: {question}
 
-{intent_instruction}
-{type_guidance}
-{context_instruction}
-
 답변 작성 시 다음 사항을 준수하세요:
 - 반드시 한국어로만 작성
 - 질문의 의도에 정확히 부합하는 내용 포함
 - 관련 법령과 규정을 근거로 구체적 내용 포함
-- 실무적이고 전문적인 관점에서 설명
 - 명확하고 정확한 전문 용어 사용
-- 절대로 깨진 텍스트나 이상한 단어 사용 금지
 
 답변:"""
         
         return prompt
     
-    def _create_korean_subj_prompt(self, question: str, domain: str = "일반") -> str:
-        """한국어 전용 주관식 프롬프트 생성 - 프리미엄 버전"""
+    def _create_korean_subj_prompt_safe(self, question: str, domain: str = "일반") -> str:
+        """한국어 전용 주관식 프롬프트 생성 - 안전 버전"""
         
-        prompts = [
-            f"""금융보안 전문가로서 다음 {domain} 분야 질문에 대해 한국어로만 정확한 답변을 작성하세요.
+        prompt = f"""금융보안 전문가로서 다음 {domain} 분야 질문에 대해 한국어로만 정확한 답변을 작성하세요.
 
 질문: {question}
 
 답변 작성 시 다음 사항을 준수하세요:
 - 반드시 한국어로만 작성
 - 관련 법령과 규정을 근거로 구체적 내용 포함
-- 실무적이고 전문적인 관점에서 설명
 - 명확하고 정확한 전문 용어 사용
-- 절대로 깨진 텍스트나 이상한 단어 사용 금지
-
-답변:""",
-            
-            f"""다음은 {domain} 분야의 전문 질문입니다. 한국어로만 상세하고 정확한 답변을 제공하세요.
-
-{question}
-
-한국어 전용 답변 작성 기준:
-- 모든 전문 용어를 한국어로 표기
-- 법적 근거와 실무 절차를 한국어로 설명
-- 명확하고 정확한 문장 구조 사용
-- 깨진 텍스트나 비정상적인 표현 절대 금지
 
 답변:"""
-        ]
         
-        return random.choice(prompts)
+        return prompt
     
     # 나머지 메서드들 (기존과 동일)
     def _calculate_answer_quality(self, answer: str, question: str, intent_analysis: Dict = None) -> float:
@@ -942,66 +824,40 @@ RAT의 주요 특징과 탐지 지표에 대해 다음 내용을 포함하여 �
         
         score = 0.0
         
-        # 오류 패턴 검증 (-0.5점)
-        error_patterns = [
-            r'감추인', r'컨퍼머시', r'피-에', r'백-도어', r'키-로거', r'스크리너'
-        ]
+        # 깨진 텍스트 검증
+        if self.detect_corrupted_text(answer):
+            return 0.0
         
-        has_errors = any(re.search(pattern, answer) for pattern in error_patterns)
-        if has_errors:
-            score -= 0.5
-        
-        # 한국어 비율 (25%)
+        # 한국어 비율 (30%)
         korean_ratio = self._calculate_korean_ratio(answer)
-        score += korean_ratio * 0.25
+        score += korean_ratio * 0.30
         
-        # 길이 적절성 (15%)
+        # 길이 적절성 (20%)
         length = len(answer)
-        if 50 <= length <= 400:
+        if 30 <= length <= 300:
+            score += 0.20
+        elif 20 <= length < 30:
             score += 0.15
-        elif 30 <= length < 50 or 400 < length <= 500:
-            score += 0.1
         
-        # 문장 구조 (15%)
+        # 문장 구조 (20%)
         if answer.endswith(('.', '다', '요', '함')):
-            score += 0.1
+            score += 0.15
         
         sentences = answer.split('.')
         if len(sentences) >= 2:
             score += 0.05
         
-        # 전문성 (20%)
+        # 전문성 (15%)
         domain_keywords = self._get_domain_keywords(question)
         found_keywords = sum(1 for keyword in domain_keywords if keyword in answer)
         if found_keywords > 0:
-            score += min(found_keywords / len(domain_keywords), 1.0) * 0.2
+            score += min(found_keywords / len(domain_keywords), 1.0) * 0.15
         
-        # 의도 일치성 (25%)
-        if intent_analysis:
-            if self._check_intent_match(answer, intent_analysis.get("answer_type_required", "설명형")):
-                score += 0.25
-            else:
-                score += 0.1
-        else:
-            score += 0.2
+        # 기본 유효성 (15%)
+        if len(answer) >= 20 and korean_ratio >= 0.7:
+            score += 0.15
         
         return max(min(score, 1.0), 0.0)
-    
-    def _check_intent_match(self, answer: str, answer_type: str) -> bool:
-        """의도 일치성 확인"""
-        answer_lower = answer.lower()
-        
-        if answer_type == "기관명":
-            institution_keywords = ["위원회", "감독원", "은행", "기관", "센터", "청", "부", "원"]
-            return any(keyword in answer_lower for keyword in institution_keywords)
-        elif answer_type == "특징설명":
-            feature_keywords = ["특징", "특성", "속성", "성질", "기능", "역할"]
-            return any(keyword in answer_lower for keyword in feature_keywords)
-        elif answer_type == "지표나열":
-            indicator_keywords = ["지표", "신호", "징후", "패턴", "탐지", "모니터링"]
-            return any(keyword in answer_lower for keyword in indicator_keywords)
-        
-        return True
     
     def _get_domain_keywords(self, question: str) -> List[str]:
         """도메인별 키워드 반환"""

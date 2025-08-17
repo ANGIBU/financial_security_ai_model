@@ -43,63 +43,53 @@ MODEL_CONFIG = {
     'use_fast_tokenizer': True
 }
 
-# 생성 설정
+# 생성 설정 - 안정화된 버전
 GENERATION_CONFIG = {
     'multiple_choice': {
-        'max_new_tokens': 10,
-        'temperature': 0.1,
+        'max_new_tokens': 5,
+        'temperature': 0.01,  # 매우 낮은 온도로 안정성 확보
         'top_p': 0.7,
         'do_sample': True,
-        'repetition_penalty': 1.1,
+        'repetition_penalty': 1.05,
         'pad_token_id': None,
         'eos_token_id': None
     },
     'subjective': {
-        'max_new_tokens': 200,
-        'temperature': 0.3,
+        'max_new_tokens': 150,  # 적당한 길이로 제한
+        'temperature': 0.1,   # 낮은 온도로 안정성 확보
         'top_p': 0.8,
         'do_sample': True,
-        'repetition_penalty': 1.15,
+        'repetition_penalty': 1.1,
         'pad_token_id': None,
         'eos_token_id': None
     }
 }
 
-# === 텍스트 정리 설정 ===
+# === 텍스트 정리 설정 - 안전성 우선 ===
 TEXT_CLEANUP_CONFIG = {
-    'remove_brackets': True,
-    'remove_english': True,
+    'remove_brackets': False,     # 과도한 정리 방지
+    'remove_english': False,      # 과도한 정리 방지
     'fix_korean_typos': True,
     'normalize_spacing': True,
-    'remove_special_chars': True,
-    'korean_only_mode': True
+    'remove_special_chars': False, # 과도한 정리 방지
+    'korean_only_mode': False     # 과도한 정리 방지
 }
 
-# 한국어 오타 수정 매핑
+# 한국어 오타 수정 매핑 - 안전한 패턴만
 KOREAN_TYPO_MAPPING = {
     '전자금윋': '전자금융',
-    '과롷': '괄호',
     '캉터': '컴퓨터',
     '트래픁': '트래픽',
-    '윋': '융',
-    '롷': '호',
-    '픁': '픽',
-    '터': '터',
-    '웋': '웅',
-    '솓': '소프트',
-    '하웨': '하드웨어',
+    '하웨어': '하드웨어',
     '네됴크': '네트워크',
-    '액세': '액세스',
-    '메세': '메시지',
-    '오류메': '오류 메시지',
-    '리소': '리소스'
+    '메세지': '메시지'
 }
 
-# === 성능 최적화 설정 ===
+# === 성능 최적화 설정 - 안정성 우선 ===
 OPTIMIZATION_CONFIG = {
     'intent_confidence_threshold': 0.6,
-    'quality_threshold': 0.7,
-    'korean_ratio_threshold': 0.9,
+    'quality_threshold': 0.6,      # 더 관대한 기준
+    'korean_ratio_threshold': 0.7,  # 더 관대한 기준
     'max_retry_attempts': 3,
     'template_preference': True,
     'adaptive_prompt': True,
@@ -109,42 +99,42 @@ OPTIMIZATION_CONFIG = {
     'mc_context_weighting': True,
     'text_cleanup_enabled': True,
     'typo_correction_enabled': True,
-    'bracket_removal_enabled': True,
-    'english_removal_enabled': True
+    'bracket_removal_enabled': False,  # 안전성 우선
+    'english_removal_enabled': False   # 안전성 우선
 }
 
-# === 한국어 처리 설정 ===
+# === 한국어 처리 설정 - 관대한 기준 ===
 KOREAN_REQUIREMENTS = {
-    'min_korean_ratio': 0.9,
-    'max_english_ratio': 0.05,
-    'min_length': 30,
-    'max_length': 400,
+    'min_korean_ratio': 0.7,        # 더 관대한 기준
+    'max_english_ratio': 0.1,       # 더 관대한 기준
+    'min_length': 20,               # 더 관대한 기준
+    'max_length': 300,              # 적당한 길이
     'allow_numbers': True,
     'allow_punctuation': True,
-    'strict_korean_only': True
+    'strict_korean_only': False     # 과도한 제한 해제
 }
 
 # === 신뢰도 평가 설정 ===
 RELIABILITY_CONFIG = {
-    'base_accuracy': 0.75,  # 기준 정답률
+    'base_accuracy': 0.70,  # 더 현실적인 기준 정답률
     'confidence_factors': {
-        'mc_success_weight': 0.3,      # 객관식 성공률 가중치
-        'korean_compliance_weight': 0.2,  # 한국어 준수율 가중치
-        'intent_match_weight': 0.3,    # 의도 일치율 가중치
-        'quality_weight': 0.2          # 품질 점수 가중치
+        'mc_success_weight': 0.4,      # 객관식 비중 증가
+        'korean_compliance_weight': 0.2,
+        'intent_match_weight': 0.2,    # 의도 일치 비중 감소
+        'quality_weight': 0.2
     },
     'reliability_thresholds': {
-        'excellent': 90.0,    # 우수
-        'good': 80.0,         # 양호
-        'acceptable': 70.0,   # 허용
-        'poor': 60.0          # 미흡
+        'excellent': 85.0,    # 더 현실적인 기준
+        'good': 75.0,
+        'acceptable': 65.0,
+        'poor': 55.0
     }
 }
 
 # === 메모리 관리 설정 ===
 MEMORY_CONFIG = {
-    'gc_frequency': 50,  # 몇 문항마다 가비지 컬렉션 실행
-    'save_interval': 1000,  # 학습 데이터 저장 간격
+    'gc_frequency': 50,
+    'save_interval': 1000,
     'max_learning_records': {
         'successful_answers': 1000,
         'failed_answers': 500,
@@ -155,15 +145,15 @@ MEMORY_CONFIG = {
 
 # === 시간 제한 설정 ===
 TIME_LIMITS = {
-    'total_inference_minutes': 270,  # 4시간 30분
-    'warmup_timeout': 30,  # 워밍업 제한시간 (초)
-    'single_question_timeout': 25  # 단일 질문 제한시간 (초)
+    'total_inference_minutes': 270,
+    'warmup_timeout': 30,
+    'single_question_timeout': 25
 }
 
 # === 진행률 표시 설정 ===
 PROGRESS_CONFIG = {
     'bar_length': 50,
-    'update_frequency': 1  # 몇 문항마다 진행률 업데이트
+    'update_frequency': 1
 }
 
 # === 로깅 설정 ===
@@ -174,10 +164,10 @@ LOGGING_CONFIG = {
     'log_quality_scores': True
 }
 
-# === 템플릿 품질 평가 기준 ===
+# === 템플릿 품질 평가 기준 - 관대한 기준 ===
 TEMPLATE_QUALITY_CRITERIA = {
-    'length_range': (50, 400),
-    'korean_ratio_min': 0.95,
+    'length_range': (30, 300),      # 더 관대한 길이 기준
+    'korean_ratio_min': 0.7,        # 더 관대한 한국어 비율
     'structure_keywords': ["법", "규정", "조치", "관리", "절차", "기준"],
     'intent_keywords': {
         "기관_묻기": ["위원회", "기관", "담당", "업무"],
@@ -187,6 +177,20 @@ TEMPLATE_QUALITY_CRITERIA = {
         "절차_묻기": ["절차", "과정", "단계", "순서"],
         "조치_묻기": ["조치", "대응", "보안", "예방"]
     }
+}
+
+# === 텍스트 생성 안전성 설정 ===
+TEXT_SAFETY_CONFIG = {
+    'corruption_detection_enabled': True,
+    'max_generation_attempts': 3,
+    'safe_fallback_enabled': True,
+    'corruption_patterns': [
+        r'감추인', r'컨퍼머시', r'피-에', r'백-도어', r'키-로거', r'스크리너',
+        r'채팅-클라언트', r'파일-업-', r'[가-힣]-[가-힣]{2,}',
+        r'^[^가-힣]*$'  # 한국어가 전혀 없는 경우
+    ],
+    'min_korean_chars': 10,
+    'quality_check_enabled': True
 }
 
 # === 테스트 설정 ===
@@ -267,6 +271,13 @@ def validate_config():
     if abs(total_weight - 1.0) > 0.01:
         errors.append(f"confidence_factors의 총 가중치는 1.0이어야 합니다 (현재: {total_weight})")
     
+    # 생성 설정 검증
+    for config_type, config in GENERATION_CONFIG.items():
+        if config['temperature'] <= 0:
+            errors.append(f"{config_type} temperature는 양수여야 합니다")
+        if not 0 < config['top_p'] <= 1:
+            errors.append(f"{config_type} top_p는 0과 1 사이여야 합니다")
+    
     if errors:
         raise ValueError(f"설정 오류: {'; '.join(errors)}")
     
@@ -283,7 +294,38 @@ def initialize_system():
         print("시스템 설정 완료")
         print(f"기본 모델: {DEFAULT_MODEL_NAME}")
         print(f"디바이스: {get_device()}")
-        print(f"오프라인 모드: {OFFLINE_MODE}")
+        print(f"텍스트 안전성 검사: {TEXT_SAFETY_CONFIG['corruption_detection_enabled']}")
+
+# === 안전성 검증 함수 ===
+def get_safe_generation_config(question_type: str) -> dict:
+    """안전한 생성 설정 반환"""
+    config = GENERATION_CONFIG[question_type].copy()
+    
+    # 추가 안전 장치
+    if question_type == "subjective":
+        config['temperature'] = min(config['temperature'], 0.2)  # 최대 온도 제한
+        config['max_new_tokens'] = min(config['max_new_tokens'], 200)  # 최대 길이 제한
+    
+    return config
+
+def check_text_safety(text: str) -> bool:
+    """텍스트 안전성 검사"""
+    if not TEXT_SAFETY_CONFIG['corruption_detection_enabled']:
+        return True
+    
+    import re
+    
+    # 깨진 텍스트 패턴 검사
+    for pattern in TEXT_SAFETY_CONFIG['corruption_patterns']:
+        if re.search(pattern, text):
+            return False
+    
+    # 한국어 문자 수 검사
+    korean_chars = len(re.findall(r'[가-힣]', text))
+    if korean_chars < TEXT_SAFETY_CONFIG['min_korean_chars']:
+        return False
+    
+    return True
 
 # 자동 초기화 (모듈 import 시 실행)
 if __name__ != "__main__":
