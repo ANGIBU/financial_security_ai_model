@@ -29,6 +29,22 @@ class SimpleDataProcessor:
         self.pkl_dir = PKL_DIR
         self.pkl_dir.mkdir(exist_ok=True)
         
+        # 기본 처리 통계 구조 설정
+        self.processing_stats_structure = {
+            "total_processed": 0,
+            "korean_compliance": 0,
+            "validation_failures": 0,
+            "domain_distribution": {},
+            "question_type_accuracy": {"correct": 0, "total": 0},
+            "choice_count_errors": 0,
+            "intent_analysis_accuracy": {"correct": 0, "total": 0},
+            "intent_match_accuracy": {"correct": 0, "total": 0},
+            "mc_classification_accuracy": {"correct": 0, "total": 0},
+            "semantic_analysis_accuracy": {"correct": 0, "total": 0},
+            "choice_content_extraction": {"success": 0, "total": 0},
+            "negative_question_detection": {"correct": 0, "total": 0}
+        }
+        
         # JSON 설정 파일에서 데이터 로드
         self._load_json_configs()
         
@@ -56,7 +72,10 @@ class SimpleDataProcessor:
             self.mc_keywords = processing_config['mc_keywords']
             self.question_intent_patterns = processing_config['question_intent_patterns']
             self.subj_patterns = processing_config['subj_patterns']
-            self.processing_stats_structure = processing_config['processing_stats_structure']
+            
+            # 기존 구조와 JSON 구조 병합
+            json_stats_structure = processing_config.get('processing_stats_structure', {})
+            self.processing_stats_structure.update(json_stats_structure)
             
             # knowledge_data.json에서 도메인 키워드 로드
             with open(JSON_CONFIG_FILES['knowledge_data'], 'r', encoding='utf-8') as f:
@@ -113,21 +132,6 @@ class SimpleDataProcessor:
         
         self.domain_keywords = {
             "일반": ["법령", "규정", "관리", "조치", "절차"]
-        }
-        
-        self.processing_stats_structure = {
-            "total_processed": 0,
-            "korean_compliance": 0,
-            "validation_failures": 0,
-            "domain_distribution": {},
-            "question_type_accuracy": {"correct": 0, "total": 0},
-            "choice_count_errors": 0,
-            "intent_analysis_accuracy": {"correct": 0, "total": 0},
-            "intent_match_accuracy": {"correct": 0, "total": 0},
-            "mc_classification_accuracy": {"correct": 0, "total": 0},
-            "semantic_analysis_accuracy": {"correct": 0, "total": 0},
-            "choice_content_extraction": {"success": 0, "total": 0},
-            "negative_question_detection": {"correct": 0, "total": 0}
         }
     
     def _init_semantic_analysis_keywords(self):
@@ -533,10 +537,11 @@ class SimpleDataProcessor:
             choice_info["outlier_candidates"] = self._find_outlier_choices(choice_info["choices"], domain)
             choice_info["content_analysis"] = self._analyze_choice_content_patterns(choice_info["choices"], domain)
         
-        # 추출 성공률 업데이트
-        self.processing_stats["choice_content_extraction"]["total"] += 1
-        if choice_info["valid_choice_count"] >= 3:
-            self.processing_stats["choice_content_extraction"]["success"] += 1
+        # 추출 성공률 업데이트 (키 존재 확인)
+        if "choice_content_extraction" in self.processing_stats:
+            self.processing_stats["choice_content_extraction"]["total"] += 1
+            if choice_info["valid_choice_count"] >= 3:
+                self.processing_stats["choice_content_extraction"]["success"] += 1
         
         return choice_info
     
@@ -636,8 +641,12 @@ class SimpleDataProcessor:
         """강화된 질문 유형 분석"""
         
         question = question.strip()
-        self.processing_stats["question_type_accuracy"]["total"] += 1
-        self.processing_stats["mc_classification_accuracy"]["total"] += 1
+        
+        # 통계 카운터 확인 및 초기화
+        if "question_type_accuracy" in self.processing_stats:
+            self.processing_stats["question_type_accuracy"]["total"] += 1
+        if "mc_classification_accuracy" in self.processing_stats:
+            self.processing_stats["mc_classification_accuracy"]["total"] += 1
         
         # 주관식 패턴 우선 확인
         for pattern in self.subj_patterns:
@@ -655,8 +664,12 @@ class SimpleDataProcessor:
             if (choice_nums[0] == 1 and 
                 len(choice_nums) == choice_nums[-1] and
                 choice_nums[-1] <= 5):
-                self.processing_stats["question_type_accuracy"]["correct"] += 1
-                self.processing_stats["mc_classification_accuracy"]["correct"] += 1
+                
+                # 성공 카운터 증가
+                if "question_type_accuracy" in self.processing_stats:
+                    self.processing_stats["question_type_accuracy"]["correct"] += 1
+                if "mc_classification_accuracy" in self.processing_stats:
+                    self.processing_stats["mc_classification_accuracy"]["correct"] += 1
                 return "multiple_choice"
         
         # 객관식 키워드 확인
@@ -664,15 +677,19 @@ class SimpleDataProcessor:
             if re.search(pattern, question, re.IGNORECASE):
                 # 선택지가 있는지 추가 확인
                 if any(f'{i} ' in question for i in range(1, 6)):
-                    self.processing_stats["question_type_accuracy"]["correct"] += 1
-                    self.processing_stats["mc_classification_accuracy"]["correct"] += 1
+                    if "question_type_accuracy" in self.processing_stats:
+                        self.processing_stats["question_type_accuracy"]["correct"] += 1
+                    if "mc_classification_accuracy" in self.processing_stats:
+                        self.processing_stats["mc_classification_accuracy"]["correct"] += 1
                     return "multiple_choice"
         
         # 전통적인 객관식 패턴 확인
         for pattern in self.mc_patterns:
             if re.search(pattern, question, re.DOTALL | re.MULTILINE):
-                self.processing_stats["question_type_accuracy"]["correct"] += 1
-                self.processing_stats["mc_classification_accuracy"]["correct"] += 1
+                if "question_type_accuracy" in self.processing_stats:
+                    self.processing_stats["question_type_accuracy"]["correct"] += 1
+                if "mc_classification_accuracy" in self.processing_stats:
+                    self.processing_stats["mc_classification_accuracy"]["correct"] += 1
                 return "multiple_choice"
         
         # 길이와 구조 기반 추정
@@ -816,9 +833,10 @@ class SimpleDataProcessor:
         match_found = self._validate_answer_type_match(answer_lower, required_type)
         
         # 통계 업데이트
-        self.processing_stats["intent_match_accuracy"]["total"] += 1
-        if match_found:
-            self.processing_stats["intent_match_accuracy"]["correct"] += 1
+        if "intent_match_accuracy" in self.processing_stats:
+            self.processing_stats["intent_match_accuracy"]["total"] += 1
+            if match_found:
+                self.processing_stats["intent_match_accuracy"]["correct"] += 1
         
         return match_found
     
@@ -1077,27 +1095,44 @@ class SimpleDataProcessor:
     def get_processing_stats(self) -> Dict:
         """처리 통계 반환"""
         total = max(self.processing_stats["total_processed"], 1)
-        intent_total = max(self.processing_stats["intent_analysis_accuracy"]["total"], 1)
-        intent_match_total = max(self.processing_stats["intent_match_accuracy"]["total"], 1)
-        mc_total = max(self.processing_stats["mc_classification_accuracy"]["total"], 1)
-        semantic_total = max(self.processing_stats.get("semantic_analysis_accuracy", {"total": 1})["total"], 1)
-        choice_extract_total = max(self.processing_stats["choice_content_extraction"]["total"], 1)
-        negative_total = max(self.processing_stats.get("negative_question_detection", {"total": 1})["total"], 1)
         
-        return {
-            "total_processed": self.processing_stats["total_processed"],
-            "korean_compliance_rate": (self.processing_stats["korean_compliance"] / total) * 100,
-            "validation_failure_rate": (self.processing_stats["validation_failures"] / total) * 100,
-            "choice_count_errors": self.processing_stats["choice_count_errors"],
-            "intent_analysis_accuracy_rate": (self.processing_stats["intent_analysis_accuracy"]["correct"] / intent_total) * 100,
-            "intent_match_accuracy_rate": (self.processing_stats["intent_match_accuracy"]["correct"] / intent_match_total) * 100,
-            "mc_classification_accuracy_rate": (self.processing_stats["mc_classification_accuracy"]["correct"] / mc_total) * 100,
-            "semantic_analysis_accuracy_rate": (self.processing_stats.get("semantic_analysis_accuracy", {"correct": 0})["correct"] / semantic_total) * 100,
-            "choice_content_extraction_rate": (self.processing_stats["choice_content_extraction"]["success"] / choice_extract_total) * 100,
-            "negative_question_detection_rate": (self.processing_stats.get("negative_question_detection", {"correct": 0})["correct"] / negative_total) * 100,
-            "domain_distribution": dict(self.processing_stats["domain_distribution"]),
-            "question_type_accuracy": self.processing_stats["question_type_accuracy"]
-        }
+        # 안전한 통계 계산
+        stats = {}
+        
+        # 기본 통계
+        stats["total_processed"] = self.processing_stats["total_processed"]
+        stats["korean_compliance_rate"] = (self.processing_stats["korean_compliance"] / total) * 100
+        stats["validation_failure_rate"] = (self.processing_stats["validation_failures"] / total) * 100
+        stats["choice_count_errors"] = self.processing_stats["choice_count_errors"]
+        
+        # 의도 분석 통계
+        intent_total = max(self.processing_stats.get("intent_analysis_accuracy", {"total": 1})["total"], 1)
+        stats["intent_analysis_accuracy_rate"] = (self.processing_stats.get("intent_analysis_accuracy", {"correct": 0})["correct"] / intent_total) * 100
+        
+        # 의도 매칭 통계
+        intent_match_total = max(self.processing_stats.get("intent_match_accuracy", {"total": 1})["total"], 1)
+        stats["intent_match_accuracy_rate"] = (self.processing_stats.get("intent_match_accuracy", {"correct": 0})["correct"] / intent_match_total) * 100
+        
+        # MC 분류 통계
+        mc_total = max(self.processing_stats.get("mc_classification_accuracy", {"total": 1})["total"], 1)
+        stats["mc_classification_accuracy_rate"] = (self.processing_stats.get("mc_classification_accuracy", {"correct": 0})["correct"] / mc_total) * 100
+        
+        # 의미 분석 통계
+        semantic_total = max(self.processing_stats.get("semantic_analysis_accuracy", {"total": 1})["total"], 1)
+        stats["semantic_analysis_accuracy_rate"] = (self.processing_stats.get("semantic_analysis_accuracy", {"correct": 0})["correct"] / semantic_total) * 100
+        
+        # 선택지 추출 통계
+        choice_extract_total = max(self.processing_stats.get("choice_content_extraction", {"total": 1})["total"], 1)
+        stats["choice_content_extraction_rate"] = (self.processing_stats.get("choice_content_extraction", {"success": 0})["success"] / choice_extract_total) * 100
+        
+        # 부정형 질문 탐지 통계
+        negative_total = max(self.processing_stats.get("negative_question_detection", {"total": 1})["total"], 1)
+        stats["negative_question_detection_rate"] = (self.processing_stats.get("negative_question_detection", {"correct": 0})["correct"] / negative_total) * 100
+        
+        stats["domain_distribution"] = dict(self.processing_stats["domain_distribution"])
+        stats["question_type_accuracy"] = self.processing_stats["question_type_accuracy"]
+        
+        return stats
     
     def get_korean_requirements(self) -> Dict:
         """한국어 요구사항 반환"""

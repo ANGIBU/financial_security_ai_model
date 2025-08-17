@@ -14,6 +14,7 @@ import os
 import time
 import gc
 import pandas as pd
+import random
 from typing import Dict, List
 from pathlib import Path
 
@@ -113,6 +114,13 @@ class FinancialAIInference:
         """단일 질문 처리 (강화된 버전)"""
         start_time = time.time()
         
+        # 기본값 설정
+        question_type = "subjective"
+        max_choice = 5
+        domain = "일반"
+        difficulty = "초급"
+        kb_analysis = {}
+        
         try:
             # 기본 분석
             question_type, max_choice = self.data_processor.extract_choice_range(question)
@@ -159,15 +167,16 @@ class FinancialAIInference:
             if self.verbose:
                 print(f"오류 발생: {e}")
             # 안전한 폴백 답변
-            fallback = self._get_safe_fallback(question, question_type, max_choice if 'max_choice' in locals() else 5)
-            self._update_stats(question_type if 'question_type' in locals() else "multiple_choice", 
-                             domain if 'domain' in locals() else "일반", 
-                             difficulty if 'difficulty' in locals() else "초급", 
-                             time.time() - start_time)
+            fallback = self._get_safe_fallback(question, question_type, max_choice)
+            self._update_stats(question_type, domain, difficulty, time.time() - start_time)
             return fallback
     
     def _process_multiple_choice_enhanced(self, question: str, max_choice: int, domain: str, kb_analysis: Dict) -> str:
         """강화된 객관식 처리"""
+        
+        # max_choice 유효성 검증
+        if max_choice <= 0:
+            max_choice = 5
         
         # 1순위: 강화된 지식베이스 패턴 매칭
         enhanced_mc_info = kb_analysis.get("enhanced_mc_pattern", {})
@@ -590,7 +599,8 @@ class FinancialAIInference:
         
         # 선택지 분포 업데이트
         if max_choice in self.stats["mc_answers_by_range"]:
-            self.stats["mc_answers_by_range"][max_choice][answer] += 1
+            if answer in self.stats["mc_answers_by_range"][max_choice]:
+                self.stats["mc_answers_by_range"][max_choice][answer] += 1
         
         # 도메인별 정확도 추적
         if domain not in self.stats["mc_domain_accuracy"]:
@@ -674,7 +684,6 @@ class FinancialAIInference:
         if max_choice <= 0:
             max_choice = 5
         
-        import random
         return str(random.randint(1, max_choice))
     
     def _get_safe_fallback(self, question: str, question_type: str, max_choice: int) -> str:
