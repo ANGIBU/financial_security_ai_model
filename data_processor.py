@@ -25,7 +25,7 @@ from config import (
 )
 
 class SimpleDataProcessor:
-    """데이터 처리기"""
+    """데이터 처리기 - 안정성 강화 버전"""
     
     def __init__(self):
         self.pkl_dir = PKL_DIR
@@ -56,7 +56,6 @@ class SimpleDataProcessor:
             self.domain_detection_patterns = processing_config.get('domain_detection_patterns', {})
             self.choice_extraction_patterns = processing_config.get('choice_extraction_patterns', [])
             self.answer_validation_rules = processing_config.get('answer_validation_rules', {})
-            self.high_frequency_keywords = processing_config.get('high_frequency_keywords', {})
             
             with open(JSON_CONFIG_FILES['knowledge_data'], 'r', encoding='utf-8') as f:
                 knowledge_data = json.load(f)
@@ -96,40 +95,31 @@ class SimpleDataProcessor:
         self.question_intent_patterns = {
             "기관_묻기": ["기관.*기술하세요", "기관.*설명하세요"],
             "특징_묻기": ["특징.*설명하세요", "특징.*기술하세요"],
-            "지표_묻기": ["지표.*설명하세요", "탐지.*지표"],
-            "방안_묻기": ["방안.*기술하세요", "방안.*설명하세요"],
-            "절차_묻기": ["절차.*설명하세요", "절차.*기술하세요"],
-            "조치_묻기": ["조치.*설명하세요", "조치.*기술하세요"]
+            "지표_묻기": ["지표.*설명하세요", "탐지.*지표"]
         }
         
         self.subj_patterns = [
             r'설명하세요',
             r'기술하세요',
-            r'서술하세요',
-            r'작성하세요'
+            r'서술하세요'
         ]
         
         self.domain_keywords = {
-            "사이버보안": ["트로이", "RAT", "원격제어", "악성코드", "탐지", "지표"],
-            "전자금융": ["전자금융", "분쟁조정", "금융감독원", "전자금융거래법"],
-            "일반": ["법령", "규정", "관리", "조치", "절차"]
+            "사이버보안": ["트로이", "RAT", "원격제어", "악성코드"],
+            "전자금융": ["전자금융", "분쟁조정", "금융감독원"],
+            "일반": ["법령", "규정", "관리", "조치"]
         }
         
         self.domain_detection_patterns = {}
         self.choice_extraction_patterns = []
         self.answer_validation_rules = {}
-        self.high_frequency_keywords = {}
         
         self.processing_stats_structure = {
             "total_processed": 0,
             "korean_compliance": 0,
             "validation_failures": 0,
             "domain_distribution": {},
-            "question_type_accuracy": {"correct": 0, "total": 0},
-            "choice_count_errors": 0,
-            "intent_analysis_accuracy": {"correct": 0, "total": 0},
-            "intent_match_accuracy": {"correct": 0, "total": 0},
-            "mc_classification_accuracy": {"correct": 0, "total": 0}
+            "question_type_accuracy": {"correct": 0, "total": 0}
         }
     
     def _load_processing_history(self):
@@ -168,7 +158,7 @@ class SimpleDataProcessor:
         return not check_text_safety(text)
     
     def clean_korean_text_premium(self, text: str) -> str:
-        """프리미엄 한국어 텍스트 정리 - 안전성 우선"""
+        """프리미엄 한국어 텍스트 정리 - 안전성 최우선"""
         if not text:
             return ""
         
@@ -178,14 +168,16 @@ class SimpleDataProcessor:
         if self.detect_text_corruption(text):
             return ""  # 깨진 텍스트는 빈 문자열 반환
         
-        # 2단계: 최소한의 안전한 정리만 수행
-        # 안전한 한국어 오타 수정
+        # 2단계: 안전한 한국어 오타 수정
         safe_corrections = {
             "전자금윋": "전자금융",
             "캉터": "컴퓨터",
             "하웨어": "하드웨어",
             "네됴크": "네트워크",
-            "메세지": "메시지"
+            "메세지": "메시지",
+            "트래픁": "트래픽",
+            "보안조최": "보안조치",
+            "관리방안": "관리 방안"
         }
         
         for wrong, correct in safe_corrections.items():
@@ -198,30 +190,7 @@ class SimpleDataProcessor:
         # 4단계: 제어 문자 제거
         text = re.sub(r'[\u0000-\u001F\u007F]', '', text)
         
-        return text
-    
-    def clean_korean_text_advanced(self, text: str) -> str:
-        """한국어 텍스트 정리 - 안전 버전 사용"""
-        return self.clean_korean_text_premium(text)
-    
-    def fix_korean_sentence_structure(self, text: str) -> str:
-        """한국어 문장 구조 수정 - 안전 우선 버전"""
-        if not text:
-            return ""
-        
-        # 깨진 텍스트 확인
-        if self.detect_text_corruption(text):
-            return ""
-        
-        # 먼저 안전한 정리
-        text = self.clean_korean_text_premium(text)
-        if not text:
-            return ""
-        
-        # 최소한의 안전한 문장 구조 수정
-        text = text.strip()
-        
-        # 문장 끝 처리 (안전하게)
+        # 5단계: 문장 끝 정리
         if text and not text.endswith(('.', '다', '요', '함', '니다')):
             if len(text) > 15:
                 text += '.'
@@ -238,8 +207,7 @@ class SimpleDataProcessor:
             "detected_patterns": [],
             "answer_type_required": "설명형",
             "secondary_intents": [],
-            "context_hints": [],
-            "domain_specific_intent": None
+            "context_hints": []
         }
         
         intent_scores = {}
@@ -249,7 +217,7 @@ class SimpleDataProcessor:
             r"기관.*기술하세요", r"기관.*설명하세요",
             r"어떤.*기관", r"어느.*기관", r"기관.*무엇",
             r"분쟁.*조정.*기관", r"신청.*수.*있는.*기관",
-            r"담당.*기관", r"관리.*기관", r"감독.*기관"
+            r"담당.*기관", r"관리.*기관"
         ]
         
         institution_score = 0
@@ -260,7 +228,7 @@ class SimpleDataProcessor:
         # 기관 키워드 추가 점수
         institution_keywords = [
             "전자금융", "분쟁조정", "개인정보", "침해신고", 
-            "금융감독원", "한국은행", "개인정보보호위원회"
+            "금융감독원", "개인정보보호위원회"
         ]
         
         for keyword in institution_keywords:
@@ -291,8 +259,16 @@ class SimpleDataProcessor:
             elif any(word in question_lower for word in ["지표", "징후", "탐지"]):
                 intent_scores["지표_묻기"] = {"score": rat_score + 1, "patterns": ["rat_indicator"]}
         
-        # 다른 의도 패턴 분석 (간소화)
-        for intent_type, patterns in self.question_intent_patterns.items():
+        # 기본 의도 패턴 분석 (간소화)
+        basic_intent_patterns = {
+            "특징_묻기": [r"특징.*설명", r"특징.*기술", r"어떤.*특징"],
+            "지표_묻기": [r"지표.*설명", r"탐지.*지표", r"주요.*지표"],
+            "방안_묻기": [r"방안.*기술", r"대응.*방안", r"해결.*방안"],
+            "절차_묻기": [r"절차.*설명", r"과정.*설명", r"단계.*설명"],
+            "조치_묻기": [r"조치.*설명", r"보안.*조치", r"대응.*조치"]
+        }
+        
+        for intent_type, patterns in basic_intent_patterns.items():
             if intent_type in intent_scores:
                 continue  # 이미 처리됨
                 
@@ -319,6 +295,7 @@ class SimpleDataProcessor:
             intent_analysis["intent_confidence"] = min(best_intent[1]["score"] / 3, 1.0)
             intent_analysis["detected_patterns"] = best_intent[1]["patterns"]
             
+            # 답변 유형 설정
             primary = best_intent[0]
             if "기관" in primary:
                 intent_analysis["answer_type_required"] = "기관명"
@@ -329,11 +306,6 @@ class SimpleDataProcessor:
             elif "지표" in primary:
                 intent_analysis["answer_type_required"] = "지표나열"
                 intent_analysis["context_hints"].append("탐지 지표와 징후")
-            elif "방안" in primary:
-                intent_analysis["answer_type_required"] = "방안제시"
-                intent_analysis["context_hints"].append("구체적 실행방안")
-        
-        self.processing_stats["intent_analysis_accuracy"]["total"] += 1
         
         return intent_analysis
     
@@ -344,23 +316,34 @@ class SimpleDataProcessor:
         if question_type != "multiple_choice":
             return "subjective", 0
         
+        # 개선된 선택지 추출
         lines = question.split('\n')
         choice_numbers = []
         
         for line in lines:
             line = line.strip()
-            match = re.match(r'^(\d+)\s+(.+)', line)
-            if match:
-                num = int(match.group(1))
-                content = match.group(2).strip()
-                if 1 <= num <= 5 and len(content) > 0:
-                    choice_numbers.append(num)
+            # 다양한 패턴 지원
+            patterns = [
+                r'^(\d+)\s+(.+)',  # 기본: 숫자 + 공백 + 내용
+                r'^(\d+)\.\s*(.+)',  # 숫자 + 점 + 공백 + 내용
+                r'^(\d+)\)\s*(.+)'   # 숫자 + 괄호 + 공백 + 내용
+            ]
+            
+            for pattern in patterns:
+                match = re.match(pattern, line)
+                if match:
+                    num = int(match.group(1))
+                    content = match.group(2).strip()
+                    if 1 <= num <= 5 and len(content) > 0:
+                        choice_numbers.append(num)
+                    break
         
         if choice_numbers:
             choice_numbers.sort()
             max_choice = max(choice_numbers)
             min_choice = min(choice_numbers)
             
+            # 연속성 검증
             expected_count = max_choice - min_choice + 1
             if (len(choice_numbers) == expected_count and 
                 min_choice == 1 and 
@@ -370,8 +353,7 @@ class SimpleDataProcessor:
         # 폴백 - 키워드 기반 판단
         for pattern in self.mc_keywords:
             if re.search(pattern, question, re.IGNORECASE):
-                self.processing_stats["choice_count_errors"] += 1
-                return "multiple_choice", 5
+                return "multiple_choice", 5  # 기본값
         
         return "subjective", 0
     
@@ -379,8 +361,6 @@ class SimpleDataProcessor:
         """강화된 질문 유형 분석"""
         
         question = question.strip()
-        self.processing_stats["question_type_accuracy"]["total"] += 1
-        self.processing_stats["mc_classification_accuracy"]["total"] += 1
         
         # 주관식 패턴 우선 확인 (강화)
         subjective_indicators = [
@@ -394,7 +374,7 @@ class SimpleDataProcessor:
             if re.search(pattern, question, re.IGNORECASE):
                 return "subjective"
         
-        # 객관식 패턴 확인
+        # 객관식 패턴 확인 (개선된 검증)
         choice_pattern = r'\n(\d+)\s+[가-힣\w]'
         choice_matches = re.findall(choice_pattern, question)
         
@@ -404,16 +384,13 @@ class SimpleDataProcessor:
             if (choice_nums[0] == 1 and 
                 len(choice_nums) == choice_nums[-1] and
                 choice_nums[-1] <= 5):
-                self.processing_stats["question_type_accuracy"]["correct"] += 1
-                self.processing_stats["mc_classification_accuracy"]["correct"] += 1
                 return "multiple_choice"
         
         # 키워드 기반 객관식 판단
         for pattern in self.mc_keywords:
             if re.search(pattern, question, re.IGNORECASE):
+                # 선택지가 실제로 있는지 확인
                 if any(f'{i} ' in question for i in range(1, 6)):
-                    self.processing_stats["question_type_accuracy"]["correct"] += 1
-                    self.processing_stats["mc_classification_accuracy"]["correct"] += 1
                     return "multiple_choice"
         
         return "subjective"
@@ -424,14 +401,14 @@ class SimpleDataProcessor:
         
         domain_scores = {}
         
-        # 정확한 도메인 매칭 (간소화된 패턴)
+        # 정확한 도메인 매칭 (핵심 키워드 기반)
         domain_patterns = {
-            "사이버보안": ["rat", "트로이", "원격제어", "원격접근", "악성코드", "탐지", "지표", "특징", "딥페이크", "sbom"],
-            "전자금융": ["전자금융", "분쟁조정", "금융감독원", "전자금융거래법", "분쟁", "조정", "한국은행"],
-            "개인정보보호": ["개인정보", "정보주체", "만 14세", "법정대리인", "개인정보보호법", "개인정보침해신고센터"],
-            "정보보안": ["정보보안", "isms", "관리체계", "정책 수립", "재해복구", "bcp", "drp"],
-            "금융투자": ["금융투자업", "투자자문", "투자매매", "금융투자", "자본시장법"],
-            "위험관리": ["위험관리", "위험 관리", "재해복구", "위험수용", "위험평가"]
+            "사이버보안": ["rat", "트로이", "원격제어", "원격접근", "악성코드", "딥페이크", "sbom"],
+            "전자금융": ["전자금융", "분쟁조정", "금융감독원", "한국은행"],
+            "개인정보보호": ["개인정보", "정보주체", "만 14세", "법정대리인", "개인정보보호위원회"],
+            "정보보안": ["정보보안", "isms", "관리체계", "재해복구"],
+            "금융투자": ["금융투자업", "투자자문", "투자매매", "자본시장법"],
+            "위험관리": ["위험관리", "위험수용", "재해복구", "위험평가"]
         }
         
         for domain, patterns in domain_patterns.items():
@@ -452,15 +429,12 @@ class SimpleDataProcessor:
         
         detected_domain = max(domain_scores.items(), key=lambda x: x[1])[0]
         
+        # 통계 업데이트
         if detected_domain not in self.processing_stats["domain_distribution"]:
             self.processing_stats["domain_distribution"][detected_domain] = 0
         self.processing_stats["domain_distribution"][detected_domain] += 1
         
         return detected_domain
-    
-    def clean_korean_text(self, text: str) -> str:
-        """한국어 전용 텍스트 정리 (안전 버전 사용)"""
-        return self.clean_korean_text_premium(text)
     
     def calculate_korean_ratio(self, text: str) -> float:
         """한국어 비율 계산"""
@@ -475,81 +449,6 @@ class SimpleDataProcessor:
         
         return korean_chars / total_chars
     
-    def calculate_english_ratio(self, text: str) -> float:
-        """영어 비율 계산"""
-        if not text:
-            return 0.0
-        
-        english_chars = len(re.findall(r'[a-zA-Z]', text))
-        total_chars = len(re.sub(r'[^\w가-힣]', '', text))
-        
-        if total_chars == 0:
-            return 0.0
-        
-        return english_chars / total_chars
-    
-    def validate_mc_answer_range(self, answer: str, max_choice: int) -> bool:
-        """객관식 답변 범위 검증"""
-        if not answer or not answer.isdigit():
-            return False
-        
-        answer_num = int(answer)
-        return 1 <= answer_num <= max_choice
-    
-    def validate_answer_intent_match(self, answer: str, question: str, intent_analysis: Dict) -> bool:
-        """강화된 답변과 질문 의도 일치성 검증 - 안정성 우선"""
-        if not answer or not intent_analysis:
-            return False
-        
-        # 먼저 깨진 텍스트 검증
-        if self.detect_text_corruption(answer):
-            return False
-        
-        required_type = intent_analysis.get("answer_type_required", "설명형")
-        answer_lower = answer.lower()
-        
-        # 기관명 답변 검증 (간소화)
-        if required_type == "기관명":
-            institution_keywords = [
-                "위원회", "감독원", "은행", "기관", "센터", "청", "부", "원", 
-                "조정위원회", "보호위원회", "신고센터", "분쟁조정"
-            ]
-            
-            keyword_count = sum(1 for keyword in institution_keywords if keyword in answer_lower)
-            role_keywords = ["담당", "업무", "수행", "관리", "감독", "조정", "신고", "접수"]
-            role_count = sum(1 for keyword in role_keywords if keyword in answer_lower)
-            
-            match_found = keyword_count >= 1 or role_count >= 1
-        
-        elif required_type == "특징설명":
-            feature_keywords = ["특징", "특성", "속성", "성질", "기능", "역할"]
-            feature_count = sum(1 for keyword in feature_keywords if keyword in answer_lower)
-            
-            descriptive_words = ["위장", "은밀", "지속", "제어", "접근", "수행", "활동", "백도어"]
-            desc_count = sum(1 for word in descriptive_words if word in answer_lower)
-            
-            match_found = feature_count >= 1 or (desc_count >= 2 and len(answer) > 30)
-        
-        elif required_type == "지표나열":
-            indicator_keywords = ["지표", "신호", "징후", "패턴", "행동", "활동", "모니터링", "탐지"]
-            indicator_count = sum(1 for keyword in indicator_keywords if keyword in answer_lower)
-            
-            specific_indicators = ["네트워크", "트래픽", "프로세스", "파일", "시스템", "로그"]
-            specific_count = sum(1 for word in specific_indicators if word in answer_lower)
-            
-            match_found = indicator_count >= 1 or specific_count >= 2
-        
-        else:
-            # 기본 유효성 - 의미있는 키워드 포함 여부
-            meaningful_words = ["법령", "규정", "관리", "조치", "절차", "기준", "정책", "체계"]
-            match_found = sum(1 for word in meaningful_words if word in answer_lower) >= 1
-        
-        self.processing_stats["intent_match_accuracy"]["total"] += 1
-        if match_found:
-            self.processing_stats["intent_match_accuracy"]["correct"] += 1
-        
-        return match_found
-    
     def validate_korean_answer(self, answer: str, question_type: str, max_choice: int = 5, question: str = "") -> bool:
         """강화된 한국어 답변 유효성 검증 - 안정성 우선"""
         if not answer:
@@ -559,7 +458,8 @@ class SimpleDataProcessor:
         self.processing_stats["total_processed"] += 1
         
         if question_type == "multiple_choice":
-            if not self.validate_mc_answer_range(answer, max_choice):
+            # 객관식: 숫자 범위 검증
+            if not (answer.isdigit() and 1 <= int(answer) <= max_choice):
                 self.processing_stats["validation_failures"] += 1
                 return False
             
@@ -567,7 +467,7 @@ class SimpleDataProcessor:
             return True
         
         else:
-            # 먼저 깨진 텍스트 검증
+            # 주관식: 깨진 텍스트 우선 검증
             if self.detect_text_corruption(answer):
                 self.processing_stats["validation_failures"] += 1
                 return False
@@ -594,7 +494,7 @@ class SimpleDataProcessor:
                 return False
             
             korean_chars = len(re.findall(r'[가-힣]', clean_answer))
-            if korean_chars < 10:  # 더 관대한 기준
+            if korean_chars < 8:  # 더 관대한 기준
                 self.processing_stats["validation_failures"] += 1
                 return False
             
@@ -614,14 +514,6 @@ class SimpleDataProcessor:
             self.processing_stats["korean_compliance"] += 1
             return True
     
-    def validate_answer(self, answer: str, question_type: str, max_choice: int = 5, question: str = "") -> bool:
-        """답변 유효성 검증"""
-        return self.validate_korean_answer(answer, question_type, max_choice, question)
-    
-    def clean_text(self, text: str) -> str:
-        """텍스트 정리 (안전 버전 사용)"""
-        return self.clean_korean_text_premium(text)
-    
     def normalize_korean_answer(self, answer: str, question_type: str, max_choice: int = 5) -> str:
         """한국어 답변 정규화 - 안전 우선 버전"""
         if not answer:
@@ -630,6 +522,7 @@ class SimpleDataProcessor:
         answer = str(answer).strip()
         
         if question_type == "multiple_choice":
+            # 객관식: 숫자 추출
             numbers = re.findall(r'[1-9]', answer)
             for num in numbers:
                 if 1 <= int(num) <= max_choice:
@@ -638,14 +531,12 @@ class SimpleDataProcessor:
             return ""
         
         else:
-            # 안전한 텍스트 정리
+            # 주관식: 안전한 텍스트 정리
             answer = self.clean_korean_text_premium(answer)
             
             # 정리 후 내용이 없으면 기본 답변
             if not answer:
                 return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
-            
-            answer = self.fix_korean_sentence_structure(answer)
             
             # 너무 짧은 답변 처리
             if len(answer) < 20:
@@ -658,32 +549,22 @@ class SimpleDataProcessor:
                 if len(answer) > 350:
                     answer = answer[:350]
             
+            # 문장 끝 처리
             if answer and not answer.endswith(('.', '다', '요', '함')):
                 answer += "."
             
             return answer
     
-    def normalize_answer(self, answer: str, question_type: str, max_choice: int = 5) -> str:
-        """답변 정규화 (안전 버전 사용)"""
-        return self.normalize_korean_answer(answer, question_type, max_choice)
-    
     def get_processing_stats(self) -> Dict:
         """처리 통계 반환"""
         total = max(self.processing_stats["total_processed"], 1)
-        intent_total = max(self.processing_stats["intent_analysis_accuracy"]["total"], 1)
-        intent_match_total = max(self.processing_stats["intent_match_accuracy"]["total"], 1)
-        mc_total = max(self.processing_stats["mc_classification_accuracy"]["total"], 1)
         
         stats = {
             "total_processed": self.processing_stats["total_processed"],
             "korean_compliance_rate": (self.processing_stats["korean_compliance"] / total) * 100,
             "validation_failure_rate": (self.processing_stats["validation_failures"] / total) * 100,
-            "choice_count_errors": self.processing_stats["choice_count_errors"],
-            "intent_analysis_accuracy_rate": (self.processing_stats["intent_analysis_accuracy"]["correct"] / intent_total) * 100,
-            "intent_match_accuracy_rate": (self.processing_stats["intent_match_accuracy"]["correct"] / intent_match_total) * 100,
-            "mc_classification_accuracy_rate": (self.processing_stats["mc_classification_accuracy"]["correct"] / mc_total) * 100,
             "domain_distribution": dict(self.processing_stats["domain_distribution"]),
-            "question_type_accuracy": self.processing_stats["question_type_accuracy"]
+            "question_type_accuracy": self.processing_stats.get("question_type_accuracy", {"correct": 0, "total": 0})
         }
         
         return stats

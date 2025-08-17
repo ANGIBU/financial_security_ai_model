@@ -43,25 +43,31 @@ MODEL_CONFIG = {
     'use_fast_tokenizer': True
 }
 
-# 생성 설정 - 안정화된 버전
+# 생성 설정 - 안정화 최적화
 GENERATION_CONFIG = {
     'multiple_choice': {
-        'max_new_tokens': 5,
-        'temperature': 0.01,  # 매우 낮은 온도로 안정성 확보
-        'top_p': 0.7,
+        'max_new_tokens': 3,           # 더 짧게 제한
+        'temperature': 0.01,           # 매우 낮은 온도로 안정성 확보
+        'top_p': 0.6,                  # 더 보수적인 설정
+        'top_k': 20,                   # top_k 추가로 안정성 강화
         'do_sample': True,
-        'repetition_penalty': 1.05,
+        'repetition_penalty': 1.02,    # 낮은 반복 패널티
         'pad_token_id': None,
-        'eos_token_id': None
+        'eos_token_id': None,
+        'no_repeat_ngram_size': 2
     },
     'subjective': {
-        'max_new_tokens': 150,  # 적당한 길이로 제한
-        'temperature': 0.1,   # 낮은 온도로 안정성 확보
-        'top_p': 0.8,
+        'max_new_tokens': 120,         # 적절한 길이로 제한
+        'temperature': 0.05,           # 매우 낮은 온도로 안정성 확보
+        'top_p': 0.7,                  # 보수적 설정
+        'top_k': 30,                   # top_k 추가
         'do_sample': True,
-        'repetition_penalty': 1.1,
+        'repetition_penalty': 1.05,    # 낮은 반복 패널티
         'pad_token_id': None,
-        'eos_token_id': None
+        'eos_token_id': None,
+        'no_repeat_ngram_size': 3,
+        'length_penalty': 1.0,
+        'early_stopping': True
     }
 }
 
@@ -87,10 +93,10 @@ KOREAN_TYPO_MAPPING = {
 
 # === 성능 최적화 설정 - 안정성 우선 ===
 OPTIMIZATION_CONFIG = {
-    'intent_confidence_threshold': 0.6,
-    'quality_threshold': 0.6,      # 더 관대한 기준
-    'korean_ratio_threshold': 0.7,  # 더 관대한 기준
-    'max_retry_attempts': 3,
+    'intent_confidence_threshold': 0.5,    # 더 관대한 기준
+    'quality_threshold': 0.5,              # 더 관대한 기준
+    'korean_ratio_threshold': 0.6,         # 더 관대한 기준
+    'max_retry_attempts': 2,               # 재시도 횟수 감소
     'template_preference': True,
     'adaptive_prompt': True,
     'mc_pattern_priority': True,
@@ -99,16 +105,17 @@ OPTIMIZATION_CONFIG = {
     'mc_context_weighting': True,
     'text_cleanup_enabled': True,
     'typo_correction_enabled': True,
-    'bracket_removal_enabled': False,  # 안전성 우선
-    'english_removal_enabled': False   # 안전성 우선
+    'bracket_removal_enabled': False,      # 안전성 우선
+    'english_removal_enabled': False,      # 안전성 우선
+    'safe_generation_mode': True           # 안전 생성 모드 추가
 }
 
 # === 한국어 처리 설정 - 관대한 기준 ===
 KOREAN_REQUIREMENTS = {
-    'min_korean_ratio': 0.7,        # 더 관대한 기준
-    'max_english_ratio': 0.1,       # 더 관대한 기준
-    'min_length': 20,               # 더 관대한 기준
-    'max_length': 300,              # 적당한 길이
+    'min_korean_ratio': 0.6,        # 더 관대한 기준
+    'max_english_ratio': 0.2,       # 더 관대한 기준
+    'min_length': 15,               # 더 관대한 기준
+    'max_length': 350,              # 적당한 길이
     'allow_numbers': True,
     'allow_punctuation': True,
     'strict_korean_only': False     # 과도한 제한 해제
@@ -166,8 +173,8 @@ LOGGING_CONFIG = {
 
 # === 템플릿 품질 평가 기준 - 관대한 기준 ===
 TEMPLATE_QUALITY_CRITERIA = {
-    'length_range': (30, 300),      # 더 관대한 길이 기준
-    'korean_ratio_min': 0.7,        # 더 관대한 한국어 비율
+    'length_range': (25, 300),      # 더 관대한 길이 기준
+    'korean_ratio_min': 0.6,        # 더 관대한 한국어 비율
     'structure_keywords': ["법", "규정", "조치", "관리", "절차", "기준"],
     'intent_keywords': {
         "기관_묻기": ["위원회", "기관", "담당", "업무"],
@@ -179,18 +186,23 @@ TEMPLATE_QUALITY_CRITERIA = {
     }
 }
 
-# === 텍스트 생성 안전성 설정 ===
+# === 텍스트 생성 안전성 설정 - 강화됨 ===
 TEXT_SAFETY_CONFIG = {
     'corruption_detection_enabled': True,
-    'max_generation_attempts': 3,
+    'max_generation_attempts': 2,     # 재시도 횟수 감소
     'safe_fallback_enabled': True,
     'corruption_patterns': [
         r'감추인', r'컨퍼머시', r'피-에', r'백-도어', r'키-로거', r'스크리너',
         r'채팅-클라언트', r'파일-업-', r'[가-힣]-[가-힣]{2,}',
-        r'^[^가-힣]*$'  # 한국어가 전혀 없는 경우
+        r'^[^가-힣]*$',  # 한국어가 전혀 없는 경우
+        r'[가-힣]{1,2}-[영어단어]',  # 한글-영어 패턴
+        r'[가-힣]+[A-Za-z]+[가-힣]+',  # 한영 혼재
+        r'[\u0000-\u001F]',  # 제어 문자
+        r'감.*추.*인', r'컨.*퍼.*머.*시', r'피.*에', r'백.*도.*어'
     ],
-    'min_korean_chars': 10,
-    'quality_check_enabled': True
+    'min_korean_chars': 8,     # 더 관대한 기준
+    'quality_check_enabled': True,
+    'safe_prompt_mode': True   # 안전한 프롬프트 모드
 }
 
 # === 테스트 설정 ===
@@ -227,11 +239,24 @@ JSON_CONFIG_FILES = {
     'processing_config': JSON_CONFIG_DIR / 'processing_config.json'
 }
 
+# === 토크나이저 안정성 설정 ===
+TOKENIZER_SAFETY_CONFIG = {
+    'add_special_tokens': True,
+    'return_tensors': "pt",
+    'truncation': True,
+    'max_length': 1024,    # 더 짧게 제한
+    'padding': False,
+    'clean_up_tokenization_spaces': True
+}
+
 # === 환경 변수 설정 함수 ===
 def setup_environment():
     """환경 변수 설정"""
     for key, value in OFFLINE_MODE.items():
         os.environ[key] = value
+    
+    # 추가 안정성 설정
+    os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
 def get_device():
     """디바이스 자동 선택"""
@@ -303,8 +328,12 @@ def get_safe_generation_config(question_type: str) -> dict:
     
     # 추가 안전 장치
     if question_type == "subjective":
-        config['temperature'] = min(config['temperature'], 0.2)  # 최대 온도 제한
-        config['max_new_tokens'] = min(config['max_new_tokens'], 200)  # 최대 길이 제한
+        config['temperature'] = min(config['temperature'], 0.1)  # 최대 온도 제한
+        config['max_new_tokens'] = min(config['max_new_tokens'], 150)  # 최대 길이 제한
+        config['top_p'] = min(config['top_p'], 0.8)
+    else:
+        config['temperature'] = min(config['temperature'], 0.05)
+        config['max_new_tokens'] = min(config['max_new_tokens'], 5)
     
     return config
 
@@ -315,6 +344,10 @@ def check_text_safety(text: str) -> bool:
     
     import re
     
+    # 빈 텍스트 검사
+    if not text or len(text.strip()) == 0:
+        return False
+    
     # 깨진 텍스트 패턴 검사
     for pattern in TEXT_SAFETY_CONFIG['corruption_patterns']:
         if re.search(pattern, text):
@@ -324,6 +357,13 @@ def check_text_safety(text: str) -> bool:
     korean_chars = len(re.findall(r'[가-힣]', text))
     if korean_chars < TEXT_SAFETY_CONFIG['min_korean_chars']:
         return False
+    
+    # 기본 텍스트 품질 검사
+    total_chars = len(re.sub(r'[^\w가-힣]', '', text))
+    if total_chars > 0:
+        korean_ratio = korean_chars / total_chars
+        if korean_ratio < 0.5:  # 50% 이상 한국어여야 함
+            return False
     
     return True
 
