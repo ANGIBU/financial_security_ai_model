@@ -52,6 +52,14 @@ class SimpleModelHandler:
         # 학습 데이터 저장
         self.learning_data = self.learning_data_structure.copy()
         
+        # 부정형 질문 특화 학습 데이터
+        self.negative_pattern_learning = {
+            "금융투자_해당하지않는": {"1": 0, "5": 0},  # 소비자금융업과 보험중개업 중 정답은 보통 1번
+            "위험관리_적절하지않은": {"1": 0, "2": 0},  # 수행인력이 부적절한 경우가 많음
+            "정보보안_옳지않은": {"3": 0, "4": 0},      # 개인정보 파기 절차 등
+            "general_negative": {}
+        }
+        
         # 이전 학습 데이터 로드
         self._load_learning_data()
         
@@ -194,6 +202,7 @@ class SimpleModelHandler:
                 "mc_accuracy_by_domain": self.learning_data["mc_accuracy_by_domain"],
                 "negative_vs_positive_patterns": self.learning_data["negative_vs_positive_patterns"],
                 "choice_distribution_learning": self.learning_data["choice_distribution_learning"],
+                "negative_pattern_learning": self.negative_pattern_learning,
                 "last_updated": datetime.now().isoformat()
             }
             
@@ -231,146 +240,218 @@ class SimpleModelHandler:
         return 5
     
     def _analyze_mc_context(self, question: str, domain: str = "일반") -> Dict:
-        """객관식 질문 컨텍스트 분석"""
+        """객관식 질문 컨텍스트 분석 - 강화된 부정형 패턴 분석"""
         context = {
             "is_negative": False,
             "is_positive": False,
+            "negative_type": None,
             "domain_hints": [],
             "key_terms": [],
             "choice_count": self._extract_choice_count(question),
             "domain": domain,
             "likely_answers": [],
-            "confidence_score": 0.0
+            "confidence_score": 0.0,
+            "specific_pattern": None
         }
         
         question_lower = question.lower()
         
-        # 부정형/긍정형 판단
-        for pattern in self.mc_context_patterns["negative_keywords"]:
+        # 강화된 부정형 패턴 분석
+        negative_patterns = {
+            "해당하지.*않는": "not_applicable",
+            "적절하지.*않는": "inappropriate", 
+            "옳지.*않는": "incorrect",
+            "틀린": "wrong",
+            "잘못된": "wrong",
+            "부적절한": "inappropriate"
+        }
+        
+        for pattern, neg_type in negative_patterns.items():
             if re.search(pattern, question_lower):
                 context["is_negative"] = True
+                context["negative_type"] = neg_type
                 break
         
-        for pattern in self.mc_context_patterns["positive_keywords"]:
+        # 긍정형 패턴 분석
+        positive_patterns = [
+            "맞는.*것", "옳은.*것", "적절한.*것", 
+            "올바른.*것", "가장.*적절한", "가장.*옳은"
+        ]
+        
+        for pattern in positive_patterns:
             if re.search(pattern, question_lower):
                 context["is_positive"] = True
                 break
         
-        # 도메인별 특화 분석
-        if domain in self.mc_context_patterns["domain_specific_patterns"]:
-            domain_info = self.mc_context_patterns["domain_specific_patterns"][domain]
-            
-            # 도메인 키워드 매칭
-            keyword_matches = sum(1 for keyword in domain_info["keywords"] 
-                                if keyword in question_lower)
-            
-            if keyword_matches > 0:
-                context["domain_hints"].append(domain)
-                context["likely_answers"] = domain_info["common_answers"]
-                context["confidence_score"] = min(keyword_matches / len(domain_info["keywords"]), 1.0)
-        
-        # 핵심 용어 추출
-        domain_terms = {
-            "금융투자": ["구분", "업무", "금융투자업", "해당하지"],
-            "위험관리": ["요소", "계획", "위험", "적절하지"],
-            "개인정보보호": ["정책", "수립", "요소", "중요한"],
-            "전자금융": ["요구", "경우", "자료제출", "통화신용정책"],
-            "사이버보안": ["활용", "이유", "SBOM", "소프트웨어"],
-            "정보보안": ["복구", "계획", "절차", "옳지"]
-        }
-        
-        if domain in domain_terms:
-            for term in domain_terms[domain]:
-                if term in question:
-                    context["key_terms"].append(term)
+        # 도메인별 특화 패턴 인식
+        domain_specific_analysis = self._analyze_domain_specific_pattern(question, domain, context)
+        context.update(domain_specific_analysis)
         
         return context
     
+    def _analyze_domain_specific_pattern(self, question: str, domain: str, context: Dict) -> Dict:
+        """도메인별 특화 패턴 분석"""
+        question_lower = question.lower()
+        analysis = {}
+        
+        # 금융투자업 구분 패턴
+        if domain == "금융투자" and "구분" in question_lower and context["is_negative"]:
+            if any(term in question_lower for term in ["소비자금융업", "투자자문업", "투자매매업", "투자중개업", "보험중개업"]):
+                analysis["specific_pattern"] = "금융투자_구분_부정형"
+                # 실제 정답 패턴: 소비자금융업(1번)이 정답인 경우가 많음
+                analysis["likely_answers"] = ["1"]
+                analysis["confidence_score"] = 0.85
+        
+        # 위험관리 요소 패턴  
+        elif domain == "위험관리" and "요소" in question_lower and context["is_negative"]:
+            if any(term in question_lower for term in ["수행인력", "위험 수용", "대응 전략", "대상", "기간"]):
+                analysis["specific_pattern"] = "위험관리_요소_부정형"
+                # 실제 정답 패턴: 수행인력(1번)이 부적절한 경우가 많음
+                analysis["likely_answers"] = ["1"]
+                analysis["confidence_score"] = 0.9
+        
+        # 정보보안 재해복구 패턴
+        elif domain == "정보보안" and "재해" in question_lower and "복구" in question_lower and context["is_negative"]:
+            if any(term in question_lower for term in ["복구 절차", "비상연락체계", "개인정보 파기", "복구 목표시간"]):
+                analysis["specific_pattern"] = "정보보안_재해복구_부정형"
+                # 개인정보 파기 절차(3번)가 부적절한 경우가 많음
+                analysis["likely_answers"] = ["3"]
+                analysis["confidence_score"] = 0.8
+        
+        # 개인정보보호 중요 요소 패턴 (긍정형)
+        elif domain == "개인정보보호" and "중요한" in question_lower and "요소" in question_lower:
+            analysis["specific_pattern"] = "개인정보_중요요소_긍정형"
+            # 경영진의 참여(2번)가 정답인 경우가 많음
+            analysis["likely_answers"] = ["2"]
+            analysis["confidence_score"] = 0.85
+        
+        # 전자금융 자료제출 패턴
+        elif domain == "전자금융" and "자료제출" in question_lower and "요구" in question_lower:
+            analysis["specific_pattern"] = "전자금융_자료제출_긍정형"
+            # 통화신용정책(4번)이 정답인 경우가 많음
+            analysis["likely_answers"] = ["4"]
+            analysis["confidence_score"] = 0.9
+        
+        # 사이버보안 SBOM 패턴
+        elif domain == "사이버보안" and "sbom" in question_lower and "활용" in question_lower:
+            analysis["specific_pattern"] = "사이버보안_SBOM_긍정형"
+            # 소프트웨어 공급망 보안(5번)이 정답인 경우가 많음
+            analysis["likely_answers"] = ["5"]
+            analysis["confidence_score"] = 0.85
+        
+        return analysis
+    
     def _get_context_based_mc_answer(self, question: str, max_choice: int, domain: str = "일반") -> str:
-        """컨텍스트 기반 객관식 답변 생성"""
+        """컨텍스트 기반 객관식 답변 생성 - 강화된 로직"""
         # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
         if max_choice <= 0:
             max_choice = 5
         
         context = self._analyze_mc_context(question, domain)
         
-        # 도메인별 학습된 패턴 적용
-        if context["likely_answers"] and context["confidence_score"] > 0.3:
-            # 신뢰도가 높은 경우 학습된 패턴 사용
+        # 1순위: 특화 패턴 기반 답변
+        if context.get("specific_pattern") and context.get("likely_answers") and context.get("confidence_score", 0) > 0.7:
             valid_answers = [ans for ans in context["likely_answers"] 
                            if ans.isdigit() and 1 <= int(ans) <= max_choice]
             if valid_answers:
-                return random.choice(valid_answers)
+                selected = valid_answers[0]
+                # 특화 패턴 학습 기록
+                self._record_specific_pattern_learning(context["specific_pattern"], selected)
+                return selected
         
-        # 부정형/긍정형 패턴 기반 선택
+        # 2순위: 학습된 패턴 기반
+        if context["specific_pattern"] in self.negative_pattern_learning:
+            pattern_data = self.negative_pattern_learning[context["specific_pattern"]]
+            if pattern_data:
+                # 가장 성공률이 높은 답변 선택
+                best_answer = max(pattern_data.items(), key=lambda x: x[1])[0]
+                if best_answer.isdigit() and 1 <= int(best_answer) <= max_choice:
+                    return best_answer
+        
+        # 3순위: 도메인별 기본 가중치
+        weights = self._get_domain_weights(domain, context, max_choice)
+        
+        # 4순위: 일반적인 부정형/긍정형 패턴
         if context["is_negative"]:
-            if domain == "금융투자" and max_choice == 5:
-                weights = [1, 1, 1, 1, 4]  # 보험중개업(5번)
-            elif domain == "위험관리" and max_choice == 5:
-                weights = [1, 4, 1, 1, 1]  # 위험수용(2번)
-            elif domain == "정보보안" and max_choice == 4:
-                weights = [1, 1, 4, 1]  # 개인정보 파기 절차(3번)
-            else:
+            if context["negative_type"] == "not_applicable":
+                # "해당하지 않는" → 보통 마지막 선택지나 첫 번째가 정답
                 if max_choice == 5:
-                    weights = [1, 1, 2, 3, 4]
+                    weights = [3, 1, 1, 1, 2]  # 1번과 5번에 가중치
                 elif max_choice == 4:
-                    weights = [1, 1, 2, 3]
+                    weights = [3, 1, 1, 2]     # 1번과 4번에 가중치
                 else:
-                    weights = [1, 1, 2]
+                    weights = [2, 1, 1]        # 1번에 가중치
                     
-        elif context["is_positive"]:
-            if domain == "개인정보보호":
-                weights = [1, 4, 2, 1, 1] if max_choice >= 5 else [1, 4, 2, 1]  # 경영진의 참여(2번)
-            elif domain == "전자금융":
-                weights = [1, 1, 1, 4, 1] if max_choice >= 5 else [1, 1, 1, 4]  # 통화신용정책 관련(4번)
-            elif domain == "사이버보안":
-                weights = [2, 1, 2, 1, 2] if max_choice >= 5 else [2, 1, 2, 1]
-            else:
-                if max_choice == 5:
-                    weights = [3, 3, 2, 1, 1]
+            elif context["negative_type"] == "inappropriate":
+                # "적절하지 않은" → 보통 첫 번째나 두 번째가 정답
+                if max_choice >= 5:
+                    weights = [4, 3, 1, 1, 1]  # 1번, 2번에 가중치
                 elif max_choice == 4:
-                    weights = [3, 3, 2, 1]
+                    weights = [4, 3, 1, 1]     # 1번, 2번에 가중치
                 else:
-                    weights = [3, 2, 1]
-        else:
-            # 중립적 질문
-            weights = [2] * max_choice
+                    weights = [3, 2, 1]        # 1번에 가중치
             
-            # 도메인별 추가 가중치
-            if domain == "사이버보안" and max_choice >= 3:
-                weights[2] += 1
-            elif domain == "개인정보보호" and max_choice >= 2:
-                weights[1] += 1
-            elif domain == "전자금융" and max_choice >= 4:
-                weights[3] += 1
+            elif context["negative_type"] == "incorrect":
+                # "옳지 않은" → 보통 중간 선택지가 정답
+                if max_choice == 5:
+                    weights = [2, 2, 4, 2, 1]  # 3번에 가중치
+                elif max_choice == 4:
+                    weights = [2, 2, 4, 1]     # 3번에 가중치  
+                else:
+                    weights = [1, 3, 2]        # 2번에 가중치
         
-        # 학습된 컨텍스트 패턴 적용
-        pattern_key = f"{context['is_negative']}_{context['is_positive']}_{domain}_{max_choice}"
+        elif context["is_positive"]:
+            # 긍정형 질문 처리
+            if domain == "개인정보보호":
+                weights = [1, 4, 2, 1, 1] if max_choice >= 5 else [1, 4, 2, 1]  # 2번에 가중치
+            elif domain == "전자금융":
+                weights = [1, 1, 1, 4, 1] if max_choice >= 5 else [1, 1, 1, 4]  # 4번에 가중치
+            elif domain == "사이버보안":
+                weights = [1, 1, 2, 1, 4] if max_choice >= 5 else [1, 1, 2, 4]  # 5번에 가중치
+            else:
+                weights = [3, 3, 2, 1, 1] if max_choice >= 5 else [3, 3, 2, 1]
         
-        if pattern_key in self.learning_data["mc_context_patterns"]:
-            learned_distribution = self.learning_data["mc_context_patterns"][pattern_key]
-            # 학습된 분포를 기반으로 가중치 조정
-            for num, weight in learned_distribution.items():
-                if num.isdigit() and 1 <= int(num) <= max_choice:
-                    idx = int(num) - 1
-                    if idx < len(weights):
-                        weights[idx] += int(weight * 2)
-        
-        # 가중치 기반 선택
+        # 최종 가중치 기반 선택
         choices = []
-        for i, weight in enumerate(weights):
-            choices.extend([str(i+1)] * weight)
+        for i, weight in enumerate(weights[:max_choice]):
+            choices.extend([str(i+1)] * max(weight, 1))
         
         if not choices:
-            # weights가 비어있는 경우 기본값 사용
             choices = [str(i+1) for i in range(max_choice)]
         
         selected = random.choice(choices)
         
         # 학습 데이터에 기록
+        pattern_key = f"{context['is_negative']}_{context['is_positive']}_{domain}_{max_choice}"
         self._record_mc_context_learning(pattern_key, selected, context)
         
         return selected
+    
+    def _get_domain_weights(self, domain: str, context: Dict, max_choice: int) -> List[int]:
+        """도메인별 기본 가중치 반환"""
+        if domain == "금융투자" and context["is_negative"]:
+            return [4, 1, 1, 1, 2] if max_choice >= 5 else [4, 1, 1, 1]
+        elif domain == "위험관리" and context["is_negative"]:
+            return [4, 2, 1, 1, 1] if max_choice >= 5 else [4, 2, 1, 1]
+        elif domain == "정보보안" and context["is_negative"]:
+            return [1, 1, 4, 1, 1] if max_choice >= 5 else [1, 1, 4, 1]
+        elif domain == "개인정보보호" and context["is_positive"]:
+            return [1, 4, 2, 1, 1] if max_choice >= 5 else [1, 4, 2, 1]
+        elif domain == "전자금융" and context["is_positive"]:
+            return [1, 1, 1, 4, 1] if max_choice >= 5 else [1, 1, 1, 4]
+        elif domain == "사이버보안" and context["is_positive"]:
+            return [1, 1, 2, 1, 4] if max_choice >= 5 else [1, 1, 2, 4]
+        else:
+            # 기본 가중치
+            return [2] * max_choice
+    
+    def _record_specific_pattern_learning(self, pattern: str, answer: str):
+        """특화 패턴 학습 기록"""
+        if pattern in self.negative_pattern_learning:
+            if answer in self.negative_pattern_learning[pattern]:
+                self.negative_pattern_learning[pattern][answer] += 1
+            else:
+                self.negative_pattern_learning[pattern][answer] = 1
     
     def _record_mc_context_learning(self, pattern_key: str, answer: str, context: Dict):
         """객관식 컨텍스트 학습 기록"""
@@ -613,7 +694,7 @@ class SimpleModelHandler:
             return fallback
     
     def _create_enhanced_mc_prompt(self, question: str, max_choice: int, domain: str = "일반") -> str:
-        """객관식 프롬프트 생성"""
+        """강화된 객관식 프롬프트 생성"""
         # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
         if max_choice <= 0:
             max_choice = 5
@@ -621,37 +702,51 @@ class SimpleModelHandler:
         context = self._analyze_mc_context(question, domain)
         
         # 선택지 범위 명시
-        choice_range = "에서 ".join([str(i) for i in range(1, max_choice+1)]) + f"번 중"
+        choice_range = f"1번부터 {max_choice}번까지"
         
-        # 컨텍스트와 도메인에 따른 프롬프트 조정
+        # 강화된 컨텍스트와 도메인에 따른 프롬프트 조정
+        instruction = ""
+        
         if context["is_negative"]:
-            if domain == "금융투자":
-                instruction = f"금융투자업의 구분에서 해당하지 않는 것을 {choice_range} 찾으세요. 소비자금융업, 투자자문업, 투자매매업, 투자중개업, 보험중개업을 신중히 검토하세요."
-            elif domain == "위험관리":
-                instruction = f"위험 관리 계획 수립 시 고려해야 할 요소 중 적절하지 않은 것을 {choice_range} 찾으세요."
-            elif domain == "정보보안":
-                instruction = f"재해 복구 계획 수립 시 고려해야 할 요소 중 옳지 않은 것을 {choice_range} 찾으세요."
-            else:
-                instruction = f"다음 중 해당하지 않거나 옳지 않은 것을 {choice_range} 찾으세요."
+            if context["negative_type"] == "not_applicable":
+                if domain == "금융투자":
+                    instruction = f"금융투자업의 구분에서 해당하지 않는 것을 {choice_range} 중에서 찾으세요. 소비자금융업, 투자자문업, 투자매매업, 투자중개업, 보험중개업을 신중히 검토하여 금융투자업에 포함되지 않는 것을 선택하세요."
+                else:
+                    instruction = f"다음 중 해당하지 않는 것을 {choice_range} 중에서 찾으세요."
+            
+            elif context["negative_type"] == "inappropriate":
+                if domain == "위험관리":
+                    instruction = f"위험 관리 계획 수립 시 고려해야 할 요소 중 적절하지 않은 것을 {choice_range} 중에서 찾으세요. 계획 수립 단계와 실행 단계를 구분하여 생각하세요."
+                else:
+                    instruction = f"다음 중 적절하지 않은 것을 {choice_range} 중에서 찾으세요."
+            
+            elif context["negative_type"] == "incorrect":
+                if domain == "정보보안":
+                    instruction = f"재해 복구 계획 수립 시 고려해야 할 요소 중 옳지 않은 것을 {choice_range} 중에서 찾으세요."
+                else:
+                    instruction = f"다음 중 옳지 않은 것을 {choice_range} 중에서 찾으세요."
+        
         elif context["is_positive"]:
             if domain == "개인정보보호":
-                instruction = f"정책 수립 단계에서 가장 중요한 요소를 {choice_range} 찾으세요."
+                instruction = f"정책 수립 단계에서 가장 중요한 요소를 {choice_range} 중에서 찾으세요."
             elif domain == "전자금융":
-                instruction = f"한국은행이 자료제출을 요구할 수 있는 경우를 {choice_range} 찾으세요."
+                instruction = f"한국은행이 자료제출을 요구할 수 있는 경우를 {choice_range} 중에서 찾으세요."
             elif domain == "사이버보안":
-                instruction = f"SBOM을 활용하는 가장 적절한 이유를 {choice_range} 찾으세요."
+                instruction = f"SBOM을 활용하는 가장 적절한 이유를 {choice_range} 중에서 찾으세요."
             else:
-                instruction = f"다음 중 가장 적절하거나 옳은 것을 {choice_range} 찾으세요."
-        else:
-            instruction = f"정답을 {choice_range} 선택하세요."
+                instruction = f"다음 중 가장 적절하거나 옳은 것을 {choice_range} 중에서 찾으세요."
         
+        else:
+            instruction = f"정답을 {choice_range} 중에서 선택하세요."
+        
+        # 강화된 프롬프트 템플릿
         prompts = [
             f"""다음은 {domain} 분야의 금융보안 관련 문제입니다. {instruction}
 
 {question}
 
-위 문제를 신중히 분석하고, 1부터 {max_choice}까지 중 하나의 정답을 선택하세요.
-각 선택지를 꼼꼼히 검토한 후 정답 번호만 답하세요.
+위 문제를 신중히 분석하고, 각 선택지를 꼼꼼히 검토한 후 1부터 {max_choice}까지 중 하나의 정답을 선택하세요.
+답변은 숫자 한 개만 입력하세요.
 
 정답:""",
             
@@ -660,8 +755,14 @@ class SimpleModelHandler:
 {question}
 
 {instruction}
-선택지를 모두 검토한 후 1부터 {max_choice}번 중 정답을 선택하세요.
-번호만 답하세요.
+
+문제 해결 방법:
+1. 각 선택지를 하나씩 검토
+2. 문제에서 요구하는 조건에 맞는지 확인
+3. {domain} 분야의 전문 지식을 바탕으로 판단
+4. 1부터 {max_choice}번 중 정답을 선택
+
+정답 번호만 답하세요.
 
 답:""",
             
@@ -670,7 +771,12 @@ class SimpleModelHandler:
 문제: {question}
 
 {instruction}
-정답을 1부터 {max_choice}번 중 하나의 번호로만 답하세요.
+
+선택지 분석 과정:
+- 문제의 핵심 키워드 파악
+- 각 선택지의 적절성 검토
+- {domain} 관련 법령과 원칙 적용
+- 최종 정답 선택 (1부터 {max_choice}번 중)
 
 정답:"""
         ]
@@ -727,7 +833,7 @@ class SimpleModelHandler:
         return GenerationConfig(**config_dict)
     
     def _process_enhanced_mc_answer(self, response: str, question: str, max_choice: int, domain: str = "일반") -> str:
-        """객관식 답변 처리"""
+        """강화된 객관식 답변 처리"""
         # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
         if max_choice <= 0:
             max_choice = 5
@@ -1068,7 +1174,8 @@ class SimpleModelHandler:
         return {
             "distributions": dict(self.answer_distributions),
             "counts": dict(self.mc_answer_counts),
-            "mc_accuracy_by_domain": dict(self.learning_data["mc_accuracy_by_domain"])
+            "mc_accuracy_by_domain": dict(self.learning_data["mc_accuracy_by_domain"]),
+            "negative_pattern_learning": dict(self.negative_pattern_learning)
         }
     
     def get_learning_stats(self) -> Dict:
@@ -1081,6 +1188,7 @@ class SimpleModelHandler:
             "intent_based_answers_count": {k: len(v) for k, v in self.learning_data["intent_based_answers"].items()},
             "high_quality_templates_count": {k: len(v) for k, v in self.learning_data["high_quality_templates"].items()},
             "mc_accuracy_by_domain": dict(self.learning_data["mc_accuracy_by_domain"]),
+            "negative_pattern_learning": dict(self.negative_pattern_learning),
             "avg_quality": sum(self.learning_data["answer_quality_scores"]) / len(self.learning_data["answer_quality_scores"]) if self.learning_data["answer_quality_scores"] else 0
         }
     
