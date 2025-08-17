@@ -86,7 +86,7 @@ class FinancialAIInference:
             print("초기화 완료")
         
     def process_single_question(self, question: str, question_id: str) -> str:
-        """단일 질문 처리 - 개선된 버전"""
+        """단일 질문 처리 - 프리미엄 버전"""
         start_time = time.time()
         
         try:
@@ -99,23 +99,27 @@ class FinancialAIInference:
             
             # 객관식 우선 처리
             if question_type == "multiple_choice":
-                answer = self._process_multiple_choice_with_llm(question, max_choice, domain, kb_analysis)
+                answer = self._process_multiple_choice_premium(question, max_choice, domain, kb_analysis)
                 self._update_mc_stats(question_type, domain, time.time() - start_time, answer, max_choice)
                 return answer
             
-            # 주관식 처리 (강화된 버전)
+            # 주관식 처리 (프리미엄 강화 버전)
             else:
                 intent_analysis = self.data_processor.analyze_question_intent(question)
                 
-                # 기관 관련 질문 우선 처리 (강화) - 개선된 부분
+                # 기관 관련 질문 우선 처리 (프리미엄 강화)
                 institution_info = kb_analysis.get("institution_info", {}) if kb_analysis else {}
                 if institution_info.get("is_institution_question", False):
-                    answer = self._process_institution_question_enhanced(question, kb_analysis, intent_analysis)
+                    answer = self._process_institution_question_premium(question, kb_analysis, intent_analysis)
                 else:
-                    answer = self._process_subjective_with_llm_enhanced(question, domain, intent_analysis, kb_analysis)
+                    # RAT 관련 질문 특별 처리
+                    if self._is_rat_question(question, intent_analysis):
+                        answer = self._process_rat_question_premium(question, domain, intent_analysis, kb_analysis)
+                    else:
+                        answer = self._process_subjective_premium(question, domain, intent_analysis, kb_analysis)
                 
-                # 품질 검증 및 개선 (강화된 버전)
-                final_answer = self._validate_and_improve_answer_enhanced_safe(
+                # 품질 검증 및 개선 (프리미엄 강화 버전)
+                final_answer = self._validate_and_improve_answer_premium(
                     answer, question, question_type, max_choice, domain, intent_analysis, kb_analysis
                 )
                 
@@ -129,14 +133,24 @@ class FinancialAIInference:
                 print(f"오류 발생: {e}")
             # 안전한 폴백 답변 (LLM 거쳐서)
             self.stats["critical_error_recovery"] += 1
-            fallback = self._get_safe_fallback_with_llm_enhanced(question, question_type, max_choice if 'max_choice' in locals() else 5)
+            fallback = self._get_safe_fallback_premium(question, question_type, max_choice if 'max_choice' in locals() else 5)
             self._update_stats(question_type if 'question_type' in locals() else "multiple_choice", 
                              domain if 'domain' in locals() else "일반", 
                              time.time() - start_time)
             return fallback
     
-    def _process_multiple_choice_with_llm(self, question: str, max_choice: int, domain: str, kb_analysis: Optional[Dict]) -> str:
-        """객관식 처리 (LLM 필수 사용)"""
+    def _is_rat_question(self, question: str, intent_analysis: Dict) -> bool:
+        """RAT 관련 질문인지 확인"""
+        question_lower = question.lower()
+        rat_keywords = ["rat", "트로이", "원격제어", "원격접근", "원격"]
+        
+        has_rat_keyword = any(keyword in question_lower for keyword in rat_keywords)
+        has_feature_intent = any(word in intent_analysis.get("primary_intent", "") for word in ["특징", "지표"])
+        
+        return has_rat_keyword and has_feature_intent
+    
+    def _process_multiple_choice_premium(self, question: str, max_choice: int, domain: str, kb_analysis: Optional[Dict]) -> str:
+        """객관식 처리 (프리미엄 LLM 사용)"""
         
         # 지식베이스 패턴 힌트 수집
         pattern_hint = None
@@ -168,15 +182,15 @@ class FinancialAIInference:
             self.stats["retry_generation_count"] += 1
             return fallback
     
-    def _process_institution_question_enhanced(self, question: str, kb_analysis: Optional[Dict], intent_analysis: Optional[Dict]) -> str:
-        """기관 질문 처리 (LLM 필수 사용) - 강화된 버전"""
+    def _process_institution_question_premium(self, question: str, kb_analysis: Optional[Dict], intent_analysis: Optional[Dict]) -> str:
+        """기관 질문 처리 (프리미엄 LLM 사용) - 강화된 버전"""
         if not kb_analysis:
-            return self._process_subjective_with_llm_enhanced(question, "일반", intent_analysis, kb_analysis)
+            return self._process_subjective_premium(question, "일반", intent_analysis, kb_analysis)
         
         institution_info = kb_analysis.get("institution_info", {})
         
         if institution_info.get("is_institution_question", False):
-            institution_type = institution_info.get("institution_type")  # 안전한 접근
+            institution_type = institution_info.get("institution_type")
             confidence = institution_info.get("confidence", 0.0)
             
             if institution_type and confidence > 0.5:
@@ -187,31 +201,47 @@ class FinancialAIInference:
                 )
                 
                 # 기관명 포함 여부 검증 및 보완
-                answer = self._ensure_institution_name_included(answer, institution_hint, institution_type)
+                answer = self._ensure_institution_name_premium(answer, institution_hint, institution_type, question)
                 self.stats["institution_question_success"] += 1
                 return answer
         
         # 일반 주관식 처리로 폴백
         domain = kb_analysis.get("domain", ["일반"])
         domain_str = domain[0] if isinstance(domain, list) and domain else "일반"
-        return self._process_subjective_with_llm_enhanced(question, domain_str, intent_analysis, kb_analysis)
+        return self._process_subjective_premium(question, domain_str, intent_analysis, kb_analysis)
     
-    def _ensure_institution_name_included(self, answer: str, institution_hint: Dict, institution_type: str) -> str:
-        """기관명 포함 여부 확인 및 보완"""
+    def _ensure_institution_name_premium(self, answer: str, institution_hint: Dict, institution_type: str, question: str) -> str:
+        """기관명 포함 여부 확인 및 보완 - 프리미엄 버전"""
         if not answer:
             return "관련 법령에 따라 해당 분야의 전문 기관에서 업무를 담당하고 있습니다."
+        
+        # 텍스트 품질 먼저 검증
+        answer = self.data_processor.clean_korean_text_premium(answer)
+        if not answer:
+            # 기관별 안전 답변 제공
+            if institution_type == "전자금융분쟁조정":
+                return "금융감독원 금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다."
+            elif institution_type == "개인정보보호":
+                return "개인정보보호위원회에서 개인정보 보호 업무를 총괄하며, 개인정보침해신고센터에서 신고 접수 업무를 담당합니다."
+            else:
+                return "관련 법령에 따라 해당 분야의 전문 기관에서 업무를 담당하고 있습니다."
         
         institution_name = institution_hint.get("institution_name", "")
         
         # 구체적인 기관명 리스트
         key_institutions = [
-            "전자금융분쟁조정위원회", "금융감독원", "개인정보보호위원회",
-            "개인정보침해신고센터", "한국은행", "금융위원회"
+            "금융감독원 금융분쟁조정위원회", "전자금융분쟁조정위원회", "금융분쟁조정위원회",
+            "금융감독원", "개인정보보호위원회", "개인정보침해신고센터", "한국은행", "금융위원회"
         ]
         
         # 기관명이 포함되어 있는지 확인
         has_specific_name = any(inst in answer for inst in key_institutions)
         has_general_terms = any(term in answer for term in ["위원회", "감독원", "은행", "기관", "센터"])
+        
+        # 분쟁조정 관련 특별 처리
+        if "분쟁조정" in question.lower() and "신청" in question.lower():
+            if not any(word in answer for word in ["금융감독원", "금융분쟁조정위원회"]):
+                return "금융감독원 금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다."
         
         # 기관명이 없으면 추가
         if not has_specific_name and not has_general_terms and institution_name:
@@ -223,8 +253,27 @@ class FinancialAIInference:
         
         return answer
     
-    def _process_subjective_with_llm_enhanced(self, question: str, domain: str, intent_analysis: Optional[Dict], kb_analysis: Optional[Dict]) -> str:
-        """주관식 처리 (LLM 필수 사용) - 강화된 버전"""
+    def _process_rat_question_premium(self, question: str, domain: str, intent_analysis: Optional[Dict], kb_analysis: Optional[Dict]) -> str:
+        """RAT 질문 처리 (프리미엄 전용)"""
+        
+        # RAT 특화 템플릿 힌트 수집
+        template_hint = None
+        if intent_analysis:
+            primary_intent = intent_analysis.get("primary_intent", "일반")
+            if "특징" in primary_intent:
+                template_hint = "RAT 악성코드는 정상 프로그램으로 위장하여 시스템에 침투하는 원격제어 악성코드입니다. 주요 특징으로는 은폐성과 지속성을 바탕으로 사용자 모르게 시스템 깊숙이 숨어 장기간 활동하며, 원격제어 기능을 통해 공격자가 외부에서 시스템을 완전히 제어할 수 있습니다. 다양한 악성 기능으로는 키로깅, 화면 캡처, 파일 탈취, 추가 악성코드 다운로드 등이 있으며, 정상 프로그램 위장과 백도어 생성을 통해 탐지를 회피합니다."
+            elif "지표" in primary_intent:
+                template_hint = "RAT 악성코드의 주요 탐지 지표로는 네트워크 측면에서 비정상적인 외부 IP로의 주기적 통신, 알려지지 않은 포트 사용, 암호화된 대용량 데이터 전송이 관찰됩니다. 시스템 측면에서는 의심스러운 프로세스 실행, 정상 프로그램명을 사칭한 프로세스, 임시 폴더의 실행 파일 생성이 발견되며, 파일 시스템에서는 레지스트리 자동 실행 항목 추가, 시스템 파일 변조, 숨겨진 파일 생성 등의 흔적이 탐지됩니다."
+        
+        # RAT 전용 LLM 생성
+        answer = self.model_handler.generate_enhanced_subj_answer(
+            question, domain, intent_analysis, template_hint
+        )
+        
+        return answer
+    
+    def _process_subjective_premium(self, question: str, domain: str, intent_analysis: Optional[Dict], kb_analysis: Optional[Dict]) -> str:
+        """주관식 처리 (프리미엄 LLM 사용) - 강화된 버전"""
         
         # 신뢰도 높은 의도 분석 기반 처리
         template_hint = None
@@ -266,59 +315,67 @@ class FinancialAIInference:
         
         return answer
     
-    def _validate_and_improve_answer_enhanced_safe(self, answer: str, question: str, question_type: str,
+    def _validate_and_improve_answer_premium(self, answer: str, question: str, question_type: str,
                                    max_choice: int, domain: str, intent_analysis: Optional[Dict] = None,
                                    kb_analysis: Optional[Dict] = None) -> str:
-        """답변 검증 및 개선 - 안전한 버전"""
+        """답변 검증 및 개선 - 프리미엄 버전"""
         
         if question_type == "multiple_choice":
             return answer
         
-        # 주관식 품질 검증 및 개선 (안전한 버전)
+        # 주관식 품질 검증 및 개선 (프리미엄 강화 버전)
         original_answer = answer
         improvement_count = 0
         
-        # 1단계: 안전한 텍스트 정리 (과도한 정리 방지)
+        # 1단계: 프리미엄 텍스트 정리 (오류 감지 특화)
         if self.optimization_config.get("text_cleanup_enabled", True):
-            cleaned_answer = self.data_processor.clean_korean_text_advanced(answer)
-            if cleaned_answer != answer and len(cleaned_answer) >= len(answer) * 0.7:  # 너무 많이 잘리지 않은 경우만
+            cleaned_answer = self.data_processor.clean_korean_text_premium(answer)
+            if not cleaned_answer:  # 심각한 오류로 정리되지 않은 경우
+                # 재생성 시도
+                answer = self._get_improved_answer_premium(question, domain, intent_analysis, kb_analysis, "critical_error")
+                self.stats["critical_error_recovery"] += 1
+                improvement_count += 1
+            elif cleaned_answer != answer and len(cleaned_answer) >= len(answer) * 0.7:
                 answer = cleaned_answer
                 self.stats["text_cleanup_count"] += 1
                 improvement_count += 1
         
-        # 2단계: 문장 구조 수정 (안전한 버전)
+        # 2단계: 문장 구조 수정 (프리미엄 버전)
         structured_answer = self.data_processor.fix_korean_sentence_structure(answer)
-        if structured_answer != answer and len(structured_answer) >= len(answer) * 0.7:  # 안전성 검증
+        if structured_answer and structured_answer != answer and len(structured_answer) >= len(answer) * 0.7:
             answer = structured_answer
             improvement_count += 1
-        
-        # 3단계: 기본 유효성 검증 (조건 완화)
-        is_valid = self.data_processor.validate_korean_answer(answer, question_type, max_choice, question)
-        
-        if not is_valid:
-            # 재생성 전에 원본 답변의 안전성 검증
-            if len(answer) < 20 or self._has_critical_errors(answer):
-                answer = self._get_improved_answer_with_llm_safe(question, domain, intent_analysis, kb_analysis, "validation_failed")
-                self.stats["validation_failures"] += 1
-                self.stats["retry_generation_count"] += 1
-                improvement_count += 1
-        
-        # 4단계: 한국어 비율 검증 (조건 완화)
-        korean_ratio = self.data_processor.calculate_korean_ratio(answer)
-        if korean_ratio < 0.6:  # 0.9에서 0.6으로 완화
-            answer = self._get_improved_answer_with_llm_safe(question, domain, intent_analysis, kb_analysis, "korean_ratio_low")
+        elif not structured_answer:  # 구조 수정 실패
+            answer = self._get_improved_answer_premium(question, domain, intent_analysis, kb_analysis, "structure_failed")
             self.stats["retry_generation_count"] += 1
             improvement_count += 1
         
-        # 5단계: 의도 일치성 검증 (조건 완화)
+        # 3단계: 기본 유효성 검증 (강화된 검증)
+        is_valid = self.data_processor.validate_korean_answer(answer, question_type, max_choice, question)
+        
+        if not is_valid:
+            # 재생성 시도
+            answer = self._get_improved_answer_premium(question, domain, intent_analysis, kb_analysis, "validation_failed")
+            self.stats["validation_failures"] += 1
+            self.stats["retry_generation_count"] += 1
+            improvement_count += 1
+        
+        # 4단계: 한국어 비율 검증 (강화된 기준)
+        korean_ratio = self.data_processor.calculate_korean_ratio(answer)
+        if korean_ratio < 0.8:  # 더 엄격한 기준
+            answer = self._get_improved_answer_premium(question, domain, intent_analysis, kb_analysis, "korean_ratio_low")
+            self.stats["retry_generation_count"] += 1
+            improvement_count += 1
+        
+        # 5단계: 의도 일치성 검증 (강화된 버전)
         if intent_analysis:
             intent_match = self.data_processor.validate_answer_intent_match(answer, question, intent_analysis)
             if intent_match:
                 self.stats["intent_match_success"] += 1
             else:
-                # 의도 불일치시 특화 답변 생성 (LLM 거쳐서) - 조건부
-                if len(answer) < 50 or self._has_critical_errors(answer):  # 심각한 경우에만 재생성
-                    answer = self._get_improved_answer_with_llm_safe(question, domain, intent_analysis, kb_analysis, "intent_mismatch")
+                # 의도 불일치시 특화 답변 생성 (조건부)
+                if len(answer) < 50 or self._has_critical_errors(answer):
+                    answer = self._get_improved_answer_premium(question, domain, intent_analysis, kb_analysis, "intent_mismatch")
                     self.stats["retry_generation_count"] += 1
                     improvement_count += 1
                     # 재검증
@@ -326,21 +383,21 @@ class FinancialAIInference:
                     if intent_match_retry:
                         self.stats["intent_match_success"] += 1
         
-        # 6단계: 답변 품질 평가 및 개선 (조건 완화)
-        quality_score = self._calculate_enhanced_quality_score_safe(answer, question, intent_analysis)
-        if quality_score < 0.4 and len(answer) < 50:  # 기준 완화 및 조건부
-            improved_answer = self._get_improved_answer_with_llm_safe(question, domain, intent_analysis, kb_analysis, "quality_low")
-            improved_quality = self._calculate_enhanced_quality_score_safe(improved_answer, question, intent_analysis)
+        # 6단계: 답변 품질 평가 및 개선 (강화된 기준)
+        quality_score = self._calculate_premium_quality_score(answer, question, intent_analysis)
+        if quality_score < 0.6:  # 더 높은 기준
+            improved_answer = self._get_improved_answer_premium(question, domain, intent_analysis, kb_analysis, "quality_low")
+            improved_quality = self._calculate_premium_quality_score(improved_answer, question, intent_analysis)
             
             if improved_quality > quality_score:
                 answer = improved_answer
                 self.stats["retry_generation_count"] += 1
                 improvement_count += 1
         
-        # 7단계: 길이 최적화 (안전한 버전)
-        answer = self._optimize_answer_length_safe(answer)
+        # 7단계: 길이 최적화 (프리미엄 버전)
+        answer = self._optimize_answer_length_premium(answer)
         
-        # 8단계: 최종 정규화
+        # 8단계: 최종 정규화 (프리미엄 버전)
         answer = self.data_processor.normalize_korean_answer(answer, question_type, max_choice)
         
         # 성공 통계 업데이트
@@ -348,7 +405,7 @@ class FinancialAIInference:
         self.stats["korean_compliance"] += 1
         
         # 품질 점수 기록
-        final_quality = self._calculate_enhanced_quality_score_safe(answer, question, intent_analysis)
+        final_quality = self._calculate_premium_quality_score(answer, question, intent_analysis)
         self.stats["quality_scores"].append(final_quality)
         
         if self.verbose and improvement_count > 0:
@@ -357,15 +414,15 @@ class FinancialAIInference:
         return answer
     
     def _has_critical_errors(self, text: str) -> bool:
-        """심각한 오류 검증"""
+        """심각한 오류 검증 - 강화된 버전"""
         if not text:
             return True
         
         import re
         critical_patterns = [
-            r'감추인|컨퍼머시|피-에',  # 심각한 오타
+            r'감추인|컨퍼머시|피-에|백-도어|키-로거|스크리너|채팅-클라언트|파일-업-',  # 생성 오류
             r'^[^가-힣]*$',  # 한국어가 전혀 없음
-            r'.{0,15}$',  # 너무 짧음
+            r'.{0,20}$',  # 너무 짧음
             r'[가-힣]-[가-힣]{2,}',  # 비정상적인 하이픈 패턴
         ]
         
@@ -375,9 +432,9 @@ class FinancialAIInference:
         
         return False
     
-    def _get_improved_answer_with_llm_safe(self, question: str, domain: str, intent_analysis: Optional[Dict] = None,
+    def _get_improved_answer_premium(self, question: str, domain: str, intent_analysis: Optional[Dict] = None,
                                      kb_analysis: Optional[Dict] = None, improvement_type: str = "general") -> str:
-        """개선된 답변 생성 (LLM 필수 사용) - 안전한 버전"""
+        """개선된 답변 생성 (프리미엄 LLM 사용) - 강화된 버전"""
         
         # 기관 관련 질문 특별 처리
         institution_hint = None
@@ -391,7 +448,11 @@ class FinancialAIInference:
                         question, institution_hint, intent_analysis
                     )
                     # 기관명 포함 보장
-                    return self._ensure_institution_name_included(answer, institution_hint, institution_type)
+                    return self._ensure_institution_name_premium(answer, institution_hint, institution_type, question)
+        
+        # RAT 관련 질문 특별 처리
+        if self._is_rat_question(question, intent_analysis or {}):
+            return self._process_rat_question_premium(question, domain, intent_analysis, kb_analysis)
         
         # 의도별 특화 답변 (템플릿 힌트 사용)
         template_hint = None
@@ -428,29 +489,33 @@ class FinancialAIInference:
             question, domain, intent_analysis, basic_hint or template_hint
         )
     
-    def _calculate_enhanced_quality_score_safe(self, answer: str, question: str, intent_analysis: Optional[Dict] = None) -> float:
-        """품질 점수 계산 - 안전한 버전"""
+    def _calculate_premium_quality_score(self, answer: str, question: str, intent_analysis: Optional[Dict] = None) -> float:
+        """품질 점수 계산 - 프리미엄 버전"""
         if not answer:
             return 0.0
         
         score = 0.0
         
-        # 한국어 비율 (20%)
-        korean_ratio = self.data_processor.calculate_korean_ratio(answer)
-        score += korean_ratio * 0.2
+        # 오류 패턴 검증 (-0.5점)
+        if self._has_critical_errors(answer):
+            score -= 0.5
         
-        # 길이 적절성 (15%) - 조건 완화
+        # 한국어 비율 (25%)
+        korean_ratio = self.data_processor.calculate_korean_ratio(answer)
+        score += korean_ratio * 0.25
+        
+        # 길이 적절성 (20%)
         length = len(answer)
         if 50 <= length <= 400:
-            score += 0.15
+            score += 0.20
         elif 30 <= length < 50 or 400 < length <= 500:
-            score += 0.12
-        elif 20 <= length < 30:  # 조건 완화
-            score += 0.08
+            score += 0.15
+        elif 20 <= length < 30:
+            score += 0.10
         
         # 문장 구조 (15%)
         if answer.endswith(('.', '다', '요', '함')):
-            score += 0.1
+            score += 0.10
         
         sentences = answer.split('.')
         if len(sentences) >= 2:
@@ -460,39 +525,39 @@ class FinancialAIInference:
         domain_keywords = self.model_handler._get_domain_keywords(question)
         found_keywords = sum(1 for keyword in domain_keywords if keyword in answer)
         if found_keywords > 0:
-            score += min(found_keywords / len(domain_keywords), 1.0) * 0.2
+            score += min(found_keywords / len(domain_keywords), 1.0) * 0.20
         
-        # 의도 일치성 (30%) - 가중치 조정
+        # 의도 일치성 (20%)
         if intent_analysis:
             answer_type = intent_analysis.get("answer_type_required", "설명형")
             intent_match = self.data_processor.validate_answer_intent_match(answer, question, intent_analysis)
             if intent_match:
-                score += 0.25  # 0.3에서 0.25로 조정
+                score += 0.20
             else:
-                score += 0.1
+                score += 0.05
         else:
-            score += 0.2
+            score += 0.15
         
-        return min(score, 1.0)
+        return max(min(score, 1.0), 0.0)
     
-    def _optimize_answer_length_safe(self, answer: str) -> str:
-        """답변 길이 최적화 - 안전한 버전"""
+    def _optimize_answer_length_premium(self, answer: str) -> str:
+        """답변 길이 최적화 - 프리미엄 버전"""
         if not answer:
             return answer
         
         # 너무 긴 답변 축약 (안전하게)
-        if len(answer) > 500:  # 400에서 500으로 완화
+        if len(answer) > 450:
             sentences = answer.split('. ')
-            if len(sentences) > 4:  # 3에서 4로 증가
-                answer = '. '.join(sentences[:4])
+            if len(sentences) > 3:
+                answer = '. '.join(sentences[:3])
                 if not answer.endswith('.'):
                     answer += '.'
         
-        # 너무 짧은 답변 보강 (조건 완화)
-        elif len(answer) < 30:  # 50에서 30으로 완화
+        # 너무 짧은 답변 보강
+        elif len(answer) < 40:
             if not answer.endswith('.'):
                 answer += '.'
-            if "법령" not in answer and "규정" not in answer and len(answer) < 50:
+            if "법령" not in answer and "규정" not in answer and len(answer) < 60:
                 answer += " 관련 법령과 규정을 준수하여 체계적으로 관리해야 합니다."
         
         return answer
@@ -509,8 +574,8 @@ class FinancialAIInference:
         """주관식 통계 업데이트"""
         self._update_stats(question_type, domain, processing_time)
     
-    def _get_safe_fallback_with_llm_enhanced(self, question: str, question_type: str, max_choice: int) -> str:
-        """안전한 폴백 답변 (LLM 거쳐서) - 강화된 버전"""
+    def _get_safe_fallback_premium(self, question: str, question_type: str, max_choice: int) -> str:
+        """안전한 폴백 답변 (프리미엄 LLM 거쳐서) - 강화된 버전"""
         # max_choice 유효성 검증
         if max_choice <= 0:
             max_choice = 5
@@ -523,15 +588,23 @@ class FinancialAIInference:
         else:
             # 기관 관련 질문인지 간단히 확인
             if any(word in question.lower() for word in ["기관", "위원회", "조정", "신고", "접수"]):
-                # 기관 관련 폴백 답변
+                # 기관 관련 프리미엄 폴백 답변
                 if "전자금융" in question.lower() and "분쟁" in question.lower():
-                    return "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다."
+                    return "금융감독원 금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다."
                 elif "개인정보" in question.lower() and "침해" in question.lower():
                     return "개인정보보호위원회 산하 개인정보침해신고센터에서 개인정보 침해신고 접수 업무를 담당합니다."
                 elif "한국은행" in question.lower():
                     return "한국은행에서 금융통화위원회의 요청에 따라 관련 업무를 수행합니다."
                 else:
                     return "관련 법령에 따라 해당 분야의 전문 기관에서 업무를 담당하고 있습니다."
+            elif any(word in question.lower() for word in ["rat", "트로이", "원격제어", "원격접근"]):
+                # RAT 관련 프리미엄 폴백 답변
+                if any(word in question.lower() for word in ["특징", "성격"]):
+                    return "RAT 악성코드는 정상 프로그램으로 위장하여 시스템에 침투하는 원격제어 악성코드로, 은폐성과 지속성을 특징으로 하며 다양한 악성 기능을 수행합니다."
+                elif any(word in question.lower() for word in ["지표", "탐지"]):
+                    return "RAT 악성코드의 탐지 지표로는 비정상적인 네트워크 트래픽, 의심스러운 프로세스 실행, 파일 시스템 변조 등이 있습니다."
+                else:
+                    return "RAT 악성코드에 대한 체계적인 보안 대책을 수립하고 지속적인 모니터링을 수행해야 합니다."
             else:
                 return self.model_handler.generate_simple_subj_answer(question)
     

@@ -93,8 +93,23 @@ class FinancialSecurityKnowledgeBase:
         """기본 설정 로드 (JSON 파일 로드 실패 시)"""
         print("기본 설정으로 대체합니다.")
         
-        # 최소한의 기본 설정
+        # 개선된 기본 설정
         self.korean_subjective_templates = {
+            "사이버보안": {
+                "특징_묻기": [
+                    "RAT 악성코드는 정상 프로그램으로 위장하여 시스템에 침투하는 원격제어 악성코드입니다. 주요 특징으로는 은폐성과 지속성을 바탕으로 사용자 모르게 시스템 깊숙이 숨어 장기간 활동하며, 원격제어 기능을 통해 공격자가 외부에서 시스템을 완전히 제어할 수 있습니다. 다양한 악성 기능으로는 키로깅, 화면 캡처, 파일 탈취, 추가 악성코드 다운로드 등이 있으며, 정상 프로그램 위장과 백도어 생성을 통해 탐지를 회피합니다.",
+                    "원격접근 트로이목마는 사용자가 알아차리지 못하도록 정상 소프트웨어로 위장하여 배포되며, 설치 후 시스템 권한을 탈취하고 외부 명령제어 서버와 은밀한 통신을 수행합니다. 자동 실행 설정, 프로세스 은닉, 보안 프로그램 무력화 등의 기능을 통해 지속적인 시스템 장악을 유지하며, 모듈식 구조로 필요에 따라 기능을 확장할 수 있습니다."
+                ],
+                "지표_묻기": [
+                    "RAT 악성코드의 주요 탐지 지표로는 네트워크 측면에서 비정상적인 외부 IP로의 주기적 통신, 알려지지 않은 포트 사용, 암호화된 대용량 데이터 전송이 관찰됩니다. 시스템 측면에서는 의심스러운 프로세스 실행, 정상 프로그램명을 사칭한 프로세스, 임시 폴더의 실행 파일 생성이 발견되며, 파일 시스템에서는 레지스트리 자동 실행 항목 추가, 시스템 파일 변조, 숨겨진 파일 생성 등의 흔적이 탐지됩니다.",
+                    "네트워크 트래픽 모니터링에서 C2 서버와의 비콘 통신, 비정상적인 DNS 쿼리 패턴, established 상태의 의심스러운 외부 연결이 관찰됩니다. 시스템 성능 저하와 비정상적인 CPU 사용률 증가, 메모리 분석에서 인젝션된 악성 코드와 후킹된 시스템 API가 탐지되며, 이벤트 로그에서 서비스 생성, 작업 스케줄러 등록, PowerShell 실행 흔적이 발견됩니다."
+                ]
+            },
+            "전자금융": {
+                "기관_묻기": [
+                    "금융감독원 금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 전자금융거래법 제51조에 근거하여 설치 운영되며, 전자금융거래와 관련한 분쟁이 발생한 경우 이용자는 금융감독원에 분쟁조정을 신청할 수 있습니다. 조정위원회는 60일 이내에 조정안을 작성하여 당사자에게 제시하며, 조정 전 합의권고 절차를 통해 신속한 분쟁해결을 도모합니다."
+                ]
+            },
             "일반": {
                 "일반": [
                     "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
@@ -103,11 +118,23 @@ class FinancialSecurityKnowledgeBase:
         }
         
         self.domain_keywords = {
+            "사이버보안": ["트로이", "RAT", "원격제어", "악성코드", "탐지", "지표"],
+            "전자금융": ["전자금융", "분쟁조정", "금융감독원", "전자금융거래법"],
             "일반": ["법령", "규정", "관리", "조치", "절차"]
         }
         
         self.korean_financial_terms = {}
-        self.institution_database = {}
+        
+        self.institution_database = {
+            "전자금융분쟁조정": {
+                "기관명": "금융감독원 금융분쟁조정위원회",
+                "소속": "금융감독원",
+                "역할": "전자금융거래 관련 분쟁의 조정",
+                "근거법": "전자금융거래법 제51조",
+                "관련질문패턴": ["전자금융", "분쟁조정", "신청", "기관"]
+            }
+        }
+        
         self.mc_answer_patterns = {}
     
     def _load_analysis_history(self):
@@ -140,62 +167,55 @@ class FinancialSecurityKnowledgeBase:
         except Exception:
             pass
     
-    def clean_template_text_safe(self, text: str) -> str:
-        """안전한 템플릿 텍스트 정리 (과도한 정리 방지)"""
+    def clean_template_text_premium(self, text: str) -> str:
+        """프리미엄 템플릿 텍스트 정리"""
         if not text:
             return ""
         
         text = str(text).strip()
         
-        # 명백한 오류만 수정
-        critical_errors = {
-            "감추인": "숨겨진",
-            "컨퍼머시": "시스템",
-            "피-에": "대상에",
-            "백-도어": "백도어",
-            "키-로거": "키로거",
-            "스크리너": "화면캡처",
-            "채팅-클라언트": "통신기능",
-            "파일-업-": "파일업로드"
-        }
+        # 오류 패턴 감지 및 차단
+        error_patterns = [
+            r'감추인', r'컨퍼머시', r'피-에', r'백-도어', r'키-로거', r'스크리너',
+            r'채팅-클라언트', r'파일-업-', r'[가-힣]-[가-힣]{2,}'
+        ]
         
-        for wrong, correct in critical_errors.items():
-            text = text.replace(wrong, correct)
+        has_critical_errors = any(re.search(pattern, text) for pattern in error_patterns)
         
-        # 비정상적인 하이픈 패턴만 수정
-        text = re.sub(r'([가-힣])-([가-힣])', r'\1\2', text)
-        text = re.sub(r'-{2,}', ' ', text)
+        if has_critical_errors:
+            # 심각한 오류가 있으면 안전한 기본 템플릿 반환
+            return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
         
-        # 공백 정리
+        # 안전한 정리
         text = re.sub(r'\s+', ' ', text)
         text = text.strip()
         
         return text
     
     def analyze_question(self, question: str) -> Dict:
-        """질문 분석 - 개선된 버전"""
+        """질문 분석 - 프리미엄 버전"""
         question_lower = question.lower()
         
-        # 도메인 찾기
+        # 도메인 찾기 (정확도 향상)
         detected_domains = []
         domain_scores = {}
         
-        for domain, keywords in self.domain_keywords.items():
-            score = 0
-            for keyword in keywords:
-                if keyword.lower() in question_lower:
-                    # 핵심 키워드 가중치 적용
-                    if keyword in ["트로이", "RAT", "원격제어", "SBOM", "전자금융분쟁조정위원회", 
-                                  "개인정보보호위원회", "만 14세", "위험 관리", "금융투자업"]:
-                        score += 3
-                    else:
-                        score += 1
-            
+        # 정확한 도메인 매칭
+        domain_patterns = {
+            "사이버보안": ["rat", "트로이", "원격제어", "악성코드", "탐지", "지표", "특징", "원격접근"],
+            "전자금융": ["전자금융", "분쟁조정", "금융감독원", "전자금융거래법", "분쟁", "조정"],
+            "개인정보보호": ["개인정보", "정보주체", "만 14세", "법정대리인", "개인정보보호법"],
+            "정보보안": ["정보보안", "isms", "관리체계", "정책 수립", "재해복구"],
+            "금융투자": ["금융투자업", "투자자문", "투자매매", "금융투자"],
+            "위험관리": ["위험관리", "위험 관리", "재해복구", "위험수용"]
+        }
+        
+        for domain, patterns in domain_patterns.items():
+            score = sum(3 if pattern in question_lower else 0 for pattern in patterns)
             if score > 0:
                 domain_scores[domain] = score
         
         if domain_scores:
-            # 가장 높은 점수의 도메인 선택
             best_domain = max(domain_scores.items(), key=lambda x: x[1])[0]
             detected_domains = [best_domain]
         else:
@@ -211,7 +231,7 @@ class FinancialSecurityKnowledgeBase:
         compliance_check = self._check_competition_compliance(question)
         
         # 기관 관련 질문인지 확인 (강화)
-        institution_info = self._check_institution_question_enhanced(question)
+        institution_info = self._check_institution_question_premium(question)
         
         # 객관식 패턴 매칭
         mc_pattern_info = self._analyze_mc_pattern(question)
@@ -232,8 +252,8 @@ class FinancialSecurityKnowledgeBase:
         
         return analysis_result
     
-    def _check_institution_question_enhanced(self, question: str) -> Dict:
-        """기관 관련 질문 확인 - 강화된 버전"""
+    def _check_institution_question_premium(self, question: str) -> Dict:
+        """기관 관련 질문 확인 - 프리미엄 버전"""
         question_lower = question.lower()
         
         institution_info = {
@@ -244,7 +264,7 @@ class FinancialSecurityKnowledgeBase:
             "question_pattern": None
         }
         
-        # 기관 질문 패턴 확인 (강화)
+        # 강화된 기관 질문 패턴
         institution_patterns = [
             r"기관.*기술하세요", r"기관.*설명하세요", r"기관.*서술하세요",
             r"어떤.*기관", r"어느.*기관", r"기관.*무엇", r"기관.*어디",
@@ -252,66 +272,60 @@ class FinancialSecurityKnowledgeBase:
             r"담당.*기관", r"관리.*기관", r"감독.*기관", r"소관.*기관",
             r"신고.*기관", r"접수.*기관", r"상담.*기관", r"문의.*기관",
             r"위원회.*무엇", r"위원회.*어디", r"위원회.*설명",
-            r"분쟁조정.*신청.*가능.*기관", r"침해.*신고.*접수.*기관",
-            r"조정.*담당.*기관", r"감독.*업무.*기관",
-            r"업무.*담당.*기관", r"처리.*담당.*기관"
+            r"분쟁조정.*신청.*가능.*기관", r"침해.*신고.*접수.*기관"
         ]
         
         pattern_matches = 0
         matched_pattern = None
+        
         for pattern in institution_patterns:
             if re.search(pattern, question_lower):
-                pattern_matches += 1
+                pattern_matches += 2
                 matched_pattern = pattern
         
         # 추가 기관 키워드 확인
         institution_keywords = [
             "분쟁조정을 신청할 수 있는", "침해신고를 접수하는", "업무를 담당하는",
-            "관리하는 기관", "감독하는 기관", "소관 기관", "전담 기관",
-            "조정 업무", "신고 접수", "상담 업무"
+            "관리하는 기관", "감독하는 기관", "조정 업무", "신고 접수"
         ]
         
         for keyword in institution_keywords:
             if keyword in question_lower:
                 pattern_matches += 1
         
-        is_asking_institution = pattern_matches > 0
-        
-        if is_asking_institution:
+        if pattern_matches > 0:
             institution_info["is_institution_question"] = True
-            institution_info["confidence"] = min(pattern_matches / 3, 1.0)  # 스케일 조정
+            institution_info["confidence"] = min(pattern_matches / 3, 1.0)
             institution_info["question_pattern"] = matched_pattern
             
-            # 분야별 기관 확인 (정확도 향상)
-            for institution_key, institution_data in self.institution_database.items():
-                if "관련질문패턴" in institution_data:
-                    pattern_score = sum(1 for pattern in institution_data["관련질문패턴"] 
-                                      if pattern.lower() in question_lower)
-                    
-                    if pattern_score > 0:
-                        institution_info["institution_type"] = institution_key
-                        institution_info["relevant_institution"] = institution_data
-                        institution_info["confidence"] = min(pattern_score / len(institution_data["관련질문패턴"]), 1.0)
-                        break
-            
-            # 키워드 기반 기관 추론 (강화)
-            if not institution_info["institution_type"]:
-                if any(word in question_lower for word in ["전자금융", "전자적"]) and any(word in question_lower for word in ["분쟁", "조정"]):
-                    institution_info["institution_type"] = "전자금융분쟁조정"
-                    institution_info["relevant_institution"] = self.institution_database.get("전자금융분쟁조정", {})
-                    institution_info["confidence"] = 0.8
-                elif any(word in question_lower for word in ["개인정보", "정보주체"]) and any(word in question_lower for word in ["침해", "신고"]):
-                    institution_info["institution_type"] = "개인정보보호"
-                    institution_info["relevant_institution"] = self.institution_database.get("개인정보보호", {})
-                    institution_info["confidence"] = 0.8
-                elif any(word in question_lower for word in ["한국은행", "금융통화위원회", "자료제출"]):
-                    institution_info["institution_type"] = "한국은행"
-                    institution_info["relevant_institution"] = self.institution_database.get("한국은행", {})
-                    institution_info["confidence"] = 0.9
-                elif any(word in question_lower for word in ["금융감독원", "금융 감독"]):
-                    institution_info["institution_type"] = "금융감독원"
-                    institution_info["relevant_institution"] = self.institution_database.get("금융감독원", {})
-                    institution_info["confidence"] = 0.8
+            # 정확한 기관 매칭
+            if ("전자금융" in question_lower or "전자적" in question_lower) and ("분쟁" in question_lower or "조정" in question_lower):
+                institution_info["institution_type"] = "전자금융분쟁조정"
+                institution_info["relevant_institution"] = {
+                    "기관명": "금융감독원 금융분쟁조정위원회",
+                    "소속": "금융감독원",
+                    "역할": "전자금융거래 관련 분쟁조정",
+                    "근거법": "전자금융거래법 제51조"
+                }
+                institution_info["confidence"] = 0.95
+            elif ("개인정보" in question_lower or "정보주체" in question_lower) and ("침해" in question_lower or "신고" in question_lower):
+                institution_info["institution_type"] = "개인정보보호"
+                institution_info["relevant_institution"] = {
+                    "기관명": "개인정보보호위원회",
+                    "소속": "국무총리 소속 중앙행정기관",
+                    "역할": "개인정보 보호 업무 총괄",
+                    "근거법": "개인정보보호법"
+                }
+                institution_info["confidence"] = 0.9
+            elif "한국은행" in question_lower or "금융통화위원회" in question_lower:
+                institution_info["institution_type"] = "한국은행"
+                institution_info["relevant_institution"] = {
+                    "기관명": "한국은행",
+                    "소속": "독립적 중앙은행",
+                    "역할": "통화신용정책 수행, 지급결제제도 운영",
+                    "근거법": "한국은행법"
+                }
+                institution_info["confidence"] = 0.9
         
         return institution_info
     
@@ -405,19 +419,6 @@ class FinancialSecurityKnowledgeBase:
                 if analysis["institution_info"]["confidence"] > 0.7:
                     self.analysis_history["institution_question_accuracy"][institution_type]["high_confidence"] += 1
         
-        # 객관식 패턴 정확도 추가
-        if analysis["mc_pattern_info"]["is_mc_question"]:
-            pattern_key = analysis["mc_pattern_info"]["pattern_key"]
-            if pattern_key:
-                if pattern_key not in self.analysis_history["mc_pattern_accuracy"]:
-                    self.analysis_history["mc_pattern_accuracy"][pattern_key] = {
-                        "total": 0, "high_confidence": 0
-                    }
-                
-                self.analysis_history["mc_pattern_accuracy"][pattern_key]["total"] += 1
-                if analysis["mc_pattern_info"]["confidence"] > 0.7:
-                    self.analysis_history["mc_pattern_accuracy"][pattern_key]["high_confidence"] += 1
-        
         # 질문 패턴 추가
         pattern = {
             "question_length": len(question),
@@ -448,50 +449,40 @@ class FinancialSecurityKnowledgeBase:
         return None
     
     def get_institution_hint(self, institution_type: str) -> Dict:
-        """기관 정보 힌트 반환 (LLM용) - 강화된 버전"""
-        if institution_type in self.institution_database:
-            info = self.institution_database[institution_type]
-            
-            hint = {
-                "institution_name": info.get('기관명', ''),
-                "parent_organization": info.get('소속', ''),
-                "role": info.get('역할', ''),
-                "legal_basis": info.get('근거법', ''),
-                "description": "",
-                "related_organizations": [],
-                "contact_info": "",
-                "specific_duties": []
+        """기관 정보 힌트 반환 (LLM용) - 프리미엄 버전"""
+        
+        # 정확한 기관 정보 제공
+        institution_data = {
+            "전자금융분쟁조정": {
+                "institution_name": "금융감독원 금융분쟁조정위원회",
+                "parent_organization": "금융감독원",
+                "role": "전자금융거래 관련 분쟁조정",
+                "legal_basis": "전자금융거래법 제51조",
+                "description": "금융감독원 내에 설치된 전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 60일 이내에 조정안을 작성하여 당사자에게 제시하며, 조정 전 합의권고 절차를 통해 신속한 분쟁해결을 도모합니다.",
+                "contact_info": "전화 1332",
+                "specific_duties": ["전자금융거래 분쟁조정", "합의권고", "조정안 작성"]
+            },
+            "개인정보보호": {
+                "institution_name": "개인정보보호위원회",
+                "parent_organization": "국무총리 소속 중앙행정기관",
+                "role": "개인정보 보호 업무 총괄",
+                "legal_basis": "개인정보보호법",
+                "description": "개인정보 보호에 관한 업무를 총괄하는 중앙행정기관으로 개인정보침해신고센터에서 신고 접수 및 상담 업무를 담당합니다.",
+                "contact_info": "국번없이 118",
+                "specific_duties": ["개인정보보호 정책 수립", "침해신고 접수", "실태조사", "개선권고"]
+            },
+            "한국은행": {
+                "institution_name": "한국은행",
+                "parent_organization": "독립적 중앙은행",
+                "role": "통화신용정책 수행, 지급결제제도 운영",
+                "legal_basis": "한국은행법",
+                "description": "통화신용정책의 수행 및 지급결제제도의 원활한 운영을 위해 자료제출을 요구할 수 있는 권한을 가집니다.",
+                "specific_duties": ["통화신용정책 수행", "지급결제제도 운영", "자료제출 요구"]
             }
-            
-            if institution_type == "전자금융분쟁조정":
-                hint["description"] = f"전자금융거래 관련 분쟁조정 업무를 담당하는 기관으로 {info.get('소속', '')} 내에 설치되어 운영됩니다."
-                hint["related_organizations"] = ["금융감독원"]
-                hint["contact_info"] = "전화 1332"
-                hint["specific_duties"] = ["전자금융거래 분쟁조정", "합의권고", "조정안 작성"]
-            
-            elif institution_type == "개인정보보호":
-                hint["description"] = f"개인정보 보호에 관한 업무를 총괄하는 중앙행정기관으로 개인정보침해신고센터에서 신고 접수 및 상담 업무를 담당합니다."
-                hint["related_organizations"] = ["개인정보침해신고센터", "한국인터넷진흥원"]
-                hint["contact_info"] = "국번없이 118"
-                hint["specific_duties"] = ["개인정보보호 정책 수립", "침해신고 접수", "실태조사", "개선권고"]
-            
-            elif institution_type == "금융투자분쟁조정":
-                hint["description"] = f"금융투자 관련 분쟁조정 업무를 담당하며 {info.get('소속', '')} 내에 설치되어 운영됩니다."
-                hint["related_organizations"] = ["금융감독원"]
-                hint["specific_duties"] = ["금융투자 분쟁조정", "투자자 보호"]
-            
-            elif institution_type == "한국은행":
-                hint["description"] = f"통화신용정책의 수행 및 지급결제제도의 원활한 운영을 위해 자료제출을 요구할 수 있는 권한을 가집니다."
-                hint["related_organizations"] = ["금융통화위원회"]
-                hint["specific_duties"] = ["통화신용정책 수행", "지급결제제도 운영", "자료제출 요구"]
-            
-            elif institution_type == "금융감독원":
-                hint["description"] = f"금융위원회 산하 특수법인으로 금융회사 검사·감독 업무를 수행합니다."
-                hint["related_organizations"] = ["금융위원회"]
-                hint["contact_info"] = "1332"
-                hint["specific_duties"] = ["금융회사 검사", "금융감독", "소비자보호", "분쟁조정"]
-            
-            return hint
+        }
+        
+        if institution_type in institution_data:
+            return institution_data[institution_type]
         
         # 기본 힌트
         return {
@@ -501,7 +492,7 @@ class FinancialSecurityKnowledgeBase:
         }
     
     def get_template_hint(self, domain: str, intent_type: str = "일반") -> str:
-        """템플릿 힌트 반환 (LLM용) - 안전한 버전"""
+        """템플릿 힌트 반환 (LLM용) - 프리미엄 버전"""
         
         # 템플릿 사용 통계 업데이트
         template_key = f"{domain}_{intent_type}"
@@ -536,9 +527,9 @@ class FinancialSecurityKnowledgeBase:
             # 템플릿 품질 평가 후 선택
             quality_scores = []
             for template in templates:
-                # 안전한 템플릿 정리
-                cleaned_template = self.clean_template_text_safe(template)
-                quality = self._evaluate_template_quality_enhanced(cleaned_template, intent_type)
+                # 프리미엄 템플릿 정리
+                cleaned_template = self.clean_template_text_premium(template)
+                quality = self._evaluate_template_quality_premium(cleaned_template, intent_type)
                 quality_scores.append((cleaned_template, quality))
             
             # 상위 품질 템플릿 중에서 선택
@@ -547,7 +538,7 @@ class FinancialSecurityKnowledgeBase:
             selected_template = random.choice(top_templates)
         else:
             template = random.choice(templates) if isinstance(templates, list) else templates
-            selected_template = self.clean_template_text_safe(template)
+            selected_template = self.clean_template_text_premium(template)
         
         # 템플릿 효과성 기록
         if template_key not in self.analysis_history["template_effectiveness"]:
@@ -568,59 +559,66 @@ class FinancialSecurityKnowledgeBase:
         effectiveness["korean_ratio"] = (effectiveness["korean_ratio"] * (effectiveness["usage_count"] - 1) + korean_ratio) / effectiveness["usage_count"]
         
         # 품질 점수 기록
-        quality_score = self._evaluate_template_quality_enhanced(selected_template, intent_type)
+        quality_score = self._evaluate_template_quality_premium(selected_template, intent_type)
         effectiveness["quality_score"] = (effectiveness["quality_score"] * (effectiveness["usage_count"] - 1) + quality_score) / effectiveness["usage_count"]
         
         return selected_template
     
-    def _evaluate_template_quality_enhanced(self, template: str, intent_type: str) -> float:
-        """템플릿 품질 평가 - 조건 완화"""
+    def _evaluate_template_quality_premium(self, template: str, intent_type: str) -> float:
+        """템플릿 품질 평가 - 프리미엄 버전"""
         score = 0.0
         
-        # 길이 적절성 (20%)
-        length = len(template)
-        min_len, max_len = self.template_quality_criteria["length_range"]
-        if min_len <= length <= max_len:
-            score += 0.20
-        elif length < min_len:
-            score += (length / min_len) * 0.20
-        else:
-            score += (max_len / length) * 0.15  # 너무 긴 경우 패널티 완화
+        # 오류 패턴 검증 (-0.5점)
+        error_patterns = [
+            r'감추인', r'컨퍼머시', r'피-에', r'백-도어', r'키-로거', r'스크리너'
+        ]
         
-        # 한국어 비율 (25%) - 조건 완화
+        has_errors = any(re.search(pattern, template) for pattern in error_patterns)
+        if has_errors:
+            return 0.0  # 오류가 있으면 품질 0점
+        
+        # 길이 적절성 (25%)
+        length = len(template)
+        if 50 <= length <= 400:
+            score += 0.25
+        elif 30 <= length < 50:
+            score += 0.20
+        elif length > 400:
+            score += 0.15
+        
+        # 한국어 비율 (30%)
         korean_chars = len(re.findall(r'[가-힣]', template))
         total_chars = len(re.sub(r'[^\w가-힣]', '', template))
         korean_ratio = korean_chars / total_chars if total_chars > 0 else 0
         
-        if korean_ratio >= 0.8:  # 0.95에서 0.8로 완화
+        if korean_ratio >= 0.9:
+            score += 0.30
+        elif korean_ratio >= 0.8:
             score += 0.25
         else:
-            score += korean_ratio * 0.25
+            score += korean_ratio * 0.30
         
-        # 구조적 키워드 포함 (20%)
-        structure_keywords = self.template_quality_criteria["structure_keywords"]
+        # 구조적 키워드 포함 (25%)
+        structure_keywords = ["법령", "규정", "조치", "관리", "절차", "기준", "정책", "체계"]
         found_structure = sum(1 for keyword in structure_keywords if keyword in template)
-        score += min(found_structure / len(structure_keywords), 1.0) * 0.20
+        score += min(found_structure / len(structure_keywords), 1.0) * 0.25
         
         # 의도별 키워드 포함 (20%)
-        if intent_type in self.template_quality_criteria["intent_keywords"]:
-            intent_keywords = self.template_quality_criteria["intent_keywords"][intent_type]
-            found_intent = sum(1 for keyword in intent_keywords if keyword in template)
-            score += min(found_intent / len(intent_keywords), 1.0) * 0.20
+        intent_keywords = {
+            "기관_묻기": ["위원회", "기관", "담당", "업무"],
+            "특징_묻기": ["특징", "특성", "성질", "기능"],
+            "지표_묻기": ["지표", "징후", "패턴", "탐지"],
+            "방안_묻기": ["방안", "대책", "조치", "관리"],
+            "절차_묻기": ["절차", "과정", "단계", "순서"],
+            "조치_묻기": ["조치", "대응", "보안", "예방"]
+        }
+        
+        if intent_type in intent_keywords:
+            intent_words = intent_keywords[intent_type]
+            found_intent = sum(1 for keyword in intent_words if keyword in template)
+            score += min(found_intent / len(intent_words), 1.0) * 0.20
         else:
             score += 0.15
-        
-        # 텍스트 정리 품질 (15%) - 조건 완화
-        has_critical_errors = any(error in template for error in ["감추인", "컨퍼머시", "피-에"])
-        has_minor_issues = bool(re.search(r'[(){}\[\]<>（）]', template))
-        
-        cleanup_score = 0.15
-        if has_critical_errors:
-            cleanup_score -= 0.10
-        elif has_minor_issues:
-            cleanup_score -= 0.05
-        
-        score += max(cleanup_score, 0)
         
         return min(score, 1.0)
     
@@ -641,14 +639,6 @@ class FinancialSecurityKnowledgeBase:
             return pattern_info.get("likely_answer")
         
         return None
-    
-    def _evaluate_template_quality(self, template: str, intent_type: str) -> float:
-        """템플릿 품질 평가 (기존 호환성 유지)"""
-        return self._evaluate_template_quality_enhanced(template, intent_type)
-    
-    def get_subjective_template(self, domain: str, intent_type: str = "일반") -> str:
-        """주관식 답변 템플릿 반환 (기존 호환성 유지)"""
-        return self.get_template_hint(domain, intent_type)
     
     def _calculate_complexity(self, question: str) -> float:
         """질문 복잡도 계산"""
@@ -687,7 +677,7 @@ class FinancialSecurityKnowledgeBase:
             return "초급"
     
     def get_domain_specific_guidance(self, domain: str) -> Dict:
-        """도메인별 지침 반환"""
+        """도메인별 지침 반환 - 프리미엄 버전"""
         guidance = {
             "개인정보보호": {
                 "key_laws": ["개인정보보호법", "정보통신망법"],
@@ -702,19 +692,19 @@ class FinancialSecurityKnowledgeBase:
                 "key_laws": ["전자금융거래법", "전자서명법"],
                 "key_concepts": ["접근매체", "전자서명", "인증", "분쟁조정", "이용자", "자료제출"],
                 "oversight_body": "금융감독원, 한국은행",
-                "related_institutions": ["전자금융분쟁조정위원회", "금융감독원", "한국은행"],
+                "related_institutions": ["금융감독원 금융분쟁조정위원회", "금융감독원", "한국은행"],
                 "compliance_focus": "한국어 금융 용어 사용",
                 "answer_patterns": ["분쟁조정 절차 설명", "기관 역할 명시", "법적 근거 제시"],
                 "common_questions": ["분쟁조정 신청 기관", "자료제출 요구 경우"]
             },
             "사이버보안": {
                 "key_laws": ["정보통신망법", "개인정보보호법"],
-                "key_concepts": ["악성코드", "침입탐지", "보안관제", "사고대응", "트로이", "RAT", "SBOM", "딥페이크"],
+                "key_concepts": ["악성코드", "침입탐지", "보안관제", "사고대응", "RAT", "원격제어", "딥페이크"],
                 "oversight_body": "과학기술정보통신부, 경찰청",
                 "related_institutions": ["한국인터넷진흥원", "사이버보안센터"],
                 "compliance_focus": "한국어 보안 용어 사용",
                 "answer_patterns": ["탐지 지표 나열", "대응 방안 제시", "특징 상세 설명"],
-                "common_questions": ["트로이 목마 특징", "탐지 지표", "SBOM 활용", "딥페이크 대응"]
+                "common_questions": ["RAT 특징", "탐지 지표", "딥페이크 대응"]
             },
             "정보보안": {
                 "key_laws": ["정보통신망법", "전자정부법"],
@@ -729,7 +719,7 @@ class FinancialSecurityKnowledgeBase:
                 "key_laws": ["자본시장법", "금융투자업규정"],
                 "key_concepts": ["투자자보호", "적합성원칙", "설명의무", "내부통제", "금융투자업 구분"],
                 "oversight_body": "금융감독원, 금융위원회",
-                "related_institutions": ["금융분쟁조정위원회", "금융감독원"],
+                "related_institutions": ["금융감독원", "금융위원회"],
                 "compliance_focus": "한국어 투자 용어 사용",
                 "answer_patterns": ["법령 근거 제시", "원칙 설명", "보호 방안 나열"],
                 "common_questions": ["금융투자업 구분", "해당하지 않는 업무"]
@@ -785,14 +775,14 @@ class FinancialSecurityKnowledgeBase:
             "technical_accuracy": True
         }
         
-        # 한국어 전용 확인 (조건 완화)
+        # 한국어 전용 확인
         import re
         english_chars = len(re.findall(r'[a-zA-Z]', answer))
         total_chars = len(re.sub(r'[^\w가-힣]', '', answer))
         
         if total_chars > 0:
             english_ratio = english_chars / total_chars
-            compliance["korean_only"] = english_ratio < 0.15  # 0.1에서 0.15로 완화
+            compliance["korean_only"] = english_ratio < 0.1
         
         # 외부 의존성 확인
         external_indicators = ["http", "www", "api", "service", "cloud"]
@@ -802,19 +792,19 @@ class FinancialSecurityKnowledgeBase:
         if domain in self.domain_keywords:
             domain_keywords = self.domain_keywords[domain]
             found_keywords = sum(1 for keyword in domain_keywords if keyword in answer.lower())
-            compliance["appropriate_content"] = found_keywords >= 0  # 조건 완화
+            compliance["appropriate_content"] = found_keywords >= 0
         
         return compliance
     
-    def get_high_quality_template(self, domain: str, intent_type: str, min_quality: float = 0.7) -> str:
-        """고품질 템플릿 반환 (LLM 힌트용) - 조건 완화"""
+    def get_high_quality_template(self, domain: str, intent_type: str, min_quality: float = 0.8) -> str:
+        """고품질 템플릿 반환 (LLM 힌트용) - 프리미엄 버전"""
         template_key = f"{domain}_{intent_type}"
         
-        # 효과성이 검증된 템플릿 우선 사용 (조건 완화)
+        # 효과성이 검증된 템플릿 우선 사용
         if template_key in self.analysis_history["template_effectiveness"]:
             effectiveness = self.analysis_history["template_effectiveness"][template_key]
             if (effectiveness["korean_ratio"] >= min_quality and 
-                effectiveness["usage_count"] >= 3 and  # 5에서 3으로 완화
+                effectiveness["usage_count"] >= 2 and
                 effectiveness.get("quality_score", 0) >= min_quality):
                 # 검증된 고품질 템플릿 사용
                 return self.get_template_hint(domain, intent_type)

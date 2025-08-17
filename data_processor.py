@@ -108,6 +108,8 @@ class SimpleDataProcessor:
         ]
         
         self.domain_keywords = {
+            "사이버보안": ["트로이", "RAT", "원격제어", "악성코드", "탐지", "지표"],
+            "전자금융": ["전자금융", "분쟁조정", "금융감독원", "전자금융거래법"],
             "일반": ["법령", "규정", "관리", "조치", "절차"]
         }
         
@@ -155,54 +157,75 @@ class SimpleDataProcessor:
         except Exception:
             pass
     
-    def clean_korean_text_advanced(self, text: str) -> str:
-        """한국어 텍스트 정리 - 개선된 안전 버전"""
+    def clean_korean_text_premium(self, text: str) -> str:
+        """프리미엄 한국어 텍스트 정리 - 오류 방지 특화"""
         if not text:
             return ""
         
         text = str(text).strip()
         
-        # 명백한 오류만 수정 (과도한 정리 방지)
-        # 1단계: 심각한 오타만 수정
-        critical_errors = {
-            "감추인": "숨겨진",
-            "컨퍼머시": "시스템",
-            "피-에": "대상에",
-            "백-도어": "백도어",
-            "키-로거": "키로거",
-            "스크리너": "화면캡처",
-            "채팅-클라언트": "통신기능",
-            "파일-업-": "파일업로드",
+        # 1단계: 심각한 생성 오류 감지 및 차단
+        critical_error_patterns = [
+            r'감추인', r'컨퍼머시', r'피-에', r'백-도어', r'키-로거', r'스크리너',
+            r'채팅-클라언트', r'파일-업-', r'[가-힣]-[가-힣]{2,}', r'[가-힣]{1,2}-[가-힣]{1,2}'
+        ]
+        
+        has_critical_errors = any(re.search(pattern, text) for pattern in critical_error_patterns)
+        
+        if has_critical_errors:
+            # 심각한 오류가 있으면 빈 문자열 반환 (재생성 유도)
+            return ""
+        
+        # 2단계: 안전한 기본 정리
+        # 정상적인 전문 용어는 보호하면서 비정상적인 패턴만 수정
+        korean_corrections = {
             "전자금윋": "전자금융",
+            "과롷": "과정",
             "캉터": "컴퓨터",
             "트래픁": "트래픽",
+            "윋": "융",
+            "롷": "정",
+            "픁": "픽",
+            "웋": "웅",
+            "솓": "소프트",
             "하웨어": "하드웨어",
-            "네됴크": "네트워크"
+            "네됴크": "네트워크",
+            "액세스": "접근",
+            "메세지": "메시지",
+            "리소스": "자원"
         }
         
-        for wrong, correct in critical_errors.items():
+        for wrong, correct in korean_corrections.items():
             text = text.replace(wrong, correct)
         
-        # 2단계: 비정상적인 하이픈 패턴만 수정
-        text = re.sub(r'([가-힣])-([가-힣])', r'\1\2', text)
-        text = re.sub(r'([가-힣])-([ㄱ-ㅎ])', r'\1\2', text)
-        text = re.sub(r'-{2,}', ' ', text)
+        # 3단계: 비정상적인 하이픈 패턴만 수정 (정상 용어는 보호)
+        # 한글 사이의 단일 하이픈만 제거
+        text = re.sub(r'([가-힣])-([가-힣])\s', r'\1\2 ', text)
+        text = re.sub(r'\s-{2,}\s', ' ', text)
         
-        # 3단계: 공백 정리만
+        # 4단계: 공백 정리
         text = re.sub(r'\s+', ' ', text)
         text = text.strip()
         
         return text
     
+    def clean_korean_text_advanced(self, text: str) -> str:
+        """한국어 텍스트 정리 - 프리미엄 버전 사용"""
+        return self.clean_korean_text_premium(text)
+    
     def fix_korean_sentence_structure(self, text: str) -> str:
-        """한국어 문장 구조 수정 - 개선된 버전"""
+        """한국어 문장 구조 수정 - 프리미엄 버전"""
         if not text:
             return ""
         
-        # 먼저 안전한 텍스트 정리
-        text = self.clean_korean_text_advanced(text)
+        # 먼저 프리미엄 정리
+        text = self.clean_korean_text_premium(text)
         
-        # 문장 분할 (조건 완화)
+        # 빈 문자열이면 더 이상 처리하지 않음
+        if not text:
+            return ""
+        
+        # 문장 분할
         sentences = []
         current_sentence = ""
         
@@ -210,30 +233,28 @@ class SimpleDataProcessor:
             current_sentence += char
             if char in ['.', '!', '?']:
                 sentence = current_sentence.strip()
-                if len(sentence) > 3:  # 최소 길이 조건 완화
+                if len(sentence) > 10 and re.search(r'[가-힣]', sentence):
                     sentences.append(sentence)
                 current_sentence = ""
         
         # 마지막 문장 처리
         if current_sentence.strip():
-            sentences.append(current_sentence.strip())
+            sentence = current_sentence.strip()
+            if len(sentence) > 10 and re.search(r'[가-힣]', sentence):
+                sentences.append(sentence)
         
-        # 각 문장 정리 (조건 완화)
-        cleaned_sentences = []
+        # 각 문장 검증
+        valid_sentences = []
         for sentence in sentences:
-            # 너무 짧은 문장은 제외하되 조건 완화
-            if len(sentence) < 5:
-                continue
-            
-            # 한국어 비율 확인 (조건 완화)
+            # 한국어 비율 확인
             korean_chars = len(re.findall(r'[가-힣]', sentence))
             total_chars = len(re.sub(r'[^\w가-힣]', '', sentence))
             
-            if total_chars > 0 and korean_chars / total_chars >= 0.5:  # 0.8에서 0.5로 완화
-                cleaned_sentences.append(sentence)
+            if total_chars > 0 and korean_chars / total_chars >= 0.7:
+                valid_sentences.append(sentence)
         
         # 문장 연결
-        result = ' '.join(cleaned_sentences)
+        result = ' '.join(valid_sentences)
         
         # 마침표 확인
         if result and not result.endswith(('.', '다', '요', '함')):
@@ -242,7 +263,7 @@ class SimpleDataProcessor:
         return result
     
     def analyze_question_intent(self, question: str) -> Dict:
-        """강화된 질문 의도 분석 - 기관 탐지 개선"""
+        """강화된 질문 의도 분석 - 기관 및 RAT 특화"""
         question_lower = question.lower()
         
         intent_analysis = {
@@ -257,7 +278,25 @@ class SimpleDataProcessor:
         
         intent_scores = {}
         
-        # 기관 관련 질문 우선 처리 (강화된 패턴)
+        # RAT/트로이 관련 질문 우선 처리 (특화)
+        rat_patterns = [
+            r"rat.*특징", r"트로이.*특징", r"원격.*제어.*특징", r"원격.*접근.*특징",
+            r"rat.*지표", r"트로이.*지표", r"원격.*제어.*지표", r"원격.*접근.*지표",
+            r"악성코드.*특징", r"악성코드.*지표", r"탐지.*지표.*설명"
+        ]
+        
+        rat_score = 0
+        for pattern in rat_patterns:
+            if re.search(pattern, question_lower):
+                rat_score += 3
+        
+        if rat_score > 0:
+            if any(word in question_lower for word in ["특징", "성격", "속성"]):
+                intent_scores["특징_묻기"] = {"score": rat_score + 2, "patterns": ["rat_feature_detection"]}
+            elif any(word in question_lower for word in ["지표", "징후", "탐지"]):
+                intent_scores["지표_묻기"] = {"score": rat_score + 2, "patterns": ["rat_indicator_detection"]}
+        
+        # 기관 관련 질문 처리 (강화된 패턴)
         institution_patterns = [
             r"기관.*기술하세요", r"기관.*설명하세요", r"기관.*서술하세요",
             r"어떤.*기관", r"어느.*기관", r"기관.*무엇", r"기관.*어디",
@@ -272,7 +311,7 @@ class SimpleDataProcessor:
         institution_score = 0
         for pattern in institution_patterns:
             if re.search(pattern, question, re.IGNORECASE):
-                institution_score += 2
+                institution_score += 3
         
         # 기관 키워드 추가 점수
         institution_keywords = [
@@ -282,10 +321,9 @@ class SimpleDataProcessor:
         
         for keyword in institution_keywords:
             if keyword in question_lower:
-                institution_score += 1
+                institution_score += 2
         
-        # 기관 관련 점수가 높으면 우선 처리
-        if institution_score >= 2:
+        if institution_score >= 3:
             intent_scores["기관_묻기"] = {
                 "score": institution_score,
                 "patterns": ["institution_detection"]
@@ -293,7 +331,7 @@ class SimpleDataProcessor:
         
         # 다른 의도 패턴 분석
         for intent_type, patterns in self.question_intent_patterns.items():
-            if intent_type == "기관_묻기" and institution_score >= 2:
+            if intent_type in ["기관_묻기", "특징_묻기", "지표_묻기"] and intent_type in intent_scores:
                 continue  # 이미 처리됨
                 
             score = 0
@@ -319,7 +357,7 @@ class SimpleDataProcessor:
             best_intent = sorted_intents[0]
             
             intent_analysis["primary_intent"] = best_intent[0]
-            intent_analysis["intent_confidence"] = min(best_intent[1]["score"] / 4, 1.0)  # 스케일 조정
+            intent_analysis["intent_confidence"] = min(best_intent[1]["score"] / 5, 1.0)
             intent_analysis["detected_patterns"] = best_intent[1]["patterns"]
             
             if len(sorted_intents) > 1:
@@ -347,12 +385,16 @@ class SimpleDataProcessor:
                 intent_analysis["answer_type_required"] = "특징설명"
                 intent_analysis["context_hints"].append("특징과 성질 나열")
                 
-                if "트로이" in question_lower or "trojan" in question_lower:
-                    intent_analysis["domain_specific_intent"] = "트로이목마특징"
+                if any(word in question_lower for word in ["rat", "트로이", "원격제어", "원격접근"]):
+                    intent_analysis["domain_specific_intent"] = "RAT특징설명"
                     
             elif "지표" in primary:
                 intent_analysis["answer_type_required"] = "지표나열"
                 intent_analysis["context_hints"].append("탐지 지표와 징후")
+                
+                if any(word in question_lower for word in ["rat", "트로이", "원격제어", "원격접근"]):
+                    intent_analysis["domain_specific_intent"] = "RAT지표나열"
+                    
             elif "방안" in primary:
                 intent_analysis["answer_type_required"] = "방안제시"
                 intent_analysis["context_hints"].append("구체적 실행방안")
@@ -366,12 +408,6 @@ class SimpleDataProcessor:
             elif "조치" in primary:
                 intent_analysis["answer_type_required"] = "조치설명"
                 intent_analysis["context_hints"].append("보안조치 내용")
-            elif "법령" in primary:
-                intent_analysis["answer_type_required"] = "법령설명"
-                intent_analysis["context_hints"].append("관련 법령과 규정")
-            elif "정의" in primary:
-                intent_analysis["answer_type_required"] = "정의설명"
-                intent_analysis["context_hints"].append("개념과 정의")
         
         self._add_context_analysis(question, intent_analysis)
         
@@ -394,6 +430,15 @@ class SimpleDataProcessor:
                 intent_analysis["context_hints"].append("기관 업무 범위 포함 필요")
                 break
         
+        # RAT/트로이 관련 추가 분석
+        rat_indicators = [
+            "원격접근", "원격제어", "rat", "트로이", "악성코드", "탐지", "지표", "특징"
+        ]
+        
+        rat_count = sum(1 for indicator in rat_indicators if indicator in question_lower)
+        if rat_count >= 2:
+            intent_analysis["context_hints"].append("RAT 전문 설명 필요")
+        
         urgency_keywords = ["긴급", "즉시", "신속", "빠른"]
         if any(keyword in question_lower for keyword in urgency_keywords):
             intent_analysis["context_hints"].append("긴급 대응 필요")
@@ -413,12 +458,6 @@ class SimpleDataProcessor:
         # 법령 관련 키워드
         law_keywords = ["전자금융거래법", "개인정보보호법", "자본시장법", "정보통신망법"]
         for keyword in law_keywords:
-            if keyword in question:
-                intent_analysis["context_hints"].append(f"{keyword} 관련 내용 중요")
-        
-        # 고빈도 키워드
-        high_freq_keywords = ["금융감독원", "SBOM", "만 14세", "한국은행", "위험관리"]
-        for keyword in high_freq_keywords:
             if keyword in question:
                 intent_analysis["context_hints"].append(f"{keyword} 관련 내용 중요")
     
@@ -534,45 +573,42 @@ class SimpleDataProcessor:
         return "subjective"
     
     def extract_domain(self, question: str) -> str:
-        """강화된 도메인 추출"""
+        """강화된 도메인 추출 - RAT 및 기관 특화"""
         question_lower = question.lower()
         
         domain_scores = {}
         
-        if self.domain_detection_patterns:
-            for domain, patterns in self.domain_detection_patterns.items():
-                score = 0
-                
-                if 'strong_indicators' in patterns:
-                    for indicator in patterns['strong_indicators']:
-                        if indicator.lower() in question_lower:
-                            score += 3
-                
-                if 'medium_indicators' in patterns:
-                    for indicator in patterns['medium_indicators']:
-                        if indicator.lower() in question_lower:
-                            score += 2
-                
-                if 'law_references' in patterns:
-                    for law in patterns['law_references']:
-                        if law.lower() in question_lower:
-                            score += 2
-                
-                if 'technical_terms' in patterns:
-                    for term in patterns['technical_terms']:
-                        if term.lower() in question_lower:
-                            score += 1
-                
-                if score > 0:
-                    domain_scores[domain] = score
+        # 정확한 도메인 매칭
+        domain_patterns = {
+            "사이버보안": ["rat", "트로이", "원격제어", "원격접근", "악성코드", "탐지", "지표", "특징", "딥페이크", "sbom"],
+            "전자금융": ["전자금융", "분쟁조정", "금융감독원", "전자금융거래법", "분쟁", "조정", "한국은행", "금융통화위원회"],
+            "개인정보보호": ["개인정보", "정보주체", "만 14세", "법정대리인", "개인정보보호법", "개인정보침해신고센터"],
+            "정보보안": ["정보보안", "isms", "관리체계", "정책 수립", "재해복구", "bcp", "drp"],
+            "금융투자": ["금융투자업", "투자자문", "투자매매", "금융투자", "자본시장법"],
+            "위험관리": ["위험관리", "위험 관리", "재해복구", "위험수용", "위험평가"]
+        }
         
+        for domain, patterns in domain_patterns.items():
+            score = 0
+            for pattern in patterns:
+                if pattern in question_lower:
+                    # 핵심 키워드 가중치 적용
+                    if pattern in ["rat", "트로이", "원격제어", "전자금융", "분쟁조정", "개인정보", "만 14세"]:
+                        score += 5
+                    else:
+                        score += 2
+            
+            if score > 0:
+                domain_scores[domain] = score
+        
+        # 기존 도메인 키워드 매칭 (보완)
         if not domain_scores:
             for domain, keywords in self.domain_keywords.items():
                 score = 0
                 for keyword in keywords:
                     if keyword.lower() in question_lower:
                         if keyword in self.high_frequency_keywords:
-                            score += 2
+                            score += 3
                         else:
                             score += 1
                 
@@ -588,21 +624,11 @@ class SimpleDataProcessor:
             self.processing_stats["domain_distribution"][detected_domain] = 0
         self.processing_stats["domain_distribution"][detected_domain] += 1
         
-        if "domain_confidence_scores" not in self.processing_stats:
-            self.processing_stats["domain_confidence_scores"] = {}
-        if detected_domain not in self.processing_stats["domain_confidence_scores"]:
-            self.processing_stats["domain_confidence_scores"][detected_domain] = []
-        
-        max_score = domain_scores[detected_domain]
-        total_score = sum(domain_scores.values())
-        confidence = max_score / total_score if total_score > 0 else 0
-        self.processing_stats["domain_confidence_scores"][detected_domain].append(confidence)
-        
         return detected_domain
     
     def clean_korean_text(self, text: str) -> str:
-        """한국어 전용 텍스트 정리"""
-        return self.clean_korean_text_advanced(text)
+        """한국어 전용 텍스트 정리 (프리미엄 버전 사용)"""
+        return self.clean_korean_text_premium(text)
     
     def calculate_korean_ratio(self, text: str) -> float:
         """한국어 비율 계산"""
@@ -644,30 +670,39 @@ class SimpleDataProcessor:
         return 1 <= answer_num <= max_choice
     
     def validate_answer_intent_match(self, answer: str, question: str, intent_analysis: Dict) -> bool:
-        """강화된 답변과 질문 의도 일치성 검증 - 조건 완화"""
+        """강화된 답변과 질문 의도 일치성 검증 - 기관 및 RAT 특화"""
         if not answer or not intent_analysis:
+            return False
+        
+        # 먼저 심각한 오류 검증
+        error_patterns = [
+            r'감추인', r'컨퍼머시', r'피-에', r'백-도어', r'키-로거', r'스크리너'
+        ]
+        
+        has_errors = any(re.search(pattern, answer) for pattern in error_patterns)
+        if has_errors:
             return False
         
         required_type = intent_analysis.get("answer_type_required", "설명형")
         answer_lower = answer.lower()
+        domain_specific = intent_analysis.get("domain_specific_intent", "")
         
         # 기관명 답변 검증 강화
         if required_type == "기관명":
             # 구체적인 기관명 리스트
             specific_institutions = [
-                "전자금융분쟁조정위원회", "금융감독원", "개인정보보호위원회",
-                "개인정보침해신고센터", "한국은행", "금융위원회",
-                "과학기술정보통신부", "한국인터넷진흥원"
+                "금융감독원 금융분쟁조정위원회", "전자금융분쟁조정위원회", "금융분쟁조정위원회",
+                "금융감독원", "개인정보보호위원회", "개인정보침해신고센터", "한국은행", "금융위원회"
             ]
             
             # 일반적인 기관 키워드
             institution_keywords = [
                 "위원회", "감독원", "은행", "기관", "센터", "청", "부", "원", 
-                "조정위원회", "보호위원회", "신고센터"
+                "조정위원회", "보호위원회", "신고센터", "분쟁조정"
             ]
             
             # 구체적인 기관명이 있는지 확인
-            has_specific = any(inst in answer_lower for inst in specific_institutions)
+            has_specific = any(inst in answer for inst in specific_institutions)
             
             # 일반적인 기관 키워드 개수
             keyword_count = sum(1 for keyword in institution_keywords if keyword in answer_lower)
@@ -676,26 +711,54 @@ class SimpleDataProcessor:
             role_keywords = ["담당", "업무", "수행", "관리", "감독", "조정", "신고", "접수"]
             role_count = sum(1 for keyword in role_keywords if keyword in answer_lower)
             
-            # 기관명 검증 (조건 완화)
+            # 특정 도메인별 검증
+            if "전자금융분쟁조정" in domain_specific:
+                expected_terms = ["금융감독원", "분쟁조정", "전자금융"]
+                found_terms = sum(1 for term in expected_terms if term in answer)
+                return found_terms >= 2 or has_specific
+            
+            # 기관명 검증
             match_found = has_specific or (keyword_count >= 1 and role_count >= 1) or keyword_count >= 2
         
         elif required_type == "특징설명":
             feature_keywords = ["특징", "특성", "속성", "성질", "기능", "역할", "원리", "성격", "형태", "방식"]
-            descriptive_words = ["위장", "은밀", "지속", "제어", "접근", "수행", "활동", "백도어", "권한", "숨겨진"]
             
-            feature_count = sum(1 for keyword in feature_keywords if keyword in answer_lower)
-            desc_count = sum(1 for word in descriptive_words if word in answer_lower)
-            
-            match_found = feature_count >= 1 or (desc_count >= 2 and len(answer) > 50)  # 조건 완화
+            # RAT 특징 전용 검증
+            if "RAT특징설명" in domain_specific:
+                rat_specific_terms = [
+                    "원격제어", "은폐", "지속", "백도어", "키로깅", "화면", "캡처", "정상", "위장",
+                    "프로그램", "악성", "탐지", "회피", "시스템", "권한", "탈취"
+                ]
+                found_rat_terms = sum(1 for term in rat_specific_terms if term in answer)
+                feature_count = sum(1 for keyword in feature_keywords if keyword in answer_lower)
+                
+                return found_rat_terms >= 3 or (found_rat_terms >= 2 and feature_count >= 1)
+            else:
+                feature_count = sum(1 for keyword in feature_keywords if keyword in answer_lower)
+                descriptive_words = ["위장", "은밀", "지속", "제어", "접근", "수행", "활동", "백도어", "권한", "숨겨진"]
+                desc_count = sum(1 for word in descriptive_words if word in answer_lower)
+                
+                match_found = feature_count >= 1 or (desc_count >= 2 and len(answer) > 50)
         
         elif required_type == "지표나열":
             indicator_keywords = ["지표", "신호", "징후", "패턴", "행동", "활동", "모니터링", "탐지", "발견", "식별"]
-            specific_indicators = ["네트워크", "트래픽", "프로세스", "파일", "시스템", "로그", "연결", "메모리", "레지스트리"]
             
-            indicator_count = sum(1 for keyword in indicator_keywords if keyword in answer_lower)
-            specific_count = sum(1 for word in specific_indicators if word in answer_lower)
-            
-            match_found = indicator_count >= 1 or specific_count >= 2  # 조건 완화
+            # RAT 지표 전용 검증
+            if "RAT지표나열" in domain_specific:
+                rat_indicator_terms = [
+                    "네트워크", "트래픽", "프로세스", "파일", "시스템", "로그", "연결", "메모리", "레지스트리",
+                    "외부", "ip", "포트", "암호화", "데이터", "전송", "의심", "비정상"
+                ]
+                found_indicator_terms = sum(1 for term in rat_indicator_terms if term in answer_lower)
+                indicator_count = sum(1 for keyword in indicator_keywords if keyword in answer_lower)
+                
+                return found_indicator_terms >= 3 or (found_indicator_terms >= 2 and indicator_count >= 1)
+            else:
+                indicator_count = sum(1 for keyword in indicator_keywords if keyword in answer_lower)
+                specific_indicators = ["네트워크", "트래픽", "프로세스", "파일", "시스템", "로그", "연결", "메모리", "레지스트리"]
+                specific_count = sum(1 for word in specific_indicators if word in answer_lower)
+                
+                match_found = indicator_count >= 1 or specific_count >= 2
         
         elif required_type == "방안제시":
             solution_keywords = ["방안", "대책", "조치", "해결", "대응", "관리", "처리", "절차", "개선", "예방", "강화", "구축"]
@@ -704,7 +767,7 @@ class SimpleDataProcessor:
             solution_count = sum(1 for keyword in solution_keywords if keyword in answer_lower)
             action_count = sum(1 for word in action_words if word in answer_lower)
             
-            match_found = solution_count >= 1 or action_count >= 1  # 조건 완화
+            match_found = solution_count >= 1 or action_count >= 1
         
         elif required_type == "절차설명":
             procedure_keywords = ["절차", "과정", "단계", "순서", "프로세스", "진행", "수행", "실행", "방법"]
@@ -713,15 +776,15 @@ class SimpleDataProcessor:
             proc_count = sum(1 for keyword in procedure_keywords if keyword in answer_lower)
             step_count = sum(1 for word in step_indicators if word in answer_lower)
             
-            match_found = proc_count >= 1 or step_count >= 1 or ("," in answer and len(answer) > 50)  # 조건 완화
+            match_found = proc_count >= 1 or step_count >= 1 or ("," in answer and len(answer) > 50)
         
         elif required_type == "조치설명":
             measure_keywords = ["조치", "대응", "대책", "방안", "보안", "예방", "개선", "강화", "보완", "통제", "관리"]
-            match_found = sum(1 for keyword in measure_keywords if keyword in answer_lower) >= 1  # 조건 완화
+            match_found = sum(1 for keyword in measure_keywords if keyword in answer_lower) >= 1
         
         elif required_type == "법령설명":
             law_keywords = ["법", "법령", "법률", "규정", "조항", "규칙", "기준", "근거", "제도", "정책"]
-            match_found = sum(1 for keyword in law_keywords if keyword in answer_lower) >= 1  # 조건 완화
+            match_found = sum(1 for keyword in law_keywords if keyword in answer_lower) >= 1
         
         elif required_type == "정의설명":
             definition_keywords = ["정의", "개념", "의미", "뜻", "용어", "이란", "라고", "것은", "말하며", "지칭"]
@@ -729,7 +792,7 @@ class SimpleDataProcessor:
         
         else:
             meaningful_words = ["법령", "규정", "관리", "조치", "절차", "기준", "정책", "체계", "시스템", "보안", "통제"]
-            match_found = sum(1 for word in meaningful_words if word in answer_lower) >= 1  # 조건 완화
+            match_found = sum(1 for word in meaningful_words if word in answer_lower) >= 1
         
         self.processing_stats["intent_match_accuracy"]["total"] += 1
         if match_found:
@@ -738,7 +801,7 @@ class SimpleDataProcessor:
         return match_found
     
     def validate_korean_answer(self, answer: str, question_type: str, max_choice: int = 5, question: str = "") -> bool:
-        """강화된 한국어 답변 유효성 검증 - 조건 완화"""
+        """강화된 한국어 답변 유효성 검증 - 오류 감지 특화"""
         if not answer:
             return False
         
@@ -754,18 +817,35 @@ class SimpleDataProcessor:
             return True
         
         else:
-            clean_answer = self.clean_korean_text_advanced(answer)
+            # 먼저 심각한 오류 검증
+            error_patterns = [
+                r'감추인', r'컨퍼머시', r'피-에', r'백-도어', r'키-로거', r'스크리너',
+                r'채팅-클라언트', r'파일-업-', r'[가-힣]-[가-힣]{2,}'
+            ]
+            
+            has_errors = any(re.search(pattern, answer) for pattern in error_patterns)
+            if has_errors:
+                self.processing_stats["validation_failures"] += 1
+                return False
+            
+            clean_answer = self.clean_korean_text_premium(answer)
+            
+            # 정리 후에도 내용이 없으면 실패
+            if not clean_answer:
+                self.processing_stats["validation_failures"] += 1
+                return False
+            
             clean_answer = self.fix_korean_sentence_structure(clean_answer)
             
             if self.answer_validation_rules and 'subjective' in self.answer_validation_rules:
                 rules = self.answer_validation_rules['subjective']
-                min_length = rules.get('min_length', 30)  # 50에서 30으로 완화
-                max_length = rules.get('max_length', 500)  # 400에서 500으로 완화
-                min_korean_ratio = rules.get('min_korean_ratio', 0.7)  # 0.9에서 0.7으로 완화
+                min_length = rules.get('min_length', 30)
+                max_length = rules.get('max_length', 500)
+                min_korean_ratio = rules.get('min_korean_ratio', 0.8)
             else:
-                min_length = 30  # 완화
-                max_length = 500  # 완화
-                min_korean_ratio = 0.7  # 완화
+                min_length = 30
+                max_length = 500
+                min_korean_ratio = 0.8
             
             if not (min_length <= len(clean_answer) <= max_length):
                 self.processing_stats["validation_failures"] += 1
@@ -777,24 +857,25 @@ class SimpleDataProcessor:
                 return False
             
             english_ratio = self.calculate_english_ratio(answer)
-            if english_ratio > 0.1:  # 0.05에서 0.1로 완화
+            if english_ratio > 0.15:
                 self.processing_stats["validation_failures"] += 1
                 return False
             
             korean_chars = len(re.findall(r'[가-힣]', clean_answer))
-            if korean_chars < 15:  # 20에서 15로 완화
+            if korean_chars < 20:
                 self.processing_stats["validation_failures"] += 1
                 return False
             
-            # 의미있는 키워드 검증 (조건 완화)
+            # 의미있는 키워드 검증
             meaningful_keywords = [
                 "법", "규정", "조치", "관리", "보안", "방안", "절차", "기준", 
                 "정책", "체계", "시스템", "통제", "대응", "처리", "기관",
-                "위원회", "특징", "지표", "탐지", "모니터링"
+                "위원회", "특징", "지표", "탐지", "모니터링", "악성코드",
+                "원격제어", "트로이", "분쟁조정", "개인정보", "전자금융"
             ]
             
             keyword_count = sum(1 for word in meaningful_keywords if word in clean_answer)
-            if keyword_count < 1:  # 최소 1개만 있으면 됨
+            if keyword_count < 1:
                 self.processing_stats["validation_failures"] += 1
                 return False
             
@@ -813,8 +894,8 @@ class SimpleDataProcessor:
         return self.validate_korean_answer(answer, question_type, max_choice, question)
     
     def clean_text(self, text: str) -> str:
-        """텍스트 정리"""
-        return self.clean_korean_text_advanced(text)
+        """텍스트 정리 (프리미엄 버전 사용)"""
+        return self.clean_korean_text_premium(text)
     
     def extract_choices(self, question: str) -> List[str]:
         """강화된 객관식 선택지 추출"""
@@ -894,7 +975,7 @@ class SimpleDataProcessor:
             return "초급"
     
     def normalize_korean_answer(self, answer: str, question_type: str, max_choice: int = 5) -> str:
-        """한국어 답변 정규화 - 개선된 버전"""
+        """한국어 답변 정규화 - 프리미엄 버전"""
         if not answer:
             return ""
         
@@ -909,17 +990,23 @@ class SimpleDataProcessor:
             return ""
         
         else:
-            answer = self.clean_korean_text_advanced(answer)
-            answer = self.fix_korean_sentence_structure(answer)
+            # 프리미엄 텍스트 정리
+            answer = self.clean_korean_text_premium(answer)
             
-            # 너무 짧은 답변 처리 (조건 완화)
-            if len(answer) < 20:
+            # 정리 후 내용이 없으면 기본 답변
+            if not answer:
                 return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
             
-            # 길이 제한 (완화)
-            if len(answer) > 500:  # 400에서 500으로 완화
+            answer = self.fix_korean_sentence_structure(answer)
+            
+            # 너무 짧은 답변 처리
+            if len(answer) < 30:
+                return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+            
+            # 길이 제한
+            if len(answer) > 500:
                 sentences = answer.split('. ')
-                answer = '. '.join(sentences[:4])  # 3에서 4로 증가
+                answer = '. '.join(sentences[:4])
                 if len(answer) > 500:
                     answer = answer[:500]
             
@@ -929,7 +1016,7 @@ class SimpleDataProcessor:
             return answer
     
     def normalize_answer(self, answer: str, question_type: str, max_choice: int = 5) -> str:
-        """답변 정규화"""
+        """답변 정규화 (프리미엄 버전 사용)"""
         return self.normalize_korean_answer(answer, question_type, max_choice)
     
     def get_processing_stats(self) -> Dict:
@@ -955,12 +1042,6 @@ class SimpleDataProcessor:
             stats["negative_pattern_matches"] = self.processing_stats["negative_pattern_matches"]
         if "positive_pattern_matches" in self.processing_stats:
             stats["positive_pattern_matches"] = self.processing_stats["positive_pattern_matches"]
-        if "domain_confidence_scores" in self.processing_stats:
-            avg_confidence = {}
-            for domain, scores in self.processing_stats["domain_confidence_scores"].items():
-                if scores:
-                    avg_confidence[domain] = sum(scores) / len(scores)
-            stats["average_domain_confidence"] = avg_confidence
         
         return stats
     
