@@ -80,8 +80,6 @@ class FinancialAIInference:
             "answer_quality_by_intent": {},
             "mc_context_accuracy": 0,
             "mc_pattern_matches": 0,
-            "enhanced_pattern_usage": 0,
-            "enhanced_pattern_success": 0,
             "high_confidence_intent": 0,
             "intent_specific_answers": 0,
             "quality_improvement": 0,
@@ -116,9 +114,9 @@ class FinancialAIInference:
             
             # 객관식 우선 처리
             if question_type == "multiple_choice":
-                answer = self._process_multiple_choice_enhanced(question, max_choice, domain, kb_analysis)
+                answer = self._process_multiple_choice_optimized(question, max_choice, domain, kb_analysis)
                 self._update_mc_stats(question_type, domain, difficulty, 
-                                    time.time() - start_time, answer, max_choice, kb_analysis)
+                                    time.time() - start_time, answer, max_choice)
                 return answer
             
             # 주관식 처리
@@ -158,28 +156,17 @@ class FinancialAIInference:
                              time.time() - start_time)
             return fallback
     
-    def _process_multiple_choice_enhanced(self, question: str, max_choice: int, domain: str, kb_analysis: Dict) -> str:
-        """강화된 객관식 처리"""
+    def _process_multiple_choice_optimized(self, question: str, max_choice: int, domain: str, kb_analysis: Dict) -> str:
+        """객관식 처리"""
         
-        # 1순위: 강화된 패턴 매칭
-        if kb_analysis.get("mc_pattern_info", {}).get("is_mc_question", False):
-            pattern_info = kb_analysis["mc_pattern_info"]
-            if pattern_info.get("confidence", 0) > 0.7:
-                pattern_answer = pattern_info.get("likely_answer")
-                if pattern_answer and pattern_answer.isdigit() and 1 <= int(pattern_answer) <= max_choice:
-                    self.stats["enhanced_pattern_usage"] += 1
-                    self.stats["enhanced_pattern_success"] += 1
-                    self.stats["mc_pattern_matches"] += 1
-                    return pattern_answer
-        
-        # 2순위: 기존 지식베이스 패턴 매칭
+        # 지식베이스 패턴 매칭 우선 적용
         if self.optimization_config["mc_pattern_priority"]:
             pattern_answer = self.knowledge_base.get_mc_pattern_answer(question)
             if pattern_answer and pattern_answer.isdigit() and 1 <= int(pattern_answer) <= max_choice:
                 self.stats["mc_pattern_matches"] += 1
                 return pattern_answer
         
-        # 3순위: 모델 기반 답변 생성
+        # 모델 기반 답변 생성
         answer = self.model_handler.generate_answer(question, "multiple_choice", max_choice)
         
         # 답변 범위 검증
@@ -470,18 +457,13 @@ class FinancialAIInference:
         return answer
     
     def _update_mc_stats(self, question_type: str, domain: str, difficulty: str, 
-                        processing_time: float, answer: str, max_choice: int, kb_analysis: Dict):
+                        processing_time: float, answer: str, max_choice: int):
         """객관식 통계 업데이트"""
         self._update_stats(question_type, domain, difficulty, processing_time)
         
         # 컨텍스트 정확도 추적
         if answer and answer.isdigit() and max_choice > 0 and 1 <= int(answer) <= max_choice:
             self.stats["mc_context_accuracy"] += 1
-        
-        # 강화된 패턴 사용 통계
-        if kb_analysis.get("mc_pattern_info", {}).get("is_mc_question", False):
-            if kb_analysis["mc_pattern_info"].get("confidence", 0) > 0.7:
-                self.stats["enhanced_pattern_usage"] += 1
     
     def _update_subj_stats(self, question_type: str, domain: str, difficulty: str, 
                           processing_time: float, intent_analysis: Dict = None, answer: str = ""):
@@ -743,8 +725,6 @@ class FinancialAIInference:
             "knowledge_base_stats": kb_stats,
             "mc_context_accuracy_rate": (self.stats["mc_context_accuracy"] / max(self.stats["mc_count"], 1)) * 100,
             "mc_pattern_match_rate": (self.stats["mc_pattern_matches"] / max(self.stats["mc_count"], 1)) * 100,
-            "enhanced_pattern_usage_rate": (self.stats["enhanced_pattern_usage"] / max(self.stats["mc_count"], 1)) * 100,
-            "enhanced_pattern_success_rate": (self.stats["enhanced_pattern_success"] / max(self.stats["enhanced_pattern_usage"], 1)) * 100,
             "high_confidence_intent_rate": (self.stats["high_confidence_intent"] / max(self.stats["intent_analysis_accuracy"], 1)) * 100,
             "intent_specific_answer_rate": (self.stats["intent_specific_answers"] / total) * 100,
             "quality_improvement_count": self.stats["quality_improvement"],
@@ -799,8 +779,6 @@ def main():
                 print(f"의도 일치 성공률: {results['intent_match_success_rate']:.1f}%")
             if results['mc_context_accuracy_rate'] > 0:
                 print(f"객관식 컨텍스트 정확도: {results['mc_context_accuracy_rate']:.1f}%")
-            if results['enhanced_pattern_usage_rate'] > 0:
-                print(f"강화된 패턴 활용률: {results['enhanced_pattern_usage_rate']:.1f}%")
         
     except KeyboardInterrupt:
         print("\n추론 중단됨")

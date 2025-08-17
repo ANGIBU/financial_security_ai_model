@@ -7,69 +7,28 @@
     "positive_keywords": [
       "맞는.*것", "옳은.*것", "적절한.*것", 
       "올바른.*것", "해당하는.*것", "정확한.*것",
-      "가장.*적절한", "가장.*옳은", "가장.*중요한"
+      "가장.*적절한", "가장.*옳은"
     ],
     "domain_specific_patterns": {
       "금융투자": {
-        "keywords": ["금융투자업", "투자자문업", "투자매매업", "투자중개업", "소비자금융업", "보험중개업", "구분"],
-        "negative_patterns": {
-          "해당하지_않는": {
-            "primary_answer": "1",
-            "secondary_answer": "5", 
-            "reasoning": "소비자금융업(1번)이 명확한 정답, 보험중개업(5번)도 해당하지만 1번 우선"
-          }
-        },
+        "keywords": ["금융투자업", "투자자문업", "투자매매업", "투자중개업", "소비자금융업", "보험중개업"],
         "common_answers": ["1", "5"]
       },
       "위험관리": {
-        "keywords": ["위험관리", "위험수용", "위험대응", "수행인력", "재해복구", "계획수립", "요소"],
-        "negative_patterns": {
-          "적절하지_않은": {
-            "primary_answer": "1",
-            "reasoning": "수행인력은 실행단계 요소로 계획수립 시 부적절"
-          }
-        },
-        "common_answers": ["1", "2"]
+        "keywords": ["위험관리", "위험수용", "위험대응", "수행인력", "재해복구"],
+        "common_answers": ["2", "3"]
       },
       "개인정보보호": {
-        "keywords": ["개인정보", "정보주체", "만 14세", "법정대리인", "PIMS", "정책수립", "중요한요소"],
-        "positive_patterns": {
-          "가장_중요한": {
-            "primary_answer": "2",
-            "reasoning": "경영진의 참여가 정책수립에서 가장 중요"
-          }
-        },
+        "keywords": ["개인정보", "정보주체", "만 14세", "법정대리인", "PIMS"],
         "common_answers": ["2", "4"]
       },
       "전자금융": {
-        "keywords": ["전자금융", "분쟁조정", "금융감독원", "한국은행", "자료제출", "통화신용정책"],
-        "positive_patterns": {
-          "요구할_수_있는_경우": {
-            "primary_answer": "4",
-            "reasoning": "통화신용정책 수행은 한국은행 핵심업무"
-          }
-        },
+        "keywords": ["전자금융", "분쟁조정", "금융감독원", "한국은행"],
         "common_answers": ["4"]
       },
       "사이버보안": {
-        "keywords": ["SBOM", "악성코드", "보안", "소프트웨어", "활용", "이유"],
-        "positive_patterns": {
-          "활용_이유": {
-            "primary_answer": "5",
-            "reasoning": "SBOM의 핵심목적은 소프트웨어 공급망 보안"
-          }
-        },
+        "keywords": ["SBOM", "악성코드", "보안", "소프트웨어"],
         "common_answers": ["1", "3", "5"]
-      },
-      "정보보안": {
-        "keywords": ["정보보안", "재해복구", "개인정보파기", "복구절차", "비상연락체계"],
-        "negative_patterns": {
-          "옳지_않은": {
-            "primary_answer": "3",
-            "reasoning": "개인정보 파기 절차는 재해복구와 직접 관련 없음"
-          }
-        },
-        "common_answers": ["1", "3"]
       }
     }
   },
@@ -154,63 +113,6 @@
     "high_quality_templates": {},
     "mc_accuracy_by_domain": {},
     "negative_vs_positive_patterns": {},
-    "choice_distribution_learning": {},
-    "enhanced_mc_patterns": {
-      "금융투자_구분_부정형": {
-        "success_rate": 0.0,
-        "usage_count": 0,
-        "pattern_confidence": 0.9
-      },
-      "위험관리_요소_부정형": {
-        "success_rate": 0.0,
-        "usage_count": 0,
-        "pattern_confidence": 0.95
-      },
-      "정보보안_재해복구_부정형": {
-        "success_rate": 0.0,
-        "usage_count": 0,
-        "pattern_confidence": 0.85
-      },
-      "개인정보_정책수립_긍정형": {
-        "success_rate": 0.0,
-        "usage_count": 0,
-        "pattern_confidence": 0.9
-      },
-      "전자금융_자료제출_긍정형": {
-        "success_rate": 0.0,
-        "usage_count": 0,
-        "pattern_confidence": 0.95
-      },
-      "사이버보안_SBOM_긍정형": {
-        "success_rate": 0.0,
-        "usage_count": 0,
-        "pattern_confidence": 0.9
-      }
-    },
-    "negative_pattern_analysis": {
-      "해당하지_않는_패턴": {
-        "금융투자": {"preferred_answer": "1", "alternative": "5"},
-        "일반": {"preferred_answer": "1", "alternative": "3"}
-      },
-      "적절하지_않은_패턴": {
-        "위험관리": {"preferred_answer": "1", "alternative": "2"},
-        "일반": {"preferred_answer": "1", "alternative": "2"}
-      },
-      "옳지_않은_패턴": {
-        "정보보안": {"preferred_answer": "3", "alternative": "1"},
-        "일반": {"preferred_answer": "2", "alternative": "3"}
-      }
-    },
-    "positive_pattern_analysis": {
-      "가장_중요한_패턴": {
-        "개인정보보호": {"preferred_answer": "2", "confidence": 0.9},
-        "일반": {"preferred_answer": "1", "confidence": 0.6}
-      },
-      "가장_적절한_패턴": {
-        "전자금융": {"preferred_answer": "4", "confidence": 0.95},
-        "사이버보안": {"preferred_answer": "5", "confidence": 0.9},
-        "일반": {"preferred_answer": "1", "confidence": 0.7}
-      }
-    }
+    "choice_distribution_learning": {}
   }
 }

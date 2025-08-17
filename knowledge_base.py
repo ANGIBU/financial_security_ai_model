@@ -35,91 +35,6 @@ class FinancialSecurityKnowledgeBase:
         # 템플릿 품질 평가 기준 (config.py에서 로드)
         self.template_quality_criteria = TEMPLATE_QUALITY_CRITERIA
         
-        # 강화된 객관식 패턴 데이터베이스
-        self.enhanced_mc_patterns = {
-            # 금융투자업 구분 문제
-            "금융투자_구분_부정형": {
-                "keywords": ["금융투자업", "구분", "해당하지", "않는"],
-                "choices_analysis": {
-                    "소비자금융업": {"is_correct": True, "reason": "금융투자업에 포함되지 않음"},
-                    "투자자문업": {"is_correct": False, "reason": "금융투자업에 포함됨"},
-                    "투자매매업": {"is_correct": False, "reason": "금융투자업에 포함됨"},
-                    "투자중개업": {"is_correct": False, "reason": "금융투자업에 포함됨"},
-                    "보험중개업": {"is_correct": True, "reason": "금융투자업에 포함되지 않음"}
-                },
-                "primary_answer": "1",  # 소비자금융업이 더 명확한 정답
-                "secondary_answer": "5",  # 보험중개업도 정답이지만 보통 1번이 우선
-                "confidence": 0.9
-            },
-            
-            # 위험관리 계획 수립 요소 문제
-            "위험관리_요소_부정형": {
-                "keywords": ["위험 관리", "계획 수립", "요소", "적절하지", "않은"],
-                "choices_analysis": {
-                    "수행인력": {"is_correct": True, "reason": "실행 단계의 요소로 계획 수립 시 고려사항이 아님"},
-                    "위험 수용": {"is_correct": False, "reason": "계획 수립 시 고려해야 할 요소"},
-                    "위험 대응 전략": {"is_correct": False, "reason": "계획 수립 시 고려해야 할 요소"},
-                    "대상": {"is_correct": False, "reason": "계획 수립 시 고려해야 할 요소"},
-                    "기간": {"is_correct": False, "reason": "계획 수립 시 고려해야 할 요소"}
-                },
-                "primary_answer": "1",  # 수행인력
-                "confidence": 0.95
-            },
-            
-            # 정보보안 재해복구 계획 문제
-            "정보보안_재해복구_부정형": {
-                "keywords": ["재해 복구", "계획 수립", "옳지", "않은"],
-                "choices_analysis": {
-                    "복구 절차": {"is_correct": False, "reason": "재해복구 계획에 필요한 요소"},
-                    "비상연락체계": {"is_correct": False, "reason": "재해복구 계획에 필요한 요소"},
-                    "개인정보 파기": {"is_correct": True, "reason": "재해복구와 직접적 관련 없음"},
-                    "복구 목표시간": {"is_correct": False, "reason": "재해복구 계획에 필요한 요소"}
-                },
-                "primary_answer": "3",  # 개인정보 파기 절차
-                "confidence": 0.85
-            },
-            
-            # 개인정보보호 정책 수립 중요 요소 (긍정형)
-            "개인정보_정책수립_긍정형": {
-                "keywords": ["정책 수립", "가장 중요한", "요소"],
-                "choices_analysis": {
-                    "정보보호 정책": {"is_correct": False, "reason": "중요하지만 최우선은 아님"},
-                    "경영진의 참여": {"is_correct": True, "reason": "관리체계 수립에서 가장 중요한 요소"},
-                    "최고책임자 지정": {"is_correct": False, "reason": "중요하지만 경영진 참여가 우선"},
-                    "자원 할당": {"is_correct": False, "reason": "중요하지만 경영진 참여가 우선"}
-                },
-                "primary_answer": "2",  # 경영진의 참여
-                "confidence": 0.9
-            },
-            
-            # 전자금융 자료제출 요구 경우 (긍정형)
-            "전자금융_자료제출_긍정형": {
-                "keywords": ["한국은행", "자료제출", "요구", "경우"],
-                "choices_analysis": {
-                    "보안 강화": {"is_correct": False, "reason": "한국은행 고유 업무 범위 밖"},
-                    "통계조사": {"is_correct": False, "reason": "한국은행 고유 업무 범위 밖"},
-                    "경영 실적": {"is_correct": False, "reason": "한국은행 고유 업무 범위 밖"},
-                    "통화신용정책": {"is_correct": True, "reason": "한국은행의 핵심 업무 영역"}
-                },
-                "primary_answer": "4",  # 통화신용정책의 수행
-                "confidence": 0.95
-            },
-            
-            # 사이버보안 SBOM 활용 (긍정형)
-            "사이버보안_SBOM_긍정형": {
-                "keywords": ["SBOM", "활용", "이유", "적절한"],
-                "choices_analysis": {
-                    "접근 제어": {"is_correct": False, "reason": "SBOM의 주목적이 아님"},
-                    "투명성": {"is_correct": False, "reason": "SBOM의 부분적 효과"},
-                    "개인정보 보호": {"is_correct": False, "reason": "SBOM과 직접 관련 없음"},
-                    "다양성": {"is_correct": False, "reason": "SBOM의 주목적이 아님"},
-                    "소프트웨어 공급망": {"is_correct": True, "reason": "SBOM의 핵심 목적"}
-                },
-                "primary_answer": "5",  # 소프트웨어 공급망 보안
-                "confidence": 0.9
-            }
-        }
-        
         # 질문 분석 이력
         self.analysis_history = {
             "domain_frequency": {},
@@ -134,9 +49,7 @@ class FinancialSecurityKnowledgeBase:
             "template_usage_stats": {},
             "template_effectiveness": {},
             "mc_pattern_accuracy": {},
-            "institution_question_accuracy": {},
-            "enhanced_pattern_success": {},
-            "negative_question_patterns": {}
+            "institution_question_accuracy": {}
         }
         
         # 이전 분석 이력 로드
@@ -220,7 +133,7 @@ class FinancialSecurityKnowledgeBase:
             pass
     
     def analyze_question(self, question: str) -> Dict:
-        """강화된 질문 분석"""
+        """질문 분석"""
         question_lower = question.lower()
         
         # 도메인 찾기
@@ -260,8 +173,8 @@ class FinancialSecurityKnowledgeBase:
         # 기관 관련 질문인지 확인
         institution_info = self._check_institution_question(question)
         
-        # 강화된 객관식 패턴 매칭
-        mc_pattern_info = self._analyze_enhanced_mc_pattern(question)
+        # 객관식 패턴 매칭
+        mc_pattern_info = self._analyze_mc_pattern(question)
         
         # 분석 결과 저장
         analysis_result = {
@@ -279,8 +192,8 @@ class FinancialSecurityKnowledgeBase:
         
         return analysis_result
     
-    def _analyze_enhanced_mc_pattern(self, question: str) -> Dict:
-        """강화된 객관식 패턴 분석"""
+    def _analyze_mc_pattern(self, question: str) -> Dict:
+        """객관식 패턴 분석"""
         question_lower = question.lower()
         
         pattern_info = {
@@ -288,46 +201,21 @@ class FinancialSecurityKnowledgeBase:
             "pattern_type": None,
             "likely_answer": None,
             "confidence": 0.0,
-            "pattern_key": None,
-            "reasoning": None,
-            "choices_analysis": None
+            "pattern_key": None
         }
         
-        # 강화된 패턴 매칭
-        for pattern_key, pattern_data in self.enhanced_mc_patterns.items():
-            keyword_matches = sum(1 for keyword in pattern_data["keywords"] 
+        # 실제 데이터 패턴 매칭
+        for pattern_key, pattern_data in self.mc_answer_patterns.items():
+            keyword_matches = sum(1 for keyword in pattern_data["question_keywords"] 
                                 if keyword in question_lower)
             
-            # 키워드 매칭률이 높은 경우
-            if keyword_matches >= len(pattern_data["keywords"]) * 0.75:  # 75% 이상 매칭
+            if keyword_matches >= 2:
                 pattern_info["is_mc_question"] = True
                 pattern_info["pattern_type"] = pattern_key
-                pattern_info["likely_answer"] = pattern_data["primary_answer"]
-                pattern_info["confidence"] = pattern_data["confidence"]
+                pattern_info["likely_answer"] = pattern_data["correct_answer"]
+                pattern_info["confidence"] = keyword_matches / len(pattern_data["question_keywords"])
                 pattern_info["pattern_key"] = pattern_key
-                pattern_info["reasoning"] = f"패턴 '{pattern_key}' 매칭됨 (키워드 {keyword_matches}/{len(pattern_data['keywords'])})"
-                pattern_info["choices_analysis"] = pattern_data.get("choices_analysis", {})
-                
-                # 성공률 기록
-                if pattern_key not in self.analysis_history["enhanced_pattern_success"]:
-                    self.analysis_history["enhanced_pattern_success"][pattern_key] = {"total": 0, "used": 0}
-                self.analysis_history["enhanced_pattern_success"][pattern_key]["total"] += 1
-                
                 break
-        
-        # 기존 패턴으로 폴백
-        if not pattern_info["is_mc_question"]:
-            for pattern_key, pattern_data in self.mc_answer_patterns.items():
-                keyword_matches = sum(1 for keyword in pattern_data["question_keywords"] 
-                                    if keyword in question_lower)
-                
-                if keyword_matches >= 2:
-                    pattern_info["is_mc_question"] = True
-                    pattern_info["pattern_type"] = pattern_key
-                    pattern_info["likely_answer"] = pattern_data["correct_answer"]
-                    pattern_info["confidence"] = keyword_matches / len(pattern_data["question_keywords"])
-                    pattern_info["pattern_key"] = pattern_key
-                    break
         
         return pattern_info
     
@@ -456,7 +344,7 @@ class FinancialSecurityKnowledgeBase:
                 if analysis["institution_info"]["confidence"] > 0.7:
                     self.analysis_history["institution_question_accuracy"][institution_type]["high_confidence"] += 1
         
-        # 강화된 객관식 패턴 정확도 추가
+        # 객관식 패턴 정확도 추가
         if analysis["mc_pattern_info"]["is_mc_question"]:
             pattern_key = analysis["mc_pattern_info"]["pattern_key"]
             if pattern_key:
@@ -469,22 +357,6 @@ class FinancialSecurityKnowledgeBase:
                 if analysis["mc_pattern_info"]["confidence"] > 0.7:
                     self.analysis_history["mc_pattern_accuracy"][pattern_key]["high_confidence"] += 1
         
-        # 부정형 질문 패턴 추적
-        question_lower = question.lower()
-        negative_patterns = ["해당하지.*않는", "적절하지.*않는", "옳지.*않는"]
-        for pattern in negative_patterns:
-            if re.search(pattern, question_lower):
-                if pattern not in self.analysis_history["negative_question_patterns"]:
-                    self.analysis_history["negative_question_patterns"][pattern] = {"count": 0, "domains": {}}
-                
-                self.analysis_history["negative_question_patterns"][pattern]["count"] += 1
-                domain = analysis["domain"][0] if analysis["domain"] else "일반"
-                
-                if domain not in self.analysis_history["negative_question_patterns"][pattern]["domains"]:
-                    self.analysis_history["negative_question_patterns"][pattern]["domains"][domain] = 0
-                self.analysis_history["negative_question_patterns"][pattern]["domains"][domain] += 1
-                break
-        
         # 질문 패턴 추가
         pattern = {
             "question_length": len(question),
@@ -494,7 +366,6 @@ class FinancialSecurityKnowledgeBase:
             "compliance_score": sum(analysis["compliance"].values()) / len(analysis["compliance"]),
             "is_institution_question": analysis["institution_info"]["is_institution_question"],
             "is_mc_pattern": analysis["mc_pattern_info"]["is_mc_question"],
-            "has_negative_pattern": any(neg in question.lower() for neg in ["해당하지", "적절하지", "옳지"]),
             "timestamp": datetime.now().isoformat()
         }
         
@@ -630,16 +501,10 @@ class FinancialSecurityKnowledgeBase:
         return "관련 법령에 따라 해당 분야의 전문 기관에서 업무를 담당하고 있습니다."
     
     def get_mc_pattern_answer(self, question: str) -> str:
-        """강화된 객관식 패턴 기반 답변 반환"""
-        mc_pattern_info = self._analyze_enhanced_mc_pattern(question)
+        """객관식 패턴 기반 답변 반환"""
+        mc_pattern_info = self._analyze_mc_pattern(question)
         
-        if mc_pattern_info["is_mc_question"] and mc_pattern_info["confidence"] > 0.6:
-            pattern_key = mc_pattern_info["pattern_key"]
-            
-            # 강화된 패턴 사용 기록
-            if pattern_key in self.analysis_history["enhanced_pattern_success"]:
-                self.analysis_history["enhanced_pattern_success"][pattern_key]["used"] += 1
-            
+        if mc_pattern_info["is_mc_question"] and mc_pattern_info["confidence"] > 0.5:
             return mc_pattern_info["likely_answer"]
         
         return None
@@ -694,8 +559,7 @@ class FinancialSecurityKnowledgeBase:
                 "related_institutions": ["개인정보보호위원회", "개인정보침해신고센터"],
                 "compliance_focus": "한국어 법령 용어 사용",
                 "answer_patterns": ["법적 근거 제시", "기관명 정확 명시", "절차 단계별 설명"],
-                "common_questions": ["만 14세 미만 아동 동의", "정책 수립 중요 요소", "개인정보 관리체계"],
-                "mc_answer_tendencies": {"긍정형": "2번(경영진의 참여)", "부정형": "확인 필요"}
+                "common_questions": ["만 14세 미만 아동 동의", "정책 수립 중요 요소", "개인정보 관리체계"]
             },
             "전자금융": {
                 "key_laws": ["전자금융거래법", "전자서명법"],
@@ -704,8 +568,7 @@ class FinancialSecurityKnowledgeBase:
                 "related_institutions": ["전자금융분쟁조정위원회", "금융감독원", "한국은행"],
                 "compliance_focus": "한국어 금융 용어 사용",
                 "answer_patterns": ["분쟁조정 절차 설명", "기관 역할 명시", "법적 근거 제시"],
-                "common_questions": ["분쟁조정 신청 기관", "자료제출 요구 경우"],
-                "mc_answer_tendencies": {"자료제출_긍정형": "4번(통화신용정책)"}
+                "common_questions": ["분쟁조정 신청 기관", "자료제출 요구 경우"]
             },
             "사이버보안": {
                 "key_laws": ["정보통신망법", "개인정보보호법"],
@@ -714,8 +577,7 @@ class FinancialSecurityKnowledgeBase:
                 "related_institutions": ["한국인터넷진흥원", "사이버보안센터"],
                 "compliance_focus": "한국어 보안 용어 사용",
                 "answer_patterns": ["탐지 지표 나열", "대응 방안 제시", "특징 상세 설명"],
-                "common_questions": ["트로이 목마 특징", "탐지 지표", "SBOM 활용", "딥페이크 대응"],
-                "mc_answer_tendencies": {"SBOM_긍정형": "5번(소프트웨어 공급망 보안)"}
+                "common_questions": ["트로이 목마 특징", "탐지 지표", "SBOM 활용", "딥페이크 대응"]
             },
             "정보보안": {
                 "key_laws": ["정보통신망법", "전자정부법"],
@@ -724,8 +586,7 @@ class FinancialSecurityKnowledgeBase:
                 "related_institutions": ["한국인터넷진흥원"],
                 "compliance_focus": "한국어 기술 용어 사용",
                 "answer_patterns": ["관리체계 설명", "보안조치 나열", "절차 단계 제시"],
-                "common_questions": ["재해복구 계획", "관리체계 수립"],
-                "mc_answer_tendencies": {"재해복구_부정형": "3번(개인정보 파기 절차)"}
+                "common_questions": ["재해복구 계획", "관리체계 수립"]
             },
             "금융투자": {
                 "key_laws": ["자본시장법", "금융투자업규정"],
@@ -734,8 +595,7 @@ class FinancialSecurityKnowledgeBase:
                 "related_institutions": ["금융분쟁조정위원회", "금융감독원"],
                 "compliance_focus": "한국어 투자 용어 사용",
                 "answer_patterns": ["법령 근거 제시", "원칙 설명", "보호 방안 나열"],
-                "common_questions": ["금융투자업 구분", "해당하지 않는 업무"],
-                "mc_answer_tendencies": {"구분_부정형": "1번(소비자금융업) 우선, 5번(보험중개업) 차순위"}
+                "common_questions": ["금융투자업 구분", "해당하지 않는 업무"]
             },
             "위험관리": {
                 "key_laws": ["은행법", "보험업법", "자본시장법"],
@@ -744,8 +604,7 @@ class FinancialSecurityKnowledgeBase:
                 "related_institutions": ["금융감독원"],
                 "compliance_focus": "한국어 관리 용어 사용",
                 "answer_patterns": ["위험관리 절차", "평가 방법", "대응 체계"],
-                "common_questions": ["위험관리 요소", "재해복구 계획", "적절하지 않은 요소"],
-                "mc_answer_tendencies": {"요소_부정형": "1번(수행인력)"}
+                "common_questions": ["위험관리 요소", "재해복구 계획", "적절하지 않은 요소"]
             }
         }
         
@@ -756,75 +615,8 @@ class FinancialSecurityKnowledgeBase:
             "related_institutions": ["해당 전문기관"],
             "compliance_focus": "한국어 전용 답변",
             "answer_patterns": ["법령 근거", "관리 방안", "절차 설명"],
-            "common_questions": [],
-            "mc_answer_tendencies": {}
+            "common_questions": []
         })
-    
-    def get_pattern_based_mc_guidance(self, question: str, domain: str) -> Dict:
-        """패턴 기반 객관식 가이드 제공"""
-        question_lower = question.lower()
-        
-        # 부정형 패턴 확인
-        negative_guidance = {}
-        if "해당하지.*않는" in question_lower:
-            if domain == "금융투자":
-                negative_guidance = {
-                    "pattern": "금융투자업_구분_부정형",
-                    "primary_answer": "1",
-                    "reasoning": "소비자금융업은 명확히 금융투자업에 해당하지 않음",
-                    "alternatives": ["5"],
-                    "confidence": 0.9
-                }
-        
-        elif "적절하지.*않은" in question_lower:
-            if domain == "위험관리" and "요소" in question_lower:
-                negative_guidance = {
-                    "pattern": "위험관리_요소_부정형", 
-                    "primary_answer": "1",
-                    "reasoning": "수행인력은 실행 단계 요소로 계획 수립 시 고려사항이 아님",
-                    "confidence": 0.95
-                }
-        
-        elif "옳지.*않은" in question_lower:
-            if domain == "정보보안" and "재해" in question_lower:
-                negative_guidance = {
-                    "pattern": "정보보안_재해복구_부정형",
-                    "primary_answer": "3", 
-                    "reasoning": "개인정보 파기 절차는 재해복구와 직접적 관련 없음",
-                    "confidence": 0.85
-                }
-        
-        # 긍정형 패턴 확인
-        positive_guidance = {}
-        if "가장.*중요한" in question_lower and domain == "개인정보보호":
-            positive_guidance = {
-                "pattern": "개인정보_정책수립_긍정형",
-                "primary_answer": "2",
-                "reasoning": "경영진의 참여는 관리체계 수립에서 가장 중요한 요소",
-                "confidence": 0.9
-            }
-        
-        elif "자료제출.*요구" in question_lower and domain == "전자금융":
-            positive_guidance = {
-                "pattern": "전자금융_자료제출_긍정형",
-                "primary_answer": "4",
-                "reasoning": "통화신용정책 수행은 한국은행의 핵심 업무",
-                "confidence": 0.95
-            }
-        
-        elif "sbom.*활용" in question_lower and domain == "사이버보안":
-            positive_guidance = {
-                "pattern": "사이버보안_SBOM_긍정형",
-                "primary_answer": "5",
-                "reasoning": "SBOM의 핵심 목적은 소프트웨어 공급망 보안",
-                "confidence": 0.9
-            }
-        
-        return {
-            "negative_guidance": negative_guidance,
-            "positive_guidance": positive_guidance,
-            "has_specific_pattern": bool(negative_guidance or positive_guidance)
-        }
     
     def get_analysis_statistics(self) -> Dict:
         """분석 통계 반환"""
@@ -837,14 +629,11 @@ class FinancialSecurityKnowledgeBase:
             "template_effectiveness": dict(self.analysis_history["template_effectiveness"]),
             "mc_pattern_accuracy": dict(self.analysis_history["mc_pattern_accuracy"]),
             "institution_question_accuracy": dict(self.analysis_history["institution_question_accuracy"]),
-            "enhanced_pattern_success": dict(self.analysis_history["enhanced_pattern_success"]),
-            "negative_question_patterns": dict(self.analysis_history["negative_question_patterns"]),
             "total_analyzed": len(self.analysis_history["question_patterns"]),
             "korean_terms_available": len(self.korean_financial_terms),
             "institutions_available": len(self.institution_database),
             "template_domains": len(self.korean_subjective_templates),
-            "mc_patterns_available": len(self.mc_answer_patterns),
-            "enhanced_patterns_available": len(self.enhanced_mc_patterns)
+            "mc_patterns_available": len(self.mc_answer_patterns)
         }
     
     def validate_competition_compliance(self, answer: str, domain: str) -> Dict:
