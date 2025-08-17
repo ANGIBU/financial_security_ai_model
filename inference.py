@@ -34,7 +34,7 @@ from data_processor import SimpleDataProcessor
 from knowledge_base import FinancialSecurityKnowledgeBase
 
 class FinancialAIInference:
-    """금융보안 AI 추론 시스템 - 안정성 강화 버전"""
+    """금융보안 AI 추론 시스템 - LLM 생성 중심 버전"""
     
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
@@ -80,27 +80,20 @@ class FinancialAIInference:
             "critical_error_recovery": 0,
             "safe_fallback_usage": 0,
             "corruption_detected": 0,
-            "safe_generation_used": 0
+            "llm_generation_used": 0,
+            "template_hint_used": 0,
+            "knowledge_guided_generation": 0
         }
         
         # 성능 최적화 설정 (config.py에서 로드)
         self.optimization_config = OPTIMIZATION_CONFIG
         self.text_safety_config = TEXT_SAFETY_CONFIG
         
-        # 안전한 정답 템플릿 사전 정의
-        self.safe_answer_templates = {
-            "RAT_특징": "RAT 악성코드는 정상 프로그램으로 위장하여 시스템에 침투하는 원격제어 악성코드입니다. 은폐성과 지속성을 바탕으로 시스템 깊숙이 숨어 장기간 활동하며, 키로깅, 화면 캡처, 파일 탈취 등의 악성 기능을 수행합니다.",
-            "RAT_지표": "RAT 악성코드의 주요 탐지 지표로는 비정상적인 네트워크 트래픽, 의심스러운 프로세스 실행, 파일 시스템 변조, 레지스트리 자동 실행 항목 추가 등이 있습니다.",
-            "전자금융분쟁조정": "금융감독원 금융분쟁조정위원회",
-            "개인정보침해신고": "개인정보보호위원회 산하 개인정보침해신고센터",
-            "기본_답변": "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
-        }
-        
         if verbose:
             print("초기화 완료")
     
     def process_single_question(self, question: str, question_id: str) -> str:
-        """단일 질문 처리 - 안정성 최우선 버전"""
+        """단일 질문 처리 - LLM 생성 중심 버전"""
         start_time = time.time()
         
         try:
@@ -108,18 +101,18 @@ class FinancialAIInference:
             question_type, max_choice = self.data_processor.extract_choice_range(question)
             domain = self.data_processor.extract_domain(question)
             
-            # 지식베이스 분석
+            # 지식베이스 분석 (힌트용)
             kb_analysis = self.knowledge_base.analyze_question(question)
             
-            # 객관식 우선 처리
+            # 객관식 처리
             if question_type == "multiple_choice":
-                answer = self._process_multiple_choice_ultra_safe(question, max_choice, domain, kb_analysis)
+                answer = self._process_multiple_choice_with_llm(question, max_choice, domain, kb_analysis)
                 self._update_mc_stats(question_type, domain, time.time() - start_time, answer, max_choice)
                 return answer
             
-            # 주관식 처리 (안전성 최우선)
+            # 주관식 처리 (LLM 생성 중심)
             else:
-                answer = self._process_subjective_ultra_safe(question, domain, kb_analysis)
+                answer = self._process_subjective_with_llm(question, domain, kb_analysis)
                 self._update_subj_stats(question_type, domain, time.time() - start_time, None, answer)
                 return answer
                 
@@ -128,121 +121,154 @@ class FinancialAIInference:
                 print(f"오류 발생: {e}")
             # 안전한 폴백 답변
             self.stats["critical_error_recovery"] += 1
-            fallback = self._get_ultra_safe_fallback(question, question_type, max_choice if 'max_choice' in locals() else 5)
+            fallback = self._get_emergency_fallback(question, question_type, max_choice if 'max_choice' in locals() else 5)
             self._update_stats(question_type if 'question_type' in locals() else "multiple_choice", 
                              domain if 'domain' in locals() else "일반", 
                              time.time() - start_time)
             return fallback
     
-    def _process_multiple_choice_ultra_safe(self, question: str, max_choice: int, domain: str, kb_analysis: Optional[Dict]) -> str:
-        """객관식 처리 - 초안전 버전"""
+    def _process_multiple_choice_with_llm(self, question: str, max_choice: int, domain: str, kb_analysis: Optional[Dict]) -> str:
+        """객관식 처리 - LLM 생성 우선"""
         
         # 컨텍스트 분석 힌트 수집
         context_hint = self.model_handler._analyze_mc_context(question, domain)
         
-        # 질문 패턴 기반 빠른 답변 시도
-        quick_answer = self._get_pattern_based_answer(question, max_choice)
-        if quick_answer:
-            self.stats["model_success"] += 1
-            self.stats["korean_compliance"] += 1
-            return quick_answer
+        # 지식베이스에서 패턴 힌트 가져오기 (직접 답변 아님)
+        pattern_hint = self._get_mc_pattern_hint(question, max_choice, domain)
         
-        # LLM을 통한 답변 생성 (안전화된 설정)
-        answer = self.model_handler.generate_enhanced_mc_answer(
-            question, max_choice, domain, None, context_hint
+        # LLM을 통한 답변 생성 (힌트 활용)
+        answer = self.model_handler.generate_mc_answer_with_hints(
+            question, max_choice, domain, context_hint, pattern_hint
         )
         
         # 답변 범위 검증
         if answer and answer.isdigit() and 1 <= int(answer) <= max_choice:
             self.stats["model_success"] += 1
             self.stats["korean_compliance"] += 1
+            self.stats["llm_generation_used"] += 1
             return answer
         else:
-            # 범위 오류 시 안전한 폴백
-            import random
+            # 범위 오류 시 재시도
             self.stats["retry_generation_count"] += 1
-            return str(random.randint(1, max_choice))
+            retry_answer = self.model_handler.generate_mc_answer_retry(question, max_choice, domain)
+            if retry_answer and retry_answer.isdigit() and 1 <= int(retry_answer) <= max_choice:
+                self.stats["llm_generation_used"] += 1
+                return retry_answer
+            else:
+                # 최종 폴백
+                import random
+                return str(random.randint(1, max_choice))
     
-    def _get_pattern_based_answer(self, question: str, max_choice: int) -> Optional[str]:
-        """패턴 기반 빠른 답변"""
+    def _get_mc_pattern_hint(self, question: str, max_choice: int, domain: str) -> Dict:
+        """객관식 패턴 힌트 생성 (직접 답변 아님)"""
         question_lower = question.lower()
         
-        # 금융투자업 구분 문제
-        if "금융투자업" in question_lower and "구분" in question_lower and "해당하지.*않는" in question_lower:
-            return "1"  # 소비자금융업
+        hint = {
+            "question_type": "multiple_choice",
+            "choice_count": max_choice,
+            "domain": domain,
+            "patterns": [],
+            "guidance": ""
+        }
         
-        # 위험관리 계획 수립 요소
-        if "위험.*관리.*계획" in question_lower and "적절하지.*않은" in question_lower:
-            return "2"  # 위험 수용
+        # 부정형/긍정형 패턴 감지
+        if any(pattern in question_lower for pattern in ["해당하지.*않는", "적절하지.*않은", "옳지.*않은"]):
+            hint["patterns"].append("negative_question")
+            hint["guidance"] = "해당하지 않거나 적절하지 않은 항목을 찾는 문제입니다."
+        elif any(pattern in question_lower for pattern in ["가장.*적절한", "올바른", "맞는.*것"]):
+            hint["patterns"].append("positive_question")
+            hint["guidance"] = "가장 적절하거나 올바른 항목을 찾는 문제입니다."
         
-        # 개인정보 관리체계 중요 요소
-        if "관리체계.*정책.*수립" in question_lower and "가장.*중요한" in question_lower:
-            return "2"  # 경영진의 참여
+        # 도메인별 패턴 힌트
+        if domain == "금융투자" and "구분" in question_lower and "해당하지.*않는" in question_lower:
+            hint["patterns"].append("financial_investment_classification")
+            hint["guidance"] = "금융투자업 구분에서 해당하지 않는 항목을 찾는 문제입니다."
+        elif domain == "위험관리" and "적절하지.*않은" in question_lower:
+            hint["patterns"].append("risk_management_inappropriate")
+            hint["guidance"] = "위험관리에서 적절하지 않은 요소를 찾는 문제입니다."
+        elif domain == "개인정보보호" and "가장.*중요한" in question_lower:
+            hint["patterns"].append("privacy_most_important")
+            hint["guidance"] = "개인정보보호에서 가장 중요한 요소를 찾는 문제입니다."
         
-        # 전자금융 분쟁조정 기관
-        if "전자금융" in question_lower and "분쟁조정" in question_lower and "기관" in question_lower:
-            return "4"  # 일반적으로 4번이 정답인 경우가 많음
-        
-        # SBOM 활용 이유
-        if "sbom" in question_lower and "활용.*이유" in question_lower:
-            return "5"  # 소프트웨어 공급망 보안
-        
-        return None
+        return hint
     
-    def _process_subjective_ultra_safe(self, question: str, domain: str, kb_analysis: Optional[Dict]) -> str:
-        """주관식 처리 - 초안전 버전"""
-        
-        # 질문 패턴 분석하여 안전한 템플릿 답변 우선 시도
-        template_answer = self._get_safe_template_answer(question, domain)
-        if template_answer:
-            self.stats["safe_generation_used"] += 1
-            return template_answer
+    def _process_subjective_with_llm(self, question: str, domain: str, kb_analysis: Optional[Dict]) -> str:
+        """주관식 처리 - LLM 생성 중심"""
         
         # 의도 분석
         intent_analysis = self.data_processor.analyze_question_intent(question)
         
-        # 기관 관련 질문 우선 처리
+        # 지식베이스에서 힌트 가져오기 (템플릿 직접 반환 금지)
+        knowledge_hints = self._get_knowledge_hints(question, domain, intent_analysis)
+        
+        # 기관 관련 질문 힌트
+        institution_hints = None
         if self._is_institution_question(question):
-            answer = self._process_institution_question_ultra_safe(question)
-            if answer and not self._detect_text_corruption(answer):
-                self.stats["institution_question_success"] += 1
-                return answer
+            institution_hints = self.knowledge_base.get_institution_hint_for_llm(question)
+            self.stats["template_hint_used"] += 1
         
-        # RAT 관련 질문 특별 처리
-        if self._is_rat_question(question):
-            answer = self._process_rat_question_ultra_safe(question)
-            if answer and not self._detect_text_corruption(answer):
-                return answer
-        
-        # 일반 주관식 처리
-        answer = self.model_handler.generate_enhanced_subj_answer(
-            question, domain, intent_analysis, None
+        # LLM으로 답변 생성 (힌트 활용)
+        answer = self.model_handler.generate_subj_answer_with_knowledge(
+            question, domain, intent_analysis, knowledge_hints, institution_hints
         )
         
-        # 안전성 검증 및 개선
-        final_answer = self._validate_and_fix_answer_ultra_safe(answer, question, domain)
+        # 생성된 답변 검증 및 개선
+        final_answer = self._validate_and_enhance_llm_answer(answer, question, domain, intent_analysis)
+        
+        self.stats["llm_generation_used"] += 1
+        self.stats["knowledge_guided_generation"] += 1
         
         return final_answer
     
-    def _get_safe_template_answer(self, question: str, domain: str) -> Optional[str]:
-        """안전한 템플릿 답변 반환"""
+    def _get_knowledge_hints(self, question: str, domain: str, intent_analysis: Dict) -> Dict:
+        """지식베이스 힌트 수집 (직접 답변 아님)"""
         question_lower = question.lower()
         
-        # RAT 관련 질문
-        if any(word in question_lower for word in ["rat", "트로이", "원격제어", "원격접근"]):
-            if "특징" in question_lower:
-                return self.safe_answer_templates["RAT_특징"]
-            elif "지표" in question_lower or "탐지" in question_lower:
-                return self.safe_answer_templates["RAT_지표"]
+        hints = {
+            "domain": domain,
+            "intent": intent_analysis.get("primary_intent", "일반"),
+            "key_concepts": [],
+            "related_terms": [],
+            "structure_guidance": "",
+            "content_direction": ""
+        }
         
-        # 기관 관련 질문
-        if "기관" in question_lower:
-            if "전자금융" in question_lower and "분쟁" in question_lower:
-                return self.safe_answer_templates["전자금융분쟁조정"]
-            elif "개인정보" in question_lower and "침해" in question_lower:
-                return self.safe_answer_templates["개인정보침해신고"]
+        # 도메인별 핵심 개념 힌트
+        if domain == "사이버보안":
+            if any(word in question_lower for word in ["rat", "트로이", "원격제어"]):
+                hints["key_concepts"] = ["원격제어", "악성코드", "은폐성", "지속성"]
+                if "특징" in question_lower:
+                    hints["structure_guidance"] = "악성코드의 주요 특징과 동작 방식을 설명하세요."
+                    hints["content_direction"] = "원격제어 기능, 은폐 기법, 지속성 메커니즘을 포함하세요."
+                elif "지표" in question_lower:
+                    hints["structure_guidance"] = "탐지 가능한 지표와 징후를 나열하세요."
+                    hints["content_direction"] = "네트워크 트래픽, 시스템 활동, 파일 변조 등을 포함하세요."
         
-        return None
+        elif domain == "전자금융":
+            hints["key_concepts"] = ["전자금융거래", "분쟁조정", "금융감독원"]
+            if "기관" in question_lower:
+                hints["structure_guidance"] = "담당 기관명과 역할을 명시하세요."
+                hints["content_direction"] = "구체적인 기관명과 법적 근거를 포함하세요."
+        
+        elif domain == "개인정보보호":
+            hints["key_concepts"] = ["개인정보", "정보주체", "안전성확보조치"]
+            if "기관" in question_lower:
+                hints["structure_guidance"] = "개인정보 보호 담당 기관을 명시하세요."
+                hints["content_direction"] = "개인정보보호위원회와 관련 업무를 포함하세요."
+        
+        # 일반적인 구조 가이드
+        if not hints["structure_guidance"]:
+            intent_type = intent_analysis.get("primary_intent", "일반")
+            if "방안" in intent_type:
+                hints["structure_guidance"] = "구체적인 대응 방안과 절차를 제시하세요."
+            elif "절차" in intent_type:
+                hints["structure_guidance"] = "단계별 처리 절차를 순서대로 설명하세요."
+            elif "조치" in intent_type:
+                hints["structure_guidance"] = "필요한 보안조치와 관리조치를 설명하세요."
+            else:
+                hints["structure_guidance"] = "관련 법령과 기준에 따른 관리 방안을 설명하세요."
+        
+        return hints
     
     def _is_institution_question(self, question: str) -> bool:
         """기관 관련 질문 감지"""
@@ -254,74 +280,57 @@ class FinancialAIInference:
         
         return any(re.search(pattern, question_lower) for pattern in institution_patterns)
     
-    def _is_rat_question(self, question: str) -> bool:
-        """RAT 관련 질문 감지"""
-        question_lower = question.lower()
-        rat_keywords = ["rat", "트로이", "원격제어", "원격접근"]
-        feature_keywords = ["특징", "지표", "탐지"]
+    def _validate_and_enhance_llm_answer(self, answer: str, question: str, domain: str, intent_analysis: Dict) -> str:
+        """LLM 생성 답변 검증 및 개선"""
         
-        has_rat = any(keyword in question_lower for keyword in rat_keywords)
-        has_feature = any(keyword in question_lower for keyword in feature_keywords)
-        
-        return has_rat and has_feature
-    
-    def _process_institution_question_ultra_safe(self, question: str) -> str:
-        """기관 질문 처리 - 초안전 버전"""
-        question_lower = question.lower()
-        
-        if "전자금융" in question_lower and "분쟁" in question_lower:
-            return self.safe_answer_templates["전자금융분쟁조정"]
-        elif "개인정보" in question_lower and "침해" in question_lower:
-            return self.safe_answer_templates["개인정보침해신고"]
-        else:
-            # 일반 기관 답변 생성
-            return self.model_handler.generate_institution_answer(question, None, None)
-    
-    def _process_rat_question_ultra_safe(self, question: str) -> str:
-        """RAT 질문 처리 - 초안전 버전"""
-        question_lower = question.lower()
-        
-        if "특징" in question_lower:
-            return self.safe_answer_templates["RAT_특징"]
-        elif "지표" in question_lower or "탐지" in question_lower:
-            return self.safe_answer_templates["RAT_지표"]
-        else:
-            return self.safe_answer_templates["RAT_특징"]
-    
-    def _detect_text_corruption(self, text: str) -> bool:
-        """텍스트 깨짐 감지"""
-        return not check_text_safety(text)
-    
-    def _validate_and_fix_answer_ultra_safe(self, answer: str, question: str, domain: str) -> str:
-        """답변 검증 및 수정 - 초안전 버전"""
-        
-        # 1단계: 깨진 텍스트 감지
+        # 텍스트 깨짐 감지
         if self._detect_text_corruption(answer):
             self.stats["corruption_detected"] += 1
-            return self._get_domain_safe_answer(domain)
+            # 재생성 시도
+            retry_answer = self.model_handler.regenerate_answer_safe(question, domain, intent_analysis)
+            if not self._detect_text_corruption(retry_answer):
+                answer = retry_answer
+                self.stats["retry_generation_count"] += 1
+            else:
+                # 응급 처리
+                return self._get_domain_emergency_answer(domain)
         
-        # 2단계: 기본 정리
+        # 기본 정리
         cleaned_answer = self.data_processor.clean_korean_text_premium(answer)
         if not cleaned_answer or len(cleaned_answer) < 15:
-            return self._get_domain_safe_answer(domain)
+            # 재생성 시도
+            retry_answer = self.model_handler.regenerate_answer_safe(question, domain, intent_analysis)
+            cleaned_retry = self.data_processor.clean_korean_text_premium(retry_answer)
+            if cleaned_retry and len(cleaned_retry) >= 15:
+                cleaned_answer = cleaned_retry
+                self.stats["retry_generation_count"] += 1
+            else:
+                return self._get_domain_emergency_answer(domain)
         
-        # 3단계: 길이 조정
+        # 길이 조정
         if len(cleaned_answer) > 300:
             sentences = cleaned_answer.split('. ')
             cleaned_answer = '. '.join(sentences[:2])
             if not cleaned_answer.endswith('.'):
                 cleaned_answer += '.'
         
-        # 4단계: 한국어 비율 검증
+        # 한국어 비율 검증
         korean_ratio = self.data_processor.calculate_korean_ratio(cleaned_answer)
         if korean_ratio < 0.6:
-            return self._get_domain_safe_answer(domain)
+            # 재생성 시도
+            retry_answer = self.model_handler.regenerate_korean_focused(question, domain)
+            retry_korean_ratio = self.data_processor.calculate_korean_ratio(retry_answer)
+            if retry_korean_ratio >= 0.6:
+                cleaned_answer = self.data_processor.clean_korean_text_premium(retry_answer)
+                self.stats["retry_generation_count"] += 1
+            else:
+                return self._get_domain_emergency_answer(domain)
         
-        # 5단계: 기본 유효성 검증
+        # 유효성 검증
         is_valid = self.data_processor.validate_korean_answer(cleaned_answer, "subjective", 5, question)
         if not is_valid:
             self.stats["validation_failures"] += 1
-            return self._get_domain_safe_answer(domain)
+            return self._get_domain_emergency_answer(domain)
         
         # 성공 통계 업데이트
         self.stats["model_success"] += 1
@@ -329,8 +338,33 @@ class FinancialAIInference:
         
         return cleaned_answer
     
-    def _get_domain_safe_answer(self, domain: str) -> str:
-        """도메인별 안전 답변"""
+    def _detect_text_corruption(self, text: str) -> bool:
+        """텍스트 깨짐 감지"""
+        return not check_text_safety(text)
+    
+    def _get_domain_emergency_answer(self, domain: str) -> str:
+        """도메인별 응급 답변 - LLM 생성 시도 후 폴백"""
+        domain_prompts = {
+            "사이버보안": "사이버보안 위협 대응을 위한 기본적인 보안 체계와 모니터링 방안",
+            "전자금융": "전자금융거래 안전성 확보를 위한 기본적인 보안 조치와 관리 체계",
+            "개인정보보호": "개인정보 보호를 위한 기본적인 안전성 확보조치와 관리 방안",
+            "정보보안": "정보보안 관리체계를 통한 기본적인 정보자산 보호 방안",
+            "금융투자": "금융투자업 운영을 위한 기본적인 투자자 보호 조치와 내부통제",
+            "위험관리": "위험관리를 위한 기본적인 식별, 평가, 대응 프로세스"
+        }
+        
+        # 간단한 LLM 생성 시도
+        prompt_text = domain_prompts.get(domain, "관련 법령에 따른 기본적인 관리 방안")
+        
+        try:
+            emergency_answer = self.model_handler.generate_simple_answer(prompt_text)
+            if emergency_answer and len(emergency_answer) > 20:
+                self.stats["llm_generation_used"] += 1
+                return emergency_answer
+        except:
+            pass
+        
+        # 최종 폴백
         domain_answers = {
             "사이버보안": "사이버보안 위협에 대한 효과적인 대응을 위해 예방, 탐지, 대응, 복구의 단계별 보안 체계를 구축하고 지속적인 모니터링을 수행해야 합니다.",
             "전자금융": "전자금융거래의 안전성 확보를 위해 관련 법령에 따른 보안 조치를 시행하고 이용자 보호를 위한 관리 체계를 운영해야 합니다.",
@@ -340,52 +374,27 @@ class FinancialAIInference:
             "위험관리": "효과적인 위험관리를 위해 위험 식별, 평가, 대응의 단계별 프로세스를 수립하고 지속적인 모니터링을 수행해야 합니다."
         }
         
-        return domain_answers.get(domain, self.safe_answer_templates["기본_답변"])
+        return domain_answers.get(domain, "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다.")
     
-    def _get_ultra_safe_fallback(self, question: str, question_type: str, max_choice: int) -> str:
-        """초안전 폴백 답변"""
+    def _get_emergency_fallback(self, question: str, question_type: str, max_choice: int) -> str:
+        """응급 폴백 답변"""
         # max_choice 유효성 검증
         if max_choice <= 0:
             max_choice = 5
         
         self.stats["safe_fallback_usage"] += 1
         
-        # 간단한 객관식/주관식 구분하여 안전한 답변 생성
         if question_type == "multiple_choice" or (any(str(i) in question for i in range(1, 6)) and len(question) < 300):
             import random
             return str(random.randint(1, max_choice))
         else:
-            # 주관식 안전 답변
-            question_lower = question.lower()
-            
-            # RAT 관련
-            if any(word in question_lower for word in ["rat", "트로이", "원격제어"]):
-                if "특징" in question_lower:
-                    return self.safe_answer_templates["RAT_특징"]
-                elif "지표" in question_lower:
-                    return self.safe_answer_templates["RAT_지표"]
-                else:
-                    return self.safe_answer_templates["RAT_특징"]
-            
-            # 기관 관련
-            elif any(word in question_lower for word in ["기관", "위원회", "조정", "신고"]):
-                if "전자금융" in question_lower and "분쟁" in question_lower:
-                    return self.safe_answer_templates["전자금융분쟁조정"]
-                elif "개인정보" in question_lower and "침해" in question_lower:
-                    return self.safe_answer_templates["개인정보침해신고"]
-                else:
-                    return "관련 법령에 따라 해당 분야의 전문 기관에서 업무를 담당하고 있습니다."
-            
-            # 기본 답변
-            else:
-                domain = self.data_processor.extract_domain(question)
-                return self._get_domain_safe_answer(domain)
+            domain = self.data_processor.extract_domain(question)
+            return self._get_domain_emergency_answer(domain)
     
     def _update_mc_stats(self, question_type: str, domain: str, processing_time: float, answer: str, max_choice: int):
         """객관식 통계 업데이트"""
         self._update_stats(question_type, domain, processing_time)
         
-        # 컨텍스트 정확도 추적
         if answer and answer.isdigit() and max_choice > 0 and 1 <= int(answer) <= max_choice:
             self.stats["mc_context_accuracy"] += 1
     
@@ -423,30 +432,33 @@ class FinancialAIInference:
         # 기본 성능 지표 계산
         mc_success_rate = (self.stats["mc_context_accuracy"] / mc_total) if mc_total > 0 else 0
         korean_compliance_rate = (self.stats["korean_compliance"] / total)
-        quality_score = 0.8  # 안전한 기본값
+        llm_generation_rate = (self.stats["llm_generation_used"] / total)
         
         # 신뢰도 계산 (config.py의 RELIABILITY_CONFIG 사용)
         base_accuracy = RELIABILITY_CONFIG['base_accuracy']
         factors = RELIABILITY_CONFIG['confidence_factors']
         
+        # LLM 생성 비율을 품질 점수로 활용
+        quality_score = llm_generation_rate * 0.8 + 0.2
+        
         # 각 요소별 가중 점수 계산
         weighted_score = (
             mc_success_rate * factors['mc_success_weight'] +
             korean_compliance_rate * factors['korean_compliance_weight'] +
-            0.8 * factors['intent_match_weight'] +  # 기본값
+            0.8 * factors['intent_match_weight'] +
             quality_score * factors['quality_weight']
         )
         
         # 기준 정답률과 조합하여 최종 신뢰도 계산
         reliability = (base_accuracy + weighted_score) / 2
         
-        # 추가 보정 요소
-        institution_success_rate = self.stats["institution_question_success"] / max(self.stats["subj_count"], 1) if self.stats["subj_count"] > 0 else 0
+        # LLM 생성 활용도 보정
+        generation_bonus = llm_generation_rate * 0.1
         error_recovery_rate = 1 - (self.stats["critical_error_recovery"] / max(total, 1))
         corruption_penalty = 1 - (self.stats["corruption_detected"] / max(total, 1))
         
         # 최종 신뢰도에 보정 적용
-        reliability = reliability * (1 + institution_success_rate * 0.1) * error_recovery_rate * corruption_penalty
+        reliability = reliability * (1 + generation_bonus) * error_recovery_rate * corruption_penalty
         
         # 0-100% 범위로 변환
         return min(reliability * 100, 100.0)
@@ -538,16 +550,15 @@ class FinancialAIInference:
         total = max(self.stats["total"], 1)
         reliability_score = self._calculate_reliability_score()
         
-        # 개선 작업 통계 추가
-        improvement_stats = {
-            "text_cleanup_rate": (self.stats["text_cleanup_count"] / total) * 100 if total > 0 else 0,
+        # LLM 생성 통계 추가
+        llm_stats = {
+            "llm_generation_rate": (self.stats["llm_generation_used"] / total) * 100 if total > 0 else 0,
+            "template_hint_rate": (self.stats["template_hint_used"] / total) * 100 if total > 0 else 0,
+            "knowledge_guided_rate": (self.stats["knowledge_guided_generation"] / total) * 100 if total > 0 else 0,
             "retry_generation_rate": (self.stats["retry_generation_count"] / total) * 100 if total > 0 else 0,
             "validation_failure_rate": (self.stats["validation_failures"] / total) * 100 if total > 0 else 0,
-            "institution_success_rate": (self.stats["institution_question_success"] / max(self.stats["subj_count"], 1)) * 100 if self.stats["subj_count"] > 0 else 0,
             "error_recovery_rate": (self.stats["critical_error_recovery"] / total) * 100 if total > 0 else 0,
-            "safe_fallback_rate": (self.stats["safe_fallback_usage"] / total) * 100 if total > 0 else 0,
-            "corruption_detection_rate": (self.stats["corruption_detected"] / total) * 100 if total > 0 else 0,
-            "safe_generation_rate": (self.stats["safe_generation_used"] / total) * 100 if total > 0 else 0
+            "corruption_detection_rate": (self.stats["corruption_detected"] / total) * 100 if total > 0 else 0
         }
         
         return {
@@ -563,7 +574,7 @@ class FinancialAIInference:
             "intent_match_success_rate": 100.0,  # 기본값
             "avg_quality_score": 0.8,  # 기본값
             "avg_processing_time": sum(self.stats["processing_times"]) / len(self.stats["processing_times"]) if self.stats["processing_times"] else 0,
-            **improvement_stats
+            **llm_stats
         }
     
     def cleanup(self):
@@ -601,6 +612,7 @@ def main():
             print(f"처리 시간: {results['total_time']:.1f}초")
             print(f"처리 문항: {results['total_questions']}개")
             print(f"신뢰도: {results['reliability_score']:.1f}%")
+            print(f"LLM 생성률: {results['llm_generation_rate']:.1f}%")
         
     except KeyboardInterrupt:
         print("\n추론 중단됨")
