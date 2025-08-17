@@ -518,7 +518,33 @@ class FinancialSecurityKnowledgeBase:
         else:
             return "초급"
     
-    def get_analysis_statistics(self) -> Dict:
+    def get_template_hint(self, domain: str, intent_type: str = "일반") -> str:
+        """템플릿 힌트 반환 (LLM용) - 호환성 유지"""
+        return self.get_content_guidance_for_llm(domain, intent_type).get("template_reference", "관련 법령과 기준에 따라 설명하세요.")
+    
+    def get_safe_answer_for_question(self, question: str) -> str:
+        """질문에 대한 안전한 답변 힌트 제공 - LLM 가이드용"""
+        question_lower = question.lower()
+        
+        # 기본 가이드라인만 제공 (직접 답변 아님)
+        if any(word in question_lower for word in ["rat", "트로이", "원격제어"]):
+            if "특징" in question_lower:
+                return "원격제어 악성코드의 주요 특징과 동작 방식을 설명하세요."
+            elif "지표" in question_lower or "탐지" in question_lower:
+                return "탐지 가능한 지표와 시스템 활동 변화를 설명하세요."
+            else:
+                return "악성코드의 특성과 보안 대응 방안을 설명하세요."
+        
+        elif "기관" in question_lower:
+            if "전자금융" in question_lower and "분쟁" in question_lower:
+                return "전자금융 분쟁조정 담당 기관과 역할을 설명하세요."
+            elif "개인정보" in question_lower and "침해" in question_lower:
+                return "개인정보 침해신고 담당 기관과 업무를 설명하세요."
+            else:
+                return "관련 업무 담당 기관과 그 역할을 설명하세요."
+        
+        else:
+            return "관련 법령과 기준에 따른 관리 방안을 설명하세요."
         """분석 통계 반환"""
         return {
             "domain_frequency": dict(self.analysis_history["domain_frequency"]),

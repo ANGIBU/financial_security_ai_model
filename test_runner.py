@@ -5,6 +5,7 @@
 - 시스템 테스트 실행
 - 의도 일치 성공률 표시
 - 핵심 성능 지표 출력
+- LLM 생성 성과 표시
 """
 
 import os
@@ -84,7 +85,7 @@ def run_test(test_size: int = None, verbose: bool = True):
             engine.cleanup()
 
 def print_enhanced_results(results: dict, output_file: str, test_size: int):
-    """핵심 성과 지표 출력"""
+    """핵심 성과 지표 출력 - LLM 생성 중심"""
 
     total_time_minutes = results['total_time'] / 60
     print(f"\n=== 테스트 완료 ({test_size}개 문항) ===")
@@ -97,6 +98,22 @@ def print_enhanced_results(results: dict, output_file: str, test_size: int):
     print(f"모델 성공률: {results.get('model_success_rate', 0):.1f}%")
     print(f"한국어 준수율: {results.get('korean_compliance_rate', 0):.1f}%")
     print(f"평균 처리시간: {results.get('avg_processing_time', 0):.2f}초")
+    
+    # LLM 생성 성과
+    llm_generation_rate = results.get('llm_generation_rate', 0)
+    knowledge_guided_rate = results.get('knowledge_guided_rate', 0)
+    
+    print(f"\n=== LLM 생성 성과 ===")
+    print(f"LLM 생성률: {llm_generation_rate:.1f}%")
+    print(f"지식 가이드 생성률: {knowledge_guided_rate:.1f}%")
+    print(f"템플릿 힌트 활용률: {results.get('template_hint_rate', 0):.1f}%")
+    
+    if llm_generation_rate >= 80:
+        print("LLM 생성 성과: 우수 (대회 규칙 준수)")
+    elif llm_generation_rate >= 60:
+        print("LLM 생성 성과: 양호")
+    else:
+        print("LLM 생성 성과: 개선 필요")
     
     # 객관식 성능
     mc_count = results.get('mc_count', 0)
@@ -120,32 +137,45 @@ def print_enhanced_results(results: dict, output_file: str, test_size: int):
         print(f"주관식 문항: {subj_count}개")
         print(f"의도 일치율: {intent_success_rate:.1f}%")
         print(f"평균 품질점수: {avg_quality:.2f}/1.0")
+        
+        # LLM 생성 품질 평가
+        if knowledge_guided_rate > 70:
+            print("지식 통합 생성: 우수")
+        elif knowledge_guided_rate > 50:
+            print("지식 통합 생성: 양호")
+        else:
+            print("지식 통합 생성: 개선 필요")
     else:
         print(f"\n=== 주관식 성능 ===")
         print("주관식 문항 없음")
     
     # 텍스트 처리 성과
-    text_cleanup_rate = results.get('text_cleanup_rate', 0)
     retry_generation_rate = results.get('retry_generation_rate', 0)
     validation_failure_rate = results.get('validation_failure_rate', 0)
+    corruption_detection_rate = results.get('corruption_detection_rate', 0)
     
     print(f"\n=== 텍스트 처리 성과 ===")
-    print(f"텍스트 정리율: {text_cleanup_rate:.1f}%")
     print(f"재생성 요청율: {retry_generation_rate:.1f}%")
     print(f"검증 실패율: {validation_failure_rate:.1f}%")
+    print(f"텍스트 깨짐 감지율: {corruption_detection_rate:.1f}%")
     
     # 품질 관리 성과
     print(f"\n=== 품질 관리 성과 ===")
     if retry_generation_rate > 0:
-        print(f"답변 품질 자동 관리: {retry_generation_rate:.1f}%의 답변에서 품질 관리 수행")
-    if text_cleanup_rate > 0:
-        print(f"텍스트 자동 정리: {text_cleanup_rate:.1f}%의 답변에서 텍스트 정리 수행")
+        print(f"품질 자동 관리: {retry_generation_rate:.1f}%의 답변에서 품질 관리 수행")
     if validation_failure_rate < 5:
         print(f"검증 통과율: {100-validation_failure_rate:.1f}% (양호)")
     elif validation_failure_rate < 10:
         print(f"검증 통과율: {100-validation_failure_rate:.1f}% (보통)")
     else:
         print(f"검증 통과율: {100-validation_failure_rate:.1f}% (주의 필요)")
+    
+    if corruption_detection_rate < 2:
+        print("텍스트 안전성: 우수")
+    elif corruption_detection_rate < 5:
+        print("텍스트 안전성: 양호")
+    else:
+        print("텍스트 안전성: 관리 필요")
     
     # 성능 분석 요약
     print(f"\n=== 성능 분석 요약 ===")
@@ -161,6 +191,14 @@ def print_enhanced_results(results: dict, output_file: str, test_size: int):
     
     print(f"시스템 신뢰도: {results['reliability_score']:.1f}% ({reliability_status})")
     
+    # LLM 생성 평가
+    if llm_generation_rate >= 70 and knowledge_guided_rate >= 60:
+        print("LLM 생성 시스템: 안정적 (대회 규칙 준수)")
+    elif llm_generation_rate >= 50:
+        print("LLM 생성 시스템: 보통")
+    else:
+        print("LLM 생성 시스템: 개선 필요")
+    
     if mc_count > 0 and mc_context_accuracy >= 70:
         print("객관식 처리: 안정적")
     elif mc_count > 0:
@@ -175,9 +213,53 @@ def print_enhanced_results(results: dict, output_file: str, test_size: int):
     questions_per_minute = results['total_questions'] / total_time_minutes if total_time_minutes > 0 else 0
     print(f"처리 효율성: {questions_per_minute:.1f}문항/분")
     
+    # 대회 규칙 준수성 평가
+    print(f"\n=== 대회 규칙 준수성 ===")
+    compliance_score = 0
+    
+    if llm_generation_rate >= 80:
+        print("✓ LLM 기반 텍스트 생성: 준수")
+        compliance_score += 25
+    elif llm_generation_rate >= 60:
+        print("△ LLM 기반 텍스트 생성: 부분 준수")
+        compliance_score += 15
+    else:
+        print("✗ LLM 기반 텍스트 생성: 미준수")
+    
+    if knowledge_guided_rate >= 50:
+        print("✓ 지식 통합 생성: 준수")
+        compliance_score += 25
+    else:
+        print("△ 지식 통합 생성: 부분 준수")
+        compliance_score += 10
+    
+    if results.get('korean_compliance_rate', 0) >= 95:
+        print("✓ 한국어 전용 처리: 준수")
+        compliance_score += 25
+    elif results.get('korean_compliance_rate', 0) >= 80:
+        print("△ 한국어 전용 처리: 부분 준수")
+        compliance_score += 15
+    else:
+        print("✗ 한국어 전용 처리: 미준수")
+    
+    if validation_failure_rate < 10:
+        print("✓ 품질 검증 시스템: 준수")
+        compliance_score += 25
+    else:
+        print("△ 품질 검증 시스템: 부분 준수")
+        compliance_score += 10
+    
+    print(f"\n전체 준수도: {compliance_score}/100점")
+    
     # 권장사항
     print(f"\n=== 권장사항 ===")
     recommendations = []
+    
+    if llm_generation_rate < 70:
+        recommendations.append("LLM 생성 비율을 높여 대회 규칙 준수성을 개선하세요.")
+    
+    if knowledge_guided_rate < 50:
+        recommendations.append("지식 가이드 통합을 강화하여 답변 품질을 높이세요.")
     
     if results['reliability_score'] < 70:
         recommendations.append("전체적인 시스템 성능 점검이 필요합니다.")
@@ -194,17 +276,17 @@ def print_enhanced_results(results: dict, output_file: str, test_size: int):
     if retry_generation_rate > 30:
         recommendations.append("초기 답변 생성 품질을 높이세요.")
     
-    if avg_quality < 0.6 and subj_count > 0:
-        recommendations.append("주관식 답변 품질 관리를 강화하세요.")
+    if corruption_detection_rate > 5:
+        recommendations.append("텍스트 안전성 검사를 강화하세요.")
     
     if not recommendations:
-        recommendations.append("현재 성능이 양호합니다. 지속적인 모니터링을 유지하세요.")
+        recommendations.append("현재 성능이 양호합니다. LLM 생성 품질을 지속적으로 모니터링하세요.")
     
     for i, recommendation in enumerate(recommendations, 1):
         print(f"{i}. {recommendation}")
 
 def estimate_final_performance(results: dict) -> float:
-    """최종 성능 예측"""
+    """최종 성능 예측 - LLM 생성 중심"""
     
     # 객관식 성과 (가중치 86%)
     mc_weight = 0.86
@@ -212,87 +294,53 @@ def estimate_final_performance(results: dict) -> float:
     
     mc_score = mc_context * mc_weight
     
-    # 주관식 성과 (가중치 14%)
+    # 주관식 성과 (가중치 14%) - LLM 생성 품질 반영
     subj_weight = 0.14
     intent_success = results.get('intent_match_success_rate', 0) / 100
     korean_compliance = results.get('korean_compliance_rate', 0) / 100
-    quality_score = results.get('avg_quality_score', 0)
+    llm_generation = results.get('llm_generation_rate', 0) / 100
     
-    subj_score = (intent_success * 0.4 + korean_compliance * 0.3 + quality_score * 0.3) * subj_weight
+    # LLM 생성 품질을 반영한 주관식 점수
+    subj_score = (intent_success * 0.3 + korean_compliance * 0.3 + llm_generation * 0.4) * subj_weight
     
     # 전체 예상 점수
     total_score = mc_score + subj_score
     
     return total_score
 
-def suggest_improvements(results: dict):
-    """성능 분석"""
-    print(f"\n=== 성능 분석 ===")
+def analyze_llm_generation_performance(results: dict):
+    """LLM 생성 성능 분석"""
+    print(f"\n=== LLM 생성 성능 분석 ===")
     
-    mc_context = results.get('mc_context_accuracy_rate', 0)
-    intent_rate = results.get('intent_match_success_rate', 0)
-    model_rate = results.get('model_success_rate', 0)
-    validation_error = results.get('validation_failure_rate', 0)
-    text_cleanup = results.get('text_cleanup_rate', 0)
+    llm_rate = results.get('llm_generation_rate', 0)
+    knowledge_rate = results.get('knowledge_guided_rate', 0)
+    template_hint_rate = results.get('template_hint_rate', 0)
     retry_rate = results.get('retry_generation_rate', 0)
     
     analyses = []
     
-    if mc_context >= 70:
-        analyses.append(f"객관식 컨텍스트 정확도가 {mc_context:.1f}%로 양호합니다.")
-    elif mc_context >= 50:
-        analyses.append(f"객관식 컨텍스트 정확도가 {mc_context:.1f}%로 보통입니다.")
+    if llm_rate >= 80:
+        analyses.append(f"LLM 생성률이 {llm_rate:.1f}%로 우수하여 대회 규칙을 잘 준수하고 있습니다.")
+    elif llm_rate >= 60:
+        analyses.append(f"LLM 생성률이 {llm_rate:.1f}%로 양호합니다.")
     else:
-        analyses.append(f"객관식 컨텍스트 정확도가 {mc_context:.1f}%로 낮습니다.")
+        analyses.append(f"LLM 생성률이 {llm_rate:.1f}%로 개선이 필요합니다.")
     
-    if intent_rate >= 60:
-        analyses.append(f"의도 일치 성공률이 {intent_rate:.1f}%로 양호합니다.")
-    elif intent_rate >= 40:
-        analyses.append(f"의도 일치 성공률이 {intent_rate:.1f}%로 보통입니다.")
+    if knowledge_rate >= 60:
+        analyses.append(f"지식 가이드 통합률이 {knowledge_rate:.1f}%로 양호합니다.")
+    elif knowledge_rate >= 40:
+        analyses.append(f"지식 가이드 통합률이 {knowledge_rate:.1f}%로 보통입니다.")
     else:
-        analyses.append(f"의도 일치 성공률이 {intent_rate:.1f}%로 낮습니다.")
+        analyses.append(f"지식 가이드 통합률이 {knowledge_rate:.1f}%로 낮습니다.")
     
-    if model_rate >= 90:
-        analyses.append(f"모델 성공률이 {model_rate:.1f}%로 우수합니다.")
-    elif model_rate >= 80:
-        analyses.append(f"모델 성공률이 {model_rate:.1f}%로 양호합니다.")
-    else:
-        analyses.append(f"모델 성공률이 {model_rate:.1f}%입니다.")
-    
-    if text_cleanup > 0:
-        analyses.append(f"텍스트 정리가 {text_cleanup:.1f}%의 답변에서 수행되었습니다.")
+    if template_hint_rate > 0:
+        analyses.append(f"템플릿 힌트가 {template_hint_rate:.1f}%의 경우에 참고용으로 활용되었습니다.")
     
     if retry_rate > 0:
-        analyses.append(f"답변 재생성이 {retry_rate:.1f}%의 경우에 수행되었습니다.")
-    
-    if validation_error < 5:
-        analyses.append(f"검증 오류율이 {validation_error:.1f}%로 낮습니다.")
-    elif validation_error > 10:
-        analyses.append(f"검증 오류율이 {validation_error:.1f}%로 높습니다.")
+        analyses.append(f"품질 개선을 위한 재생성이 {retry_rate:.1f}%의 경우에 수행되었습니다.")
     
     for i, analysis in enumerate(analyses, 1):
         print(f"{i}. {analysis}")
-
-def analyze_domain_performance(results: dict):
-    """도메인별 성능 분석"""
-    print(f"\n=== 도메인별 성능 분석 ===")
-    
-    # 기본 도메인 분석 (실제 데이터가 있다면 활용)
-    total_questions = results.get('total_questions', 0)
-    mc_count = results.get('mc_count', 0)
-    subj_count = results.get('subj_count', 0)
-    
-    print(f"전체 문항 분포:")
-    print(f"  객관식: {mc_count}개 ({(mc_count/total_questions*100):.1f}%)")
-    print(f"  주관식: {subj_count}개 ({(subj_count/total_questions*100):.1f}%)")
-    
-    # 예상 도메인 분석
-    print(f"\n예상 도메인별 권장사항:")
-    print(f"  사이버보안: 트로이 목마, RAT, SBOM 관련 특징 및 지표 문제")
-    print(f"  개인정보보호: 기관명 답변과 법정대리인 관련 답변")
-    print(f"  전자금융: 분쟁조정위원회 관련 기관 답변")
-    print(f"  위험관리: 부정형 질문 패턴 인식")
-    print(f"  금융투자: 업무 구분 관련 객관식 문제")
 
 def select_test_size():
     """테스트 문항 수 선택"""
@@ -332,12 +380,13 @@ def main():
     test_size = select_test_size()
     
     print(f"\n선택된 테스트: {test_size}문항")
-    print("AI 추론 시스템을 테스트합니다...")
+    print("LLM 기반 AI 추론 시스템을 테스트합니다...")
     
     success = run_test(test_size, verbose=True)
     
     if success:
         print(f"\n테스트 완료 - 결과 파일: {DEFAULT_FILES['test_output_file']}")
+        print("LLM 생성 중심의 추론 시스템이 정상적으로 작동했습니다.")
     else:
         print("\n테스트 실패")
         sys.exit(1)

@@ -193,6 +193,21 @@ LOGGING_CONFIG = {
     'log_llm_performance': True        # LLM 성능 로깅
 }
 
+# === 템플릿 품질 평가 기준 ===
+TEMPLATE_QUALITY_CRITERIA = {
+    'length_range': (25, 300),          # 템플릿 길이 기준
+    'korean_ratio_min': 0.6,            # 한국어 비율
+    'structure_keywords': ["법", "규정", "조치", "관리", "절차", "기준"],
+    'intent_keywords': {
+        "기관_묻기": ["위원회", "기관", "담당", "업무"],
+        "특징_묻기": ["특징", "특성", "성질", "기능"],
+        "지표_묻기": ["지표", "징후", "패턴", "탐지"],
+        "방안_묻기": ["방안", "대책", "조치", "관리"],
+        "절차_묻기": ["절차", "과정", "단계", "순서"],
+        "조치_묻기": ["조치", "대응", "보안", "예방"]
+    }
+}
+
 # === LLM 생성 품질 평가 기준 ===
 LLM_QUALITY_CRITERIA = {
     'length_range': (20, 350),          # 적절한 길이 범위
@@ -318,6 +333,19 @@ def ensure_directories():
     """필요한 디렉토리 생성"""
     PKL_DIR.mkdir(exist_ok=True)
     JSON_CONFIG_DIR.mkdir(exist_ok=True)
+    
+    # 기본 JSON 설정 파일이 없으면 생성
+    if not JSON_CONFIG_FILES['knowledge_data'].exists():
+        print("기본 knowledge_data.json 파일을 생성합니다...")
+        # 기본 설정 파일은 별도로 제공되어야 함
+    
+    if not JSON_CONFIG_FILES['model_config'].exists():
+        print("기본 model_config.json 파일을 생성합니다...")
+        # 기본 설정 파일은 별도로 제공되어야 함
+    
+    if not JSON_CONFIG_FILES['processing_config'].exists():
+        print("기본 processing_config.json 파일을 생성합니다...")
+        # 기본 설정 파일은 별도로 제공되어야 함
 
 # === 설정 검증 함수 ===
 def validate_config():

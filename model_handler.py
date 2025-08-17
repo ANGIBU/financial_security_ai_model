@@ -586,8 +586,36 @@ class SimpleModelHandler:
         
         return text
     
-    # 기존 호환성 유지를 위한 메서드들
-    def generate_answer(self, question: str, question_type: str, max_choice: int = 5, intent_analysis: Dict = None) -> str:
+    def detect_corrupted_text_enhanced(self, text: str) -> bool:
+        """강화된 깨진 텍스트 감지 - 호환성 유지"""
+        return not check_text_safety(text)
+    
+    def generate_enhanced_mc_answer(self, question: str, max_choice: int, domain: str, 
+                                   pattern_hint: Dict = None, context_hint: Dict = None) -> str:
+        """향상된 객관식 답변 생성 (호환성)"""
+        return self.generate_mc_answer_with_hints(question, max_choice, domain, context_hint, pattern_hint)
+    
+    def generate_enhanced_subj_answer(self, question: str, domain: str, intent_analysis: Dict = None, template_hint: str = None) -> str:
+        """향상된 주관식 답변 생성 (호환성)"""
+        knowledge_hints = {
+            "domain": domain,
+            "structure_guidance": template_hint or "관련 법령과 기준에 따른 관리 방안을 설명하세요.",
+            "key_concepts": [domain],
+            "content_direction": "전문적이고 체계적인 답변을 작성하세요."
+        }
+        return self.generate_subj_answer_with_knowledge(question, domain, intent_analysis or {}, knowledge_hints, None)
+    
+    def generate_institution_answer(self, question: str, institution_hint: Dict = None, intent_analysis: Dict = None) -> str:
+        """기관 답변 생성 (호환성)"""
+        
+        # 기관 정보 힌트 생성
+        knowledge_hints = {
+            "structure_guidance": "구체적인 기관명과 그 역할을 명시하세요.",
+            "content_direction": "정확한 기관명과 법적 근거를 포함하세요.",
+            "key_concepts": ["기관", "역할", "업무"]
+        }
+        
+        return self.generate_subj_answer_with_knowledge(question, "일반", intent_analysis or {}, knowledge_hints, institution_hint)
         """답변 생성 (기존 호환성 유지)"""
         
         # 도메인 감지
