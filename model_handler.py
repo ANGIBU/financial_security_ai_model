@@ -286,116 +286,31 @@ class SimpleModelHandler:
         
         return context
     
-    def _get_context_based_mc_answer(self, question: str, max_choice: int, domain: str = "일반") -> str:
-        """컨텍스트 기반 객관식 답변 생성"""
-        # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
-        if max_choice <= 0:
-            max_choice = 5
-        
-        context = self._analyze_mc_context(question, domain)
-        
-        # 도메인별 학습된 패턴 적용
-        if context["likely_answers"] and context["confidence_score"] > 0.3:
-            # 신뢰도가 높은 경우 학습된 패턴 사용
-            valid_answers = [ans for ans in context["likely_answers"] 
-                           if ans.isdigit() and 1 <= int(ans) <= max_choice]
-            if valid_answers:
-                return random.choice(valid_answers)
-        
-        # 부정형/긍정형 패턴 기반 선택
-        if context["is_negative"]:
-            if domain == "금융투자" and max_choice == 5:
-                weights = [1, 1, 1, 1, 4]  # 보험중개업(5번)
-            elif domain == "위험관리" and max_choice == 5:
-                weights = [1, 4, 1, 1, 1]  # 위험수용(2번)
-            elif domain == "정보보안" and max_choice == 4:
-                weights = [1, 1, 4, 1]  # 개인정보 파기 절차(3번)
-            else:
-                if max_choice == 5:
-                    weights = [1, 1, 2, 3, 4]
-                elif max_choice == 4:
-                    weights = [1, 1, 2, 3]
-                else:
-                    weights = [1, 1, 2]
-                    
-        elif context["is_positive"]:
-            if domain == "개인정보보호":
-                weights = [1, 4, 2, 1, 1] if max_choice >= 5 else [1, 4, 2, 1]  # 경영진의 참여(2번)
-            elif domain == "전자금융":
-                weights = [1, 1, 1, 4, 1] if max_choice >= 5 else [1, 1, 1, 4]  # 통화신용정책 관련(4번)
-            elif domain == "사이버보안":
-                weights = [2, 1, 2, 1, 2] if max_choice >= 5 else [2, 1, 2, 1]
-            else:
-                if max_choice == 5:
-                    weights = [3, 3, 2, 1, 1]
-                elif max_choice == 4:
-                    weights = [3, 3, 2, 1]
-                else:
-                    weights = [3, 2, 1]
-        else:
-            # 중립적 질문
-            weights = [2] * max_choice
-            
-            # 도메인별 추가 가중치
-            if domain == "사이버보안" and max_choice >= 3:
-                weights[2] += 1
-            elif domain == "개인정보보호" and max_choice >= 2:
-                weights[1] += 1
-            elif domain == "전자금융" and max_choice >= 4:
-                weights[3] += 1
-        
-        # 학습된 컨텍스트 패턴 적용
-        pattern_key = f"{context['is_negative']}_{context['is_positive']}_{domain}_{max_choice}"
-        
-        if pattern_key in self.learning_data["mc_context_patterns"]:
-            learned_distribution = self.learning_data["mc_context_patterns"][pattern_key]
-            # 학습된 분포를 기반으로 가중치 조정
-            for num, weight in learned_distribution.items():
-                if num.isdigit() and 1 <= int(num) <= max_choice:
-                    idx = int(num) - 1
-                    if idx < len(weights):
-                        weights[idx] += int(weight * 2)
-        
-        # 가중치 기반 선택
-        choices = []
-        for i, weight in enumerate(weights):
-            choices.extend([str(i+1)] * weight)
-        
-        if not choices:
-            # weights가 비어있는 경우 기본값 사용
-            choices = [str(i+1) for i in range(max_choice)]
-        
-        selected = random.choice(choices)
-        
-        # 학습 데이터에 기록
-        self._record_mc_context_learning(pattern_key, selected, context)
-        
-        return selected
-    
-    def _record_mc_context_learning(self, pattern_key: str, answer: str, context: Dict):
-        """객관식 컨텍스트 학습 기록"""
-        if pattern_key not in self.learning_data["mc_context_patterns"]:
-            self.learning_data["mc_context_patterns"][pattern_key] = {}
-        
-        if answer in self.learning_data["mc_context_patterns"][pattern_key]:
-            self.learning_data["mc_context_patterns"][pattern_key][answer] += 1
-        else:
-            self.learning_data["mc_context_patterns"][pattern_key][answer] = 1
-        
-        # 도메인별 정확도 추적
-        domain = context.get("domain", "일반")
-        if domain not in self.learning_data["mc_accuracy_by_domain"]:
-            self.learning_data["mc_accuracy_by_domain"][domain] = {"total": 0, "correct": 0}
-        
-        self.learning_data["mc_accuracy_by_domain"][domain]["total"] += 1
-    
-    def _create_intent_aware_prompt(self, question: str, intent_analysis: Dict) -> str:
+    def _create_intent_aware_prompt(self, question: str, intent_analysis: Dict, domain_hints: Dict = None) -> str:
         """의도 인식 기반 프롬프트 생성"""
         primary_intent = intent_analysis.get("primary_intent", "일반")
         answer_type = intent_analysis.get("answer_type_required", "설명형")
         domain = self._detect_domain(question)
         context_hints = intent_analysis.get("context_hints", [])
         intent_confidence = intent_analysis.get("intent_confidence", 0.0)
+        
+        # 도메인 힌트 정보 추가
+        hint_context = ""
+        if domain_hints:
+            if "template_hints" in domain_hints and domain_hints["template_hints"]:
+                hint_context += f"\n참고 정보: {domain_hints['template_hints']}"
+            
+            if "institution_hints" in domain_hints and domain_hints["institution_hints"]:
+                hint_context += f"\n기관 관련 정보: {domain_hints['institution_hints']}"
+            
+            if "improvement_type" in domain_hints:
+                improvement_type = domain_hints["improvement_type"]
+                if improvement_type == "korean_ratio_low":
+                    hint_context += "\n답변 작성 시 한국어만 사용하여 작성하세요."
+                elif improvement_type == "intent_mismatch":
+                    hint_context += f"\n질문의 의도({primary_intent})에 정확히 부합하는 답변을 작성하세요."
+                elif improvement_type == "quality_low":
+                    hint_context += "\n전문적이고 구체적인 내용으로 답변 품질을 높여주세요."
         
         # 의도별 특화 프롬프트 선택
         if primary_intent in self.intent_specific_prompts:
@@ -437,9 +352,9 @@ class SimpleModelHandler:
             if templates:
                 best_template = max(templates, key=lambda x: x.get("quality", 0))
                 if best_template["quality"] > 0.8:
-                    # 'prompt' 키 대신 'answer_template' 키 사용
                     if "answer_template" in best_template:
-                        return best_template["answer_template"]
+                        # 템플릿을 힌트로 활용하여 새로운 프롬프트 생성
+                        hint_context += f"\n참고 답변 패턴: {best_template['answer_template'][:100]}..."
         
         prompts = [
             f"""금융보안 전문가로서 다음 {domain} 관련 질문에 한국어로만 정확한 답변을 작성하세요.
@@ -449,6 +364,7 @@ class SimpleModelHandler:
 {intent_instruction}
 {type_guidance}
 {context_instruction}
+{hint_context}
 
 답변 작성 시 다음 사항을 준수하세요:
 - 반드시 한국어로만 작성
@@ -469,6 +385,7 @@ class SimpleModelHandler:
 {intent_instruction}
 {type_guidance}
 {context_instruction}
+{hint_context}
 
 한국어 전용 답변 작성 기준:
 - 모든 전문 용어를 한국어로 표기
@@ -485,6 +402,7 @@ class SimpleModelHandler:
 {intent_instruction}
 {type_guidance}
 {context_instruction}
+{hint_context}
 
 답변 요구사항:
 - 완전한 한국어 답변
@@ -507,6 +425,7 @@ class SimpleModelHandler:
 {intent_instruction}
 {type_guidance}
 {context_instruction}
+{hint_context}
 
 답변 원칙:
 - 한국어 전용 작성
@@ -536,20 +455,21 @@ class SimpleModelHandler:
         
         return selected_prompt
     
-    def generate_answer(self, question: str, question_type: str, max_choice: int = 5, intent_analysis: Dict = None) -> str:
-        """답변 생성"""
+    def generate_answer(self, question: str, question_type: str, max_choice: int = 5, 
+                       intent_analysis: Dict = None, domain_hints: Dict = None) -> str:
+        """답변 생성 - 반드시 LLM 사용"""
         
         # 도메인 감지
         domain = self._detect_domain(question)
         
         # 프롬프트 생성
         if question_type == "multiple_choice":
-            prompt = self._create_enhanced_mc_prompt(question, max_choice, domain)
+            prompt = self._create_enhanced_mc_prompt(question, max_choice, domain, domain_hints)
         else:
             if intent_analysis:
-                prompt = self._create_intent_aware_prompt(question, intent_analysis)
+                prompt = self._create_intent_aware_prompt(question, intent_analysis, domain_hints)
             else:
-                prompt = self._create_korean_subj_prompt(question, domain)
+                prompt = self._create_korean_subj_prompt(question, domain, domain_hints)
         
         try:
             # 토크나이징
@@ -592,10 +512,10 @@ class SimpleModelHandler:
                     
                     return answer
                 else:
-                    # 범위 벗어난 경우 컨텍스트 기반 폴백
-                    fallback = self._get_context_based_mc_answer(question, max_choice, domain)
-                    self._add_learning_record(question, answer, question_type, False, max_choice, 0.0, intent_analysis)
-                    return fallback
+                    # 범위 벗어난 경우 재시도 없이 범위 내 답변 강제 생성
+                    valid_answer = self._force_valid_mc_answer(response, max_choice)
+                    self._add_learning_record(question, valid_answer, question_type, False, max_choice, 0.5, intent_analysis)
+                    return valid_answer
             else:
                 answer = self._process_intent_aware_subj_answer(response, question, intent_analysis)
                 korean_ratio = self._calculate_korean_ratio(answer)
@@ -608,13 +528,82 @@ class SimpleModelHandler:
         except Exception as e:
             if self.verbose:
                 print(f"모델 실행 오류: {e}")
-            fallback = self._get_fallback_answer(question_type, question, max_choice, intent_analysis, domain)
+            fallback = self._get_fallback_answer_with_llm(question_type, question, max_choice, intent_analysis, domain)
             self._add_learning_record(question, fallback, question_type, False, max_choice, 0.3, intent_analysis)
             return fallback
     
-    def _create_enhanced_mc_prompt(self, question: str, max_choice: int, domain: str = "일반") -> str:
+    def generate_contextual_mc_answer(self, question: str, max_choice: int, domain: str) -> str:
+        """컨텍스트 기반 객관식 답변 생성 - LLM 사용"""
+        context_hints = self._analyze_mc_context(question, domain)
+        
+        # 컨텍스트 정보를 포함한 특수 프롬프트
+        prompt = self._create_contextual_mc_prompt(question, max_choice, domain, context_hints)
+        
+        try:
+            inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1000)
+            if self.device == "cuda":
+                inputs = inputs.to(self.model.device)
+            
+            gen_config = self._get_generation_config("multiple_choice")
+            
+            with torch.no_grad():
+                outputs = self.model.generate(**inputs, generation_config=gen_config)
+            
+            response = self.tokenizer.decode(
+                outputs[0][inputs['input_ids'].shape[1]:],
+                skip_special_tokens=True
+            ).strip()
+            
+            answer = self._process_enhanced_mc_answer(response, question, max_choice, domain)
+            
+            if not (answer and answer.isdigit() and 1 <= int(answer) <= max_choice):
+                answer = self._force_valid_mc_answer(response, max_choice)
+            
+            return answer
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"컨텍스트 기반 답변 생성 오류: {e}")
+            return self._force_valid_mc_answer("", max_choice)
+    
+    def generate_improved_answer(self, question: str, question_type: str, max_choice: int,
+                               intent_analysis: Dict, improvement_hints: Dict) -> str:
+        """개선된 답변 생성 - LLM 사용"""
+        return self.generate_answer(question, question_type, max_choice, intent_analysis, improvement_hints)
+    
+    def generate_fallback_mc_answer(self, question: str, max_choice: int, domain: str) -> str:
+        """폴백 객관식 답변 생성 - LLM 사용"""
+        return self.generate_contextual_mc_answer(question, max_choice, domain)
+    
+    def generate_fallback_subjective_answer(self, question: str) -> str:
+        """폴백 주관식 답변 생성 - LLM 사용"""
+        domain = self._detect_domain(question)
+        prompt = self._create_korean_subj_prompt(question, domain, {"fallback_mode": True})
+        
+        try:
+            inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1000)
+            if self.device == "cuda":
+                inputs = inputs.to(self.model.device)
+            
+            gen_config = self._get_generation_config("subjective")
+            
+            with torch.no_grad():
+                outputs = self.model.generate(**inputs, generation_config=gen_config)
+            
+            response = self.tokenizer.decode(
+                outputs[0][inputs['input_ids'].shape[1]:],
+                skip_special_tokens=True
+            ).strip()
+            
+            return self._process_intent_aware_subj_answer(response, question, None)
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"폴백 주관식 답변 생성 오류: {e}")
+            return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+    
+    def _create_enhanced_mc_prompt(self, question: str, max_choice: int, domain: str = "일반", domain_hints: Dict = None) -> str:
         """객관식 프롬프트 생성"""
-        # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
         if max_choice <= 0:
             max_choice = 5
         
@@ -622,6 +611,18 @@ class SimpleModelHandler:
         
         # 선택지 범위 명시
         choice_range = "에서 ".join([str(i) for i in range(1, max_choice+1)]) + f"번 중"
+        
+        # 힌트 정보 추가
+        hint_context = ""
+        if domain_hints and "pattern_hints" in domain_hints and domain_hints["pattern_hints"]:
+            hint_context = f"\n참고 정보: {domain_hints['pattern_hints']}"
+        
+        if domain_hints and "context_hints" in domain_hints:
+            context_info = domain_hints["context_hints"]
+            if context_info.get("is_negative"):
+                hint_context += "\n이 문제는 '해당하지 않는' 또는 '적절하지 않은' 것을 찾는 문제입니다."
+            elif context_info.get("is_positive"):
+                hint_context += "\n이 문제는 '적절한' 또는 '옳은' 것을 찾는 문제입니다."
         
         # 컨텍스트와 도메인에 따른 프롬프트 조정
         if context["is_negative"]:
@@ -649,6 +650,7 @@ class SimpleModelHandler:
             f"""다음은 {domain} 분야의 금융보안 관련 문제입니다. {instruction}
 
 {question}
+{hint_context}
 
 위 문제를 신중히 분석하고, 1부터 {max_choice}까지 중 하나의 정답을 선택하세요.
 각 선택지를 꼼꼼히 검토한 후 정답 번호만 답하세요.
@@ -658,6 +660,7 @@ class SimpleModelHandler:
             f"""금융보안 전문가로서 다음 {domain} 문제를 해결하세요.
 
 {question}
+{hint_context}
 
 {instruction}
 선택지를 모두 검토한 후 1부터 {max_choice}번 중 정답을 선택하세요.
@@ -668,6 +671,7 @@ class SimpleModelHandler:
             f"""다음 {domain} 분야 금융보안 문제를 분석하고 정답을 선택하세요.
 
 문제: {question}
+{hint_context}
 
 {instruction}
 정답을 1부터 {max_choice}번 중 하나의 번호로만 답하세요.
@@ -677,13 +681,47 @@ class SimpleModelHandler:
         
         return random.choice(prompts)
     
-    def _create_korean_subj_prompt(self, question: str, domain: str = "일반") -> str:
+    def _create_contextual_mc_prompt(self, question: str, max_choice: int, domain: str, context_hints: Dict) -> str:
+        """컨텍스트 기반 객관식 프롬프트"""
+        choice_range = "에서 ".join([str(i) for i in range(1, max_choice+1)]) + f"번 중"
+        
+        context_info = ""
+        if context_hints.get("is_negative"):
+            context_info = "이 문제는 해당하지 않거나 적절하지 않은 것을 찾는 문제입니다."
+        elif context_hints.get("is_positive"):
+            context_info = "이 문제는 가장 적절하거나 옳은 것을 찾는 문제입니다."
+        
+        if context_hints.get("key_terms"):
+            context_info += f" 핵심 용어: {', '.join(context_hints['key_terms'])}"
+        
+        return f"""다음은 {domain} 분야의 객관식 문제입니다.
+
+{question}
+
+{context_info}
+
+문제를 신중히 분석하여 {choice_range} 정답을 선택하세요.
+반드시 번호만 답하세요.
+
+정답:"""
+    
+    def _create_korean_subj_prompt(self, question: str, domain: str = "일반", domain_hints: Dict = None) -> str:
         """한국어 전용 주관식 프롬프트 생성"""
+        
+        # 힌트 정보 추가
+        hint_context = ""
+        if domain_hints:
+            if "template_hints" in domain_hints and domain_hints["template_hints"]:
+                hint_context += f"\n참고 정보: {domain_hints['template_hints']}"
+            
+            if "fallback_mode" in domain_hints:
+                hint_context += "\n기본적인 답변을 한국어로만 작성하세요."
         
         prompts = [
             f"""금융보안 전문가로서 다음 {domain} 분야 질문에 대해 한국어로만 정확한 답변을 작성하세요.
 
 질문: {question}
+{hint_context}
 
 답변 작성 시 다음 사항을 준수하세요:
 - 반드시 한국어로만 작성
@@ -696,6 +734,7 @@ class SimpleModelHandler:
             f"""다음은 {domain} 분야의 전문 질문입니다. 한국어로만 상세하고 정확한 답변을 제공하세요.
 
 {question}
+{hint_context}
 
 한국어 전용 답변 작성 기준:
 - 모든 전문 용어를 한국어로 표기
@@ -707,6 +746,7 @@ class SimpleModelHandler:
             f"""{domain} 전문가의 관점에서 다음 질문에 한국어로만 답변하세요.
 
 질문: {question}
+{hint_context}
 
 답변 요구사항:
 - 완전한 한국어 답변
@@ -728,7 +768,6 @@ class SimpleModelHandler:
     
     def _process_enhanced_mc_answer(self, response: str, question: str, max_choice: int, domain: str = "일반") -> str:
         """객관식 답변 처리"""
-        # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
         if max_choice <= 0:
             max_choice = 5
         
@@ -742,8 +781,25 @@ class SimpleModelHandler:
                     self.mc_answer_counts[max_choice] += 1
                 return num
         
-        # 유효한 답변을 찾지 못한 경우 컨텍스트 기반 폴백
-        return self._get_context_based_mc_answer(question, max_choice, domain)
+        # 유효한 답변을 찾지 못한 경우 강제 생성
+        return self._force_valid_mc_answer(response, max_choice)
+    
+    def _force_valid_mc_answer(self, response: str, max_choice: int) -> str:
+        """유효한 객관식 답변 강제 생성"""
+        if max_choice <= 0:
+            max_choice = 5
+        
+        # 응답에서 숫자 패턴 분석
+        all_numbers = re.findall(r'\d+', response)
+        
+        # 가장 적절한 숫자 선택
+        for num_str in all_numbers:
+            num = int(num_str)
+            if 1 <= num <= max_choice:
+                return str(num)
+        
+        # 마지막 수단: 중간값 선택
+        return str((max_choice + 1) // 2)
     
     def _process_intent_aware_subj_answer(self, response: str, question: str, intent_analysis: Dict = None) -> str:
         """의도 인식 기반 주관식 답변 처리"""
@@ -782,9 +838,12 @@ class SimpleModelHandler:
                 indicator_keywords = ["지표", "신호", "징후", "패턴", "행동", "활동", "모니터링", "탐지"]
                 is_intent_match = any(keyword in response for keyword in indicator_keywords)
         
-        # 한국어 비율이 낮거나 의도와 맞지 않으면 템플릿 사용
-        if korean_ratio < 0.7 or len(response) < 20 or not is_intent_match:
-            return self._generate_intent_based_template_answer(question, intent_analysis)
+        # 품질이 너무 낮으면 기본 응답 사용
+        if korean_ratio < 0.5 or len(response) < 20 or not is_intent_match:
+            if intent_analysis and intent_analysis.get("primary_intent"):
+                return self._generate_basic_intent_answer(intent_analysis["primary_intent"])
+            else:
+                return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
         
         # 길이 제한
         if len(response) > 350:
@@ -799,36 +858,18 @@ class SimpleModelHandler:
         
         return response
     
-    def _generate_intent_based_template_answer(self, question: str, intent_analysis: Dict = None) -> str:
-        """의도 기반 템플릿 답변 생성"""
-        domain = self._detect_domain(question)
+    def _generate_basic_intent_answer(self, primary_intent: str) -> str:
+        """기본 의도별 답변 생성"""
+        intent_responses = {
+            "기관_묻기": "해당 분야의 전문 기관에서 관련 업무를 담당하고 있습니다.",
+            "특징_묻기": "주요 특징과 성질을 체계적으로 분석하고 관리해야 합니다.",
+            "지표_묻기": "관련 지표와 징후를 지속적으로 모니터링하고 분석해야 합니다.",
+            "방안_묻기": "체계적인 관리 방안을 수립하고 지속적인 개선활동을 수행해야 합니다.",
+            "절차_묻기": "관련 법령과 규정에 따라 절차를 수립하고 체계적으로 관리해야 합니다.",
+            "조치_묣기": "적절한 보안조치와 대응조치를 마련하여 체계적으로 관리해야 합니다."
+        }
         
-        # 의도별 템플릿 선택
-        if intent_analysis:
-            primary_intent = intent_analysis.get("primary_intent", "일반")
-            answer_type = intent_analysis.get("answer_type_required", "설명형")
-            
-            # 고품질 템플릿 우선 사용
-            if primary_intent in self.learning_data["high_quality_templates"]:
-                templates = self.learning_data["high_quality_templates"][primary_intent]
-                if templates:
-                    best_template = max(templates, key=lambda x: x.get("quality", 0))
-                    if best_template["quality"] > 0.8:
-                        best_template["usage_count"] += 1
-                        return best_template["answer_template"]
-            
-            # 학습된 의도별 성공 답변 활용
-            if primary_intent in self.learning_data["intent_based_answers"]:
-                successful_answers = self.learning_data["intent_based_answers"][primary_intent]
-                if successful_answers:
-                    # 높은 품질 점수를 가진 답변 선택
-                    best_answers = [ans for ans in successful_answers if ans.get("quality", 0) > 0.7]
-                    if best_answers:
-                        selected = random.choice(best_answers)
-                        return selected["answer"]
-        
-        # 기본 폴백
-        return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+        return intent_responses.get(primary_intent, "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다.")
     
     def _calculate_answer_quality(self, answer: str, question: str, intent_analysis: Dict = None) -> float:
         """답변 품질 점수 계산"""
@@ -922,15 +963,15 @@ class SimpleModelHandler:
         else:
             return ["법령", "규정", "관리", "조치", "절차"]
     
-    def _get_fallback_answer(self, question_type: str, question: str = "", max_choice: int = 5, intent_analysis: Dict = None, domain: str = "일반") -> str:
-        """폴백 답변"""
+    def _get_fallback_answer_with_llm(self, question_type: str, question: str = "", max_choice: int = 5, 
+                                     intent_analysis: Dict = None, domain: str = "일반") -> str:
+        """폴백 답변 - LLM 사용"""
         if question_type == "multiple_choice":
-            # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
             if max_choice <= 0:
                 max_choice = 5
-            return self._get_context_based_mc_answer(question, max_choice, domain)
+            return self.generate_fallback_mc_answer(question, max_choice, domain)
         else:
-            return self._generate_intent_based_template_answer(question, intent_analysis)
+            return self.generate_fallback_subjective_answer(question)
     
     def _detect_domain(self, question: str) -> str:
         """도메인 감지"""

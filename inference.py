@@ -90,7 +90,9 @@ class FinancialAIInference:
             "template_effectiveness": {},
             "mc_domain_accuracy": {},
             "institution_answer_accuracy": 0,
-            "negative_positive_balance": {"negative": 0, "positive": 0, "neutral": 0}
+            "negative_positive_balance": {"negative": 0, "positive": 0, "neutral": 0},
+            "llm_usage_rate": 0,
+            "hint_usage_rate": 0
         }
         
         # 성능 최적화 설정 (config.py에서 로드)
@@ -114,7 +116,7 @@ class FinancialAIInference:
             
             # 객관식 우선 처리
             if question_type == "multiple_choice":
-                answer = self._process_multiple_choice_optimized(question, max_choice, domain, kb_analysis)
+                answer = self._process_multiple_choice_with_llm(question, max_choice, domain, kb_analysis)
                 self._update_mc_stats(question_type, domain, difficulty, 
                                     time.time() - start_time, answer, max_choice)
                 return answer
@@ -131,9 +133,9 @@ class FinancialAIInference:
                 # 기관 관련 질문 우선 처리
                 if kb_analysis.get("institution_info", {}).get("is_institution_question", False):
                     self.stats["institution_questions"] += 1
-                    answer = self._process_institution_question_optimized(question, kb_analysis, intent_analysis)
+                    answer = self._process_institution_question_with_llm(question, kb_analysis, intent_analysis)
                 else:
-                    answer = self._process_subjective_optimized(question, domain, intent_analysis, kb_analysis)
+                    answer = self._process_subjective_with_llm(question, domain, intent_analysis, kb_analysis)
                 
                 # 품질 검증 및 개선
                 final_answer = self._validate_and_improve_answer(answer, question, question_type, 
@@ -149,25 +151,32 @@ class FinancialAIInference:
             if self.verbose:
                 print(f"오류 발생: {e}")
             # 안전한 폴백 답변
-            fallback = self._get_safe_fallback(question, question_type, max_choice if 'max_choice' in locals() else 5)
+            fallback = self._get_safe_fallback_with_llm(question, question_type, max_choice if 'max_choice' in locals() else 5)
             self._update_stats(question_type if 'question_type' in locals() else "multiple_choice", 
                              domain if 'domain' in locals() else "일반", 
                              difficulty if 'difficulty' in locals() else "초급", 
                              time.time() - start_time)
             return fallback
     
-    def _process_multiple_choice_optimized(self, question: str, max_choice: int, domain: str, kb_analysis: Dict) -> str:
-        """객관식 처리"""
+    def _process_multiple_choice_with_llm(self, question: str, max_choice: int, domain: str, kb_analysis: Dict) -> str:
+        """객관식 처리 - 반드시 LLM 사용"""
         
-        # 지식베이스 패턴 매칭 우선 적용
+        # 지식베이스에서 힌트 정보 수집
+        pattern_hints = None
         if self.optimization_config["mc_pattern_priority"]:
-            pattern_answer = self.knowledge_base.get_mc_pattern_answer(question)
-            if pattern_answer and pattern_answer.isdigit() and 1 <= int(pattern_answer) <= max_choice:
+            pattern_hints = self.knowledge_base.get_mc_pattern_hints(question)
+            if pattern_hints:
                 self.stats["mc_pattern_matches"] += 1
-                return pattern_answer
+                self.stats["hint_usage_rate"] += 1
         
-        # 모델 기반 답변 생성
-        answer = self.model_handler.generate_answer(question, "multiple_choice", max_choice)
+        # 모든 경우에 LLM을 통해 답변 생성
+        answer = self.model_handler.generate_answer(
+            question, 
+            "multiple_choice", 
+            max_choice, 
+            intent_analysis=None,
+            domain_hints={"domain": domain, "pattern_hints": pattern_hints}
+        )
         
         # 답변 범위 검증
         if answer and answer.isdigit() and 1 <= int(answer) <= max_choice:
@@ -183,11 +192,12 @@ class FinancialAIInference:
             
             self.stats["model_success"] += 1
             self.stats["korean_compliance"] += 1
+            self.stats["llm_usage_rate"] += 1
             return answer
         else:
-            # 범위 오류 시 컨텍스트 기반 폴백
+            # 범위 오류 시 LLM 재시도
             self.stats["choice_range_errors"] += 1
-            fallback = self.model_handler._get_context_based_mc_answer(question, max_choice, domain)
+            fallback = self._retry_mc_with_llm(question, max_choice, domain)
             
             # 도메인별 정확도 추적
             if domain not in self.stats["mc_domain_accuracy"]:
@@ -196,37 +206,66 @@ class FinancialAIInference:
             
             if max_choice in self.stats["mc_answers_by_range"]:
                 self.stats["mc_answers_by_range"][max_choice][fallback] += 1
+            
+            self.stats["llm_usage_rate"] += 1
             return fallback
     
-    def _process_institution_question_optimized(self, question: str, kb_analysis: Dict, intent_analysis: Dict) -> str:
-        """기관 질문 처리"""
+    def _retry_mc_with_llm(self, question: str, max_choice: int, domain: str) -> str:
+        """객관식 LLM 재시도"""
+        # 더 명확한 프롬프트로 LLM 재시도
+        context_hints = self.model_handler._analyze_mc_context(question, domain)
+        retry_answer = self.model_handler.generate_answer(
+            question, 
+            "multiple_choice", 
+            max_choice,
+            intent_analysis=None,
+            domain_hints={"domain": domain, "context_hints": context_hints, "retry_mode": True}
+        )
+        
+        # 여전히 범위 밖이면 컨텍스트 기반으로 LLM에게 다시 요청
+        if not (retry_answer and retry_answer.isdigit() and 1 <= int(retry_answer) <= max_choice):
+            retry_answer = self.model_handler.generate_contextual_mc_answer(question, max_choice, domain)
+        
+        return retry_answer
+    
+    def _process_institution_question_with_llm(self, question: str, kb_analysis: Dict, intent_analysis: Dict) -> str:
+        """기관 질문 처리 - 반드시 LLM 사용"""
         institution_info = kb_analysis.get("institution_info", {})
         
+        # 기관 정보를 힌트로 제공하여 LLM이 답변 생성
+        institution_hints = None
         if institution_info.get("is_institution_question", False):
             institution_type = institution_info.get("institution_type")
-            
             if institution_type and institution_info.get("confidence", 0) > 0.5:
-                # 신뢰도 높은 기관 질문 - 지식베이스 우선 사용
-                template_answer = self.knowledge_base.get_institution_specific_answer(institution_type)
+                # 신뢰도 높은 기관 질문 - 지식베이스에서 힌트 정보 가져오기
+                institution_hints = self.knowledge_base.get_institution_hints(institution_type)
                 self.stats["intent_specific_answers"] += 1
                 self.stats["institution_answer_accuracy"] += 1
-                return template_answer
+                self.stats["hint_usage_rate"] += 1
         
-        # 일반 주관식 처리로 폴백
-        return self._process_subjective_optimized(question, 
-                                                kb_analysis.get("domain", ["일반"])[0], 
-                                                intent_analysis, kb_analysis)
+        # 모든 경우에 LLM을 통해 답변 생성
+        answer = self.model_handler.generate_answer(
+            question, 
+            "subjective", 
+            5, 
+            intent_analysis,
+            domain_hints={"institution_hints": institution_hints}
+        )
+        
+        self.stats["llm_usage_rate"] += 1
+        return answer
     
-    def _process_subjective_optimized(self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict) -> str:
-        """주관식 처리"""
+    def _process_subjective_with_llm(self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict) -> str:
+        """주관식 처리 - 반드시 LLM 사용"""
         
-        # 신뢰도 높은 의도 분석 기반 처리
+        # 템플릿/패턴 힌트 정보 수집
+        template_hints = None
         if (intent_analysis and 
             intent_analysis.get("intent_confidence", 0) >= self.optimization_config["intent_confidence_threshold"]):
             
             primary_intent = intent_analysis.get("primary_intent", "일반")
             
-            # 의도별 특화 템플릿 우선 사용
+            # 의도별 특화 힌트 정보 수집
             if self.optimization_config["template_preference"]:
                 if "기관" in primary_intent:
                     intent_key = "기관_묻기"
@@ -243,22 +282,23 @@ class FinancialAIInference:
                 else:
                     intent_key = "일반"
                 
-                # 템플릿 사용 시도
-                try:
-                    template_answer = self.knowledge_base.get_high_quality_template(domain, intent_key)
-                    if template_answer and len(template_answer) >= 50:
-                        self.stats["intent_specific_answers"] += 1
-                        self.stats["template_usage"] += 1
-                        return template_answer
-                except:
-                    pass
+                # 템플릿 힌트 수집
+                template_hints = self.knowledge_base.get_template_hints(domain, intent_key)
+                if template_hints:
+                    self.stats["intent_specific_answers"] += 1
+                    self.stats["template_usage"] += 1
+                    self.stats["hint_usage_rate"] += 1
         
-        # AI 모델 답변 생성
-        if self.optimization_config["adaptive_prompt"] and intent_analysis:
-            answer = self.model_handler.generate_answer(question, "subjective", 5, intent_analysis)
-        else:
-            answer = self.model_handler.generate_answer(question, "subjective", 5)
+        # 모든 경우에 LLM을 통해 답변 생성
+        answer = self.model_handler.generate_answer(
+            question, 
+            "subjective", 
+            5, 
+            intent_analysis,
+            domain_hints={"domain": domain, "template_hints": template_hints}
+        )
         
+        self.stats["llm_usage_rate"] += 1
         return answer
     
     def _validate_and_improve_answer(self, answer: str, question: str, question_type: str,
@@ -278,13 +318,13 @@ class FinancialAIInference:
         
         if not is_valid:
             self.stats["validation_errors"] += 1
-            answer = self._get_improved_answer(question, domain, intent_analysis, kb_analysis, "validation_failed")
+            answer = self._get_improved_answer_with_llm(question, domain, intent_analysis, kb_analysis, "validation_failed")
             improvement_count += 1
         
         # 한국어 비율 검증
         korean_ratio = self.data_processor.calculate_korean_ratio(answer)
         if korean_ratio < self.optimization_config["korean_ratio_threshold"]:
-            answer = self._get_improved_answer(question, domain, intent_analysis, kb_analysis, "korean_ratio_low")
+            answer = self._get_improved_answer_with_llm(question, domain, intent_analysis, kb_analysis, "korean_ratio_low")
             improvement_count += 1
             self.stats["korean_enhancement"] += 1
         
@@ -294,8 +334,8 @@ class FinancialAIInference:
             if intent_match:
                 self.stats["intent_match_success"] += 1
             else:
-                # 의도 불일치시 특화 답변 생성
-                answer = self._get_improved_answer(question, domain, intent_analysis, kb_analysis, "intent_mismatch")
+                # 의도 불일치시 LLM 재생성
+                answer = self._get_improved_answer_with_llm(question, domain, intent_analysis, kb_analysis, "intent_mismatch")
                 improvement_count += 1
                 # 재검증
                 intent_match_retry = self.data_processor.validate_answer_intent_match(answer, question, intent_analysis)
@@ -305,7 +345,7 @@ class FinancialAIInference:
         # 답변 품질 평가 및 개선
         quality_score = self._calculate_enhanced_quality_score(answer, question, intent_analysis)
         if quality_score < self.optimization_config["quality_threshold"]:
-            improved_answer = self._get_improved_answer(question, domain, intent_analysis, kb_analysis, "quality_low")
+            improved_answer = self._get_improved_answer_with_llm(question, domain, intent_analysis, kb_analysis, "quality_low")
             improved_quality = self._calculate_enhanced_quality_score(improved_answer, question, intent_analysis)
             
             if improved_quality > quality_score:
@@ -341,17 +381,23 @@ class FinancialAIInference:
         
         return answer
     
-    def _get_improved_answer(self, question: str, domain: str, intent_analysis: Dict = None,
-                           kb_analysis: Dict = None, improvement_type: str = "general") -> str:
-        """개선된 답변 생성"""
+    def _get_improved_answer_with_llm(self, question: str, domain: str, intent_analysis: Dict = None,
+                                     kb_analysis: Dict = None, improvement_type: str = "general") -> str:
+        """개선된 답변 생성 - 반드시 LLM 사용"""
         
-        # 기관 관련 질문 특별 처리
+        # 개선 힌트 정보 수집
+        improvement_hints = {
+            "improvement_type": improvement_type,
+            "domain": domain
+        }
+        
+        # 기관 관련 질문 힌트
         if kb_analysis and kb_analysis.get("institution_info", {}).get("is_institution_question", False):
             institution_type = kb_analysis["institution_info"].get("institution_type")
             if institution_type:
-                return self.knowledge_base.get_institution_specific_answer(institution_type)
+                improvement_hints["institution_hints"] = self.knowledge_base.get_institution_hints(institution_type)
         
-        # 의도별 특화 답변
+        # 의도별 개선 힌트
         if intent_analysis:
             primary_intent = intent_analysis.get("primary_intent", "일반")
             
@@ -370,22 +416,20 @@ class FinancialAIInference:
             else:
                 intent_key = "일반"
             
-            # 템플릿 사용
-            template_answer = self.knowledge_base.get_korean_subjective_template(domain, intent_key)
-            
-            # 개선 유형별 추가 처리
-            if improvement_type == "intent_mismatch":
-                if "기관" in primary_intent:
-                    return self.knowledge_base.get_korean_subjective_template(domain, "기관_묻기")
-                elif "특징" in primary_intent:
-                    return self.knowledge_base.get_korean_subjective_template(domain, "특징_묻기")
-                elif "지표" in primary_intent:
-                    return self.knowledge_base.get_korean_subjective_template(domain, "지표_묻기")
-            
-            return template_answer
+            improvement_hints["template_hints"] = self.knowledge_base.get_template_hints(domain, intent_key)
+            improvement_hints["intent_specific"] = True
         
-        # 기본 도메인별 템플릿
-        return self.knowledge_base.get_korean_subjective_template(domain)
+        # LLM을 통한 개선된 답변 생성
+        answer = self.model_handler.generate_improved_answer(
+            question, 
+            "subjective", 
+            5, 
+            intent_analysis,
+            improvement_hints
+        )
+        
+        self.stats["llm_usage_rate"] += 1
+        return answer
     
     def _calculate_enhanced_quality_score(self, answer: str, question: str, intent_analysis: Dict = None) -> float:
         """품질 점수 계산"""
@@ -504,26 +548,38 @@ class FinancialAIInference:
                 effectiveness["avg_quality"] = (effectiveness["avg_quality"] * (effectiveness["usage"] - 1) + quality) / effectiveness["usage"]
                 effectiveness["korean_ratio"] = (effectiveness["korean_ratio"] * (effectiveness["usage"] - 1) + korean_ratio) / effectiveness["usage"]
     
-    def _get_safe_mc_answer(self, max_choice: int) -> str:
-        """안전한 객관식 답변 생성"""
-        # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
+    def _get_safe_mc_answer_with_llm(self, question: str, max_choice: int, domain: str = "일반") -> str:
+        """안전한 객관식 답변 생성 - LLM 사용"""
         if max_choice <= 0:
             max_choice = 5
         
-        import random
-        return str(random.randint(1, max_choice))
+        # LLM을 통한 안전한 답변 생성
+        fallback_answer = self.model_handler.generate_fallback_mc_answer(question, max_choice, domain)
+        
+        # LLM 결과가 유효하지 않은 경우에만 최후 수단 사용
+        if not (fallback_answer and fallback_answer.isdigit() and 1 <= int(fallback_answer) <= max_choice):
+            import random
+            fallback_answer = str(random.randint(1, max_choice))
+        
+        self.stats["llm_usage_rate"] += 1
+        return fallback_answer
     
-    def _get_safe_fallback(self, question: str, question_type: str, max_choice: int) -> str:
-        """안전한 폴백 답변"""
-        # max_choice 유효성 검증
+    def _get_safe_fallback_with_llm(self, question: str, question_type: str, max_choice: int) -> str:
+        """안전한 폴백 답변 - LLM 사용"""
         if max_choice <= 0:
             max_choice = 5
         
         # 간단한 객관식/주관식 구분
         if question_type == "multiple_choice" or (any(str(i) in question for i in range(1, 6)) and len(question) < 300):
-            return self._get_safe_mc_answer(max_choice)
+            return self._get_safe_mc_answer_with_llm(question, max_choice)
         else:
-            return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+            # LLM을 통한 주관식 폴백 답변
+            fallback_answer = self.model_handler.generate_fallback_subjective_answer(question)
+            if not fallback_answer or len(fallback_answer) < 20:
+                fallback_answer = "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+            
+            self.stats["llm_usage_rate"] += 1
+            return fallback_answer
     
     def _update_stats(self, question_type: str, domain: str, difficulty: str, processing_time: float):
         """통계 업데이트"""
@@ -578,15 +634,12 @@ class FinancialAIInference:
             avg_quality = sum(self.stats["quality_scores"]) / len(self.stats["quality_scores"])
             quality_rate = avg_quality * 0.05
         
-        # 최적화 성능 (5%)
-        optimization_rate = 0.0
-        if self.stats["total"] > 0:
-            fallback_avoidance_rate = self.stats["fallback_avoidance"] / total
-            optimization_rate = fallback_avoidance_rate * 0.05
+        # LLM 사용률 (5%)
+        llm_usage_rate = (self.stats["llm_usage_rate"] / total) * 0.05
         
         # 전체 신뢰도 (0-100%)
         reliability = (mc_success_rate + korean_rate + range_accuracy + validation_rate + 
-                      intent_rate + quality_rate + optimization_rate) * 100
+                      intent_rate + quality_rate + llm_usage_rate) * 100
         
         return min(reliability, 100.0)
     
@@ -714,6 +767,8 @@ class FinancialAIInference:
             "intent_match_success_rate": (self.stats["intent_match_success"] / max(self.stats["intent_analysis_accuracy"], 1)) * 100,
             "institution_questions_count": self.stats["institution_questions"],
             "template_usage_rate": (self.stats["template_usage"] / total) * 100,
+            "llm_usage_rate": (self.stats["llm_usage_rate"] / total) * 100,
+            "hint_usage_rate": (self.stats["hint_usage_rate"] / total) * 100,
             "avg_processing_time": sum(self.stats["processing_times"]) / len(self.stats["processing_times"]) if self.stats["processing_times"] else 0,
             "avg_quality_score": sum(self.stats["quality_scores"]) / len(self.stats["quality_scores"]) if self.stats["quality_scores"] else 0,
             "intent_quality_by_type": intent_quality_avg,
@@ -773,6 +828,7 @@ def main():
             print(f"총 처리시간: {results['total_time']:.1f}초")
             print(f"모델 성공률: {results['model_success_rate']:.1f}%")
             print(f"한국어 준수율: {results['korean_compliance_rate']:.1f}%")
+            print(f"LLM 사용률: {results['llm_usage_rate']:.1f}%")
             if results['choice_range_error_rate'] > 0:
                 print(f"선택지 범위 오류율: {results['choice_range_error_rate']:.1f}%")
             if results['intent_match_success_rate'] > 0:

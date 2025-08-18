@@ -25,7 +25,6 @@ OFFLINE_MODE = {
 # === 디렉토리 설정 ===
 BASE_DIR = Path(__file__).parent.absolute()
 PKL_DIR = BASE_DIR / "pkl"
-DATA_DIR = BASE_DIR / "data"
 JSON_CONFIG_DIR = BASE_DIR / "configs"
 
 # 기본 파일 경로
@@ -180,7 +179,6 @@ def get_device():
 def ensure_directories():
     """필요한 디렉토리 생성"""
     PKL_DIR.mkdir(exist_ok=True)
-    DATA_DIR.mkdir(exist_ok=True)
     JSON_CONFIG_DIR.mkdir(exist_ok=True)
 
 # === 설정 검증 함수 ===
