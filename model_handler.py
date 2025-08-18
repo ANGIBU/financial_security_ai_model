@@ -7,7 +7,6 @@ LLM 모델 핸들러
 - 프롬프트 처리
 - 학습 데이터 저장
 - 질문 의도 기반 답변 생성
-- 선택지 의미 분석 강화
 """
 
 import torch
@@ -157,9 +156,7 @@ class SimpleModelHandler:
             "high_quality_templates": {},
             "mc_accuracy_by_domain": {},
             "negative_vs_positive_patterns": {},
-            "choice_distribution_learning": {},
-            "choice_content_analysis": {},
-            "semantic_similarity_patterns": {}
+            "choice_distribution_learning": {}
         }
     
     def _load_learning_data(self):
@@ -197,8 +194,6 @@ class SimpleModelHandler:
                 "mc_accuracy_by_domain": self.learning_data["mc_accuracy_by_domain"],
                 "negative_vs_positive_patterns": self.learning_data["negative_vs_positive_patterns"],
                 "choice_distribution_learning": self.learning_data["choice_distribution_learning"],
-                "choice_content_analysis": self.learning_data.get("choice_content_analysis", {}),
-                "semantic_similarity_patterns": self.learning_data.get("semantic_similarity_patterns", {}),
                 "last_updated": datetime.now().isoformat()
             }
             
@@ -235,87 +230,8 @@ class SimpleModelHandler:
         
         return 5
     
-    def _extract_choices_with_content(self, question: str) -> Dict[str, str]:
-        """선택지 번호와 내용 추출"""
-        choices = {}
-        lines = question.split('\n')
-        
-        for line in lines:
-            line = line.strip()
-            match = re.match(r'^(\d+)\s+(.+)', line)
-            if match:
-                num = match.group(1)
-                content = match.group(2).strip()
-                if 1 <= int(num) <= 5 and len(content) > 0:
-                    choices[num] = content
-        
-        return choices
-    
-    def _analyze_choice_semantics(self, choices: Dict[str, str], domain: str) -> Dict:
-        """선택지 의미 분석"""
-        semantic_analysis = {
-            "outliers": [],
-            "domain_relevance": {},
-            "content_categories": {},
-            "similarity_groups": []
-        }
-        
-        # 도메인별 키워드 정의
-        domain_keywords = {
-            "금융투자": ["투자", "자문", "매매", "중개", "집합투자", "신탁"],
-            "위험관리": ["위험", "평가", "대응", "수용", "회피", "전가", "감소", "관리", "계획"],
-            "개인정보보호": ["개인정보", "정보주체", "처리", "수집", "이용", "제공"],
-            "전자금융": ["전자", "금융", "거래", "접근매체", "인증", "보안"],
-            "사이버보안": ["보안", "악성코드", "트로이", "탐지", "방어", "공격"],
-            "정보보안": ["정보", "보안", "관리", "통제", "암호화", "접근제어"]
-        }
-        
-        keywords = domain_keywords.get(domain, [])
-        
-        # 각 선택지의 도메인 관련성 분석
-        for choice_num, content in choices.items():
-            content_lower = content.lower()
-            
-            # 도메인 관련성 점수
-            relevance_score = sum(1 for keyword in keywords if keyword in content_lower)
-            semantic_analysis["domain_relevance"][choice_num] = relevance_score
-            
-            # 내용 카테고리 분류
-            if domain == "금융투자":
-                if any(word in content_lower for word in ["투자", "자문", "매매", "중개"]):
-                    semantic_analysis["content_categories"][choice_num] = "금융투자업_유형"
-                elif "보험" in content_lower:
-                    semantic_analysis["content_categories"][choice_num] = "보험업_유형"
-                elif "소비자" in content_lower:
-                    semantic_analysis["content_categories"][choice_num] = "소비자금융_유형"
-                else:
-                    semantic_analysis["content_categories"][choice_num] = "기타_유형"
-            
-            elif domain == "위험관리":
-                if any(word in content_lower for word in ["수용", "회피", "전가", "감소"]):
-                    semantic_analysis["content_categories"][choice_num] = "위험대응_전략"
-                elif any(word in content_lower for word in ["인력", "자원", "조직"]):
-                    semantic_analysis["content_categories"][choice_num] = "실행_리소스"
-                elif any(word in content_lower for word in ["대상", "기간", "범위"]):
-                    semantic_analysis["content_categories"][choice_num] = "계획_요소"
-                elif any(word in content_lower for word in ["전략", "방법", "접근"]):
-                    semantic_analysis["content_categories"][choice_num] = "계획_전략"
-                else:
-                    semantic_analysis["content_categories"][choice_num] = "기타_요소"
-        
-        # 이상치 찾기 (도메인 관련성이 현저히 낮은 선택지)
-        if semantic_analysis["domain_relevance"]:
-            relevance_scores = list(semantic_analysis["domain_relevance"].values())
-            avg_relevance = sum(relevance_scores) / len(relevance_scores)
-            
-            for choice_num, score in semantic_analysis["domain_relevance"].items():
-                if score < avg_relevance * 0.5:  # 평균의 절반 이하
-                    semantic_analysis["outliers"].append(choice_num)
-        
-        return semantic_analysis
-    
-    def _analyze_mc_context_enhanced(self, question: str, domain: str = "일반") -> Dict:
-        """강화된 객관식 질문 컨텍스트 분석"""
+    def _analyze_mc_context(self, question: str, domain: str = "일반") -> Dict:
+        """객관식 질문 컨텍스트 분석"""
         context = {
             "is_negative": False,
             "is_positive": False,
@@ -324,18 +240,10 @@ class SimpleModelHandler:
             "choice_count": self._extract_choice_count(question),
             "domain": domain,
             "likely_answers": [],
-            "confidence_score": 0.0,
-            "choices": {},
-            "semantic_analysis": {},
-            "question_focus": None,
-            "expected_answer_type": None
+            "confidence_score": 0.0
         }
         
         question_lower = question.lower()
-        
-        # 선택지 내용 추출 및 분석
-        context["choices"] = self._extract_choices_with_content(question)
-        context["semantic_analysis"] = self._analyze_choice_semantics(context["choices"], domain)
         
         # 부정형/긍정형 판단
         for pattern in self.mc_context_patterns["negative_keywords"]:
@@ -348,18 +256,7 @@ class SimpleModelHandler:
                 context["is_positive"] = True
                 break
         
-        # 질문의 초점 분석
-        if "구분.*해당하지.*않는" in question_lower:
-            context["question_focus"] = "카테고리_예외"
-            context["expected_answer_type"] = "범주_밖_항목"
-        elif "계획.*수립.*적절하지.*않은" in question_lower:
-            context["question_focus"] = "계획요소_부적절"
-            context["expected_answer_type"] = "계획외_요소"
-        elif "가장.*중요한.*요소" in question_lower:
-            context["question_focus"] = "핵심요소_식별"
-            context["expected_answer_type"] = "최우선_항목"
-        
-        # 도메인별 특화 분석 강화
+        # 도메인별 특화 분석
         if domain in self.mc_context_patterns["domain_specific_patterns"]:
             domain_info = self.mc_context_patterns["domain_specific_patterns"][domain]
             
@@ -372,40 +269,14 @@ class SimpleModelHandler:
                 context["likely_answers"] = domain_info["common_answers"]
                 context["confidence_score"] = min(keyword_matches / len(domain_info["keywords"]), 1.0)
         
-        # 의미 분석 기반 답변 추론
-        if context["is_negative"] and context["semantic_analysis"]["outliers"]:
-            # 부정형 질문에서 이상치가 있다면 그것이 정답일 가능성 높음
-            context["likely_answers"] = context["semantic_analysis"]["outliers"]
-            context["confidence_score"] = max(context["confidence_score"], 0.8)
-        
-        # 카테고리 기반 분석
-        if context["question_focus"] == "카테고리_예외":
-            categories = context["semantic_analysis"]["content_categories"]
-            if categories:
-                # 다른 카테고리에 속하는 항목 찾기
-                category_counts = {}
-                for choice, category in categories.items():
-                    category_counts[category] = category_counts.get(category, 0) + 1
-                
-                # 가장 적은 빈도의 카테고리 찾기
-                min_count = min(category_counts.values())
-                rare_categories = [cat for cat, count in category_counts.items() if count == min_count]
-                
-                rare_choices = [choice for choice, category in categories.items() 
-                              if category in rare_categories]
-                
-                if rare_choices:
-                    context["likely_answers"] = rare_choices
-                    context["confidence_score"] = max(context["confidence_score"], 0.7)
-        
-        # 핵심 용어 추출 강화
+        # 핵심 용어 추출
         domain_terms = {
-            "금융투자": ["구분", "업무", "금융투자업", "해당하지", "투자자문업", "투자매매업", "투자중개업", "소비자금융업", "보험중개업"],
-            "위험관리": ["요소", "계획", "위험", "적절하지", "수행인력", "위험수용", "대응전략", "대상", "기간"],
-            "개인정보보호": ["정책", "수립", "요소", "중요한", "경영진", "참여", "최고책임자", "자원할당"],
-            "전자금융": ["요구", "경우", "자료제출", "통화신용정책", "한국은행", "금융통화위원회"],
-            "사이버보안": ["활용", "이유", "SBOM", "소프트웨어", "공급망", "보안", "투명성"],
-            "정보보안": ["복구", "계획", "절차", "옳지", "비상연락체계", "복구목표시간", "개인정보파기"]
+            "금융투자": ["구분", "업무", "금융투자업", "해당하지"],
+            "위험관리": ["요소", "계획", "위험", "적절하지"],
+            "개인정보보호": ["정책", "수립", "요소", "중요한"],
+            "전자금융": ["요구", "경우", "자료제출", "통화신용정책"],
+            "사이버보안": ["활용", "이유", "SBOM", "소프트웨어"],
+            "정보보안": ["복구", "계획", "절차", "옳지"]
         }
         
         if domain in domain_terms:
@@ -415,96 +286,39 @@ class SimpleModelHandler:
         
         return context
     
-    def _get_context_based_mc_answer_enhanced(self, question: str, max_choice: int, domain: str = "일반") -> str:
-        """강화된 컨텍스트 기반 객관식 답변 생성"""
+    def _get_context_based_mc_answer(self, question: str, max_choice: int, domain: str = "일반") -> str:
+        """컨텍스트 기반 객관식 답변 생성"""
         # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
         if max_choice <= 0:
             max_choice = 5
         
-        context = self._analyze_mc_context_enhanced(question, domain)
+        context = self._analyze_mc_context(question, domain)
         
-        # 의미 분석 기반 답변 우선 선택
-        if context["likely_answers"] and context["confidence_score"] > 0.6:
-            valid_answers = [ans for ans in context["likely_answers"] 
-                           if ans.isdigit() and 1 <= int(ans) <= max_choice]
-            if valid_answers:
-                selected = random.choice(valid_answers)
-                self._record_enhanced_mc_learning(question, selected, context, "semantic_analysis")
-                return selected
-        
-        # 이상치 기반 답변 (부정형 질문용)
-        if context["is_negative"] and context["semantic_analysis"]["outliers"]:
-            outlier_answers = [ans for ans in context["semantic_analysis"]["outliers"] 
-                             if ans.isdigit() and 1 <= int(ans) <= max_choice]
-            if outlier_answers:
-                selected = random.choice(outlier_answers)
-                self._record_enhanced_mc_learning(question, selected, context, "outlier_analysis")
-                return selected
-        
-        # 도메인별 학습된 패턴 적용 (기존 로직)
+        # 도메인별 학습된 패턴 적용
         if context["likely_answers"] and context["confidence_score"] > 0.3:
+            # 신뢰도가 높은 경우 학습된 패턴 사용
             valid_answers = [ans for ans in context["likely_answers"] 
                            if ans.isdigit() and 1 <= int(ans) <= max_choice]
             if valid_answers:
-                selected = random.choice(valid_answers)
-                self._record_enhanced_mc_learning(question, selected, context, "domain_pattern")
-                return selected
+                return random.choice(valid_answers)
         
-        # 부정형/긍정형 패턴 기반 선택 (개선된 로직)
+        # 부정형/긍정형 패턴 기반 선택
         if context["is_negative"]:
-            # 도메인별 세밀한 가중치 적용
             if domain == "금융투자" and max_choice == 5:
-                # 금융투자업 구분에 해당하지 않는 것: 소비자금융업(1), 보험중개업(5)
-                # 선택지 내용 분석으로 더 정확한 판단
-                choices = context["choices"]
-                category_analysis = context["semantic_analysis"]["content_categories"]
-                
-                # 카테고리 분석 결과 활용
-                non_investment_choices = []
-                for choice_num, category in category_analysis.items():
-                    if category in ["보험업_유형", "소비자금융_유형"]:
-                        non_investment_choices.append(choice_num)
-                
-                if non_investment_choices:
-                    # 가중치 재계산
-                    weights = [1] * max_choice
-                    for choice in non_investment_choices:
-                        if choice.isdigit() and 1 <= int(choice) <= max_choice:
-                            weights[int(choice) - 1] = 5
-                else:
-                    # 기본 부정형 가중치
-                    weights = [3, 1, 1, 1, 3]  # 1번과 5번에 높은 가중치
-                    
+                weights = [1, 1, 1, 1, 4]  # 보험중개업(5번)
             elif domain == "위험관리" and max_choice == 5:
-                # 위험관리 계획 수립 요소가 아닌 것 찾기
-                choices = context["choices"]
-                category_analysis = context["semantic_analysis"]["content_categories"]
-                
-                # 실행 리소스는 계획 수립 단계가 아님
-                non_planning_choices = []
-                for choice_num, category in category_analysis.items():
-                    if category == "실행_리소스":
-                        non_planning_choices.append(choice_num)
-                
-                if non_planning_choices:
-                    weights = [1] * max_choice
-                    for choice in non_planning_choices:
-                        if choice.isdigit() and 1 <= int(choice) <= max_choice:
-                            weights[int(choice) - 1] = 4
-                else:
-                    weights = [3, 2, 1, 1, 1]  # 1번에 높은 가중치 (일반적 패턴)
-                    
+                weights = [1, 4, 1, 1, 1]  # 위험수용(2번)
+            elif domain == "정보보안" and max_choice == 4:
+                weights = [1, 1, 4, 1]  # 개인정보 파기 절차(3번)
             else:
-                # 기타 도메인 부정형
                 if max_choice == 5:
-                    weights = [2, 2, 2, 2, 2]  # 균등 분포로 시작
+                    weights = [1, 1, 2, 3, 4]
                 elif max_choice == 4:
-                    weights = [2, 2, 2, 2]
+                    weights = [1, 1, 2, 3]
                 else:
-                    weights = [2, 2, 2]
+                    weights = [1, 1, 2]
                     
         elif context["is_positive"]:
-            # 긍정형 질문 처리
             if domain == "개인정보보호":
                 weights = [1, 4, 2, 1, 1] if max_choice >= 5 else [1, 4, 2, 1]  # 경영진의 참여(2번)
             elif domain == "전자금융":
@@ -554,14 +368,12 @@ class SimpleModelHandler:
         selected = random.choice(choices)
         
         # 학습 데이터에 기록
-        self._record_enhanced_mc_learning(question, selected, context, "weighted_selection")
+        self._record_mc_context_learning(pattern_key, selected, context)
         
         return selected
     
-    def _record_enhanced_mc_learning(self, question: str, answer: str, context: Dict, method: str):
-        """강화된 객관식 컨텍스트 학습 기록"""
-        pattern_key = f"{context['is_negative']}_{context['is_positive']}_{context['domain']}_{context['choice_count']}"
-        
+    def _record_mc_context_learning(self, pattern_key: str, answer: str, context: Dict):
+        """객관식 컨텍스트 학습 기록"""
         if pattern_key not in self.learning_data["mc_context_patterns"]:
             self.learning_data["mc_context_patterns"][pattern_key] = {}
         
@@ -569,39 +381,6 @@ class SimpleModelHandler:
             self.learning_data["mc_context_patterns"][pattern_key][answer] += 1
         else:
             self.learning_data["mc_context_patterns"][pattern_key][answer] = 1
-        
-        # 선택지 내용 분석 기록
-        choice_content_key = f"{context['domain']}_{context['question_focus']}"
-        if choice_content_key not in self.learning_data.get("choice_content_analysis", {}):
-            if "choice_content_analysis" not in self.learning_data:
-                self.learning_data["choice_content_analysis"] = {}
-            self.learning_data["choice_content_analysis"][choice_content_key] = {
-                "answers": {},
-                "methods": {},
-                "semantic_patterns": {}
-            }
-        
-        analysis = self.learning_data["choice_content_analysis"][choice_content_key]
-        
-        # 답변 기록
-        if answer in analysis["answers"]:
-            analysis["answers"][answer] += 1
-        else:
-            analysis["answers"][answer] = 1
-        
-        # 방법 기록
-        if method in analysis["methods"]:
-            analysis["methods"][method] += 1
-        else:
-            analysis["methods"][method] = 1
-        
-        # 의미 패턴 기록
-        if context["semantic_analysis"]["outliers"]:
-            outlier_key = f"outliers_{','.join(context['semantic_analysis']['outliers'])}"
-            if outlier_key in analysis["semantic_patterns"]:
-                analysis["semantic_patterns"][outlier_key] += 1
-            else:
-                analysis["semantic_patterns"][outlier_key] = 1
         
         # 도메인별 정확도 추적
         domain = context.get("domain", "일반")
@@ -813,8 +592,8 @@ class SimpleModelHandler:
                     
                     return answer
                 else:
-                    # 범위 벗어난 경우 강화된 컨텍스트 기반 폴백
-                    fallback = self._get_context_based_mc_answer_enhanced(question, max_choice, domain)
+                    # 범위 벗어난 경우 컨텍스트 기반 폴백
+                    fallback = self._get_context_based_mc_answer(question, max_choice, domain)
                     self._add_learning_record(question, answer, question_type, False, max_choice, 0.0, intent_analysis)
                     return fallback
             else:
@@ -834,29 +613,24 @@ class SimpleModelHandler:
             return fallback
     
     def _create_enhanced_mc_prompt(self, question: str, max_choice: int, domain: str = "일반") -> str:
-        """강화된 객관식 프롬프트 생성"""
+        """객관식 프롬프트 생성"""
         # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
         if max_choice <= 0:
             max_choice = 5
         
-        context = self._analyze_mc_context_enhanced(question, domain)
+        context = self._analyze_mc_context(question, domain)
         
         # 선택지 범위 명시
         choice_range = "에서 ".join([str(i) for i in range(1, max_choice+1)]) + f"번 중"
         
-        # 선택지 내용 분석 결과 활용
-        semantic_hints = ""
-        if context["semantic_analysis"]["outliers"]:
-            semantic_hints = f"선택지 중 {', '.join(context['semantic_analysis']['outliers'])}번이 다른 성격을 가집니다."
-        
         # 컨텍스트와 도메인에 따른 프롬프트 조정
         if context["is_negative"]:
             if domain == "금융투자":
-                instruction = f"금융투자업의 구분에서 해당하지 않는 것을 {choice_range} 찾으세요. 투자매매업, 투자중개업, 투자자문업은 금융투자업에 해당하지만, 다른 업종에 속하는 것을 찾으세요."
+                instruction = f"금융투자업의 구분에서 해당하지 않는 것을 {choice_range} 찾으세요. 소비자금융업, 투자자문업, 투자매매업, 투자중개업, 보험중개업을 신중히 검토하세요."
             elif domain == "위험관리":
-                instruction = f"위험 관리 계획 수립 단계에서 고려하지 않는 요소를 {choice_range} 찾으세요. 계획 수립과 실행 단계를 구별하여 생각하세요."
+                instruction = f"위험 관리 계획 수립 시 고려해야 할 요소 중 적절하지 않은 것을 {choice_range} 찾으세요."
             elif domain == "정보보안":
-                instruction = f"재해 복구 계획 수립 시 포함되지 않는 요소를 {choice_range} 찾으세요."
+                instruction = f"재해 복구 계획 수립 시 고려해야 할 요소 중 옳지 않은 것을 {choice_range} 찾으세요."
             else:
                 instruction = f"다음 중 해당하지 않거나 옳지 않은 것을 {choice_range} 찾으세요."
         elif context["is_positive"]:
@@ -876,10 +650,8 @@ class SimpleModelHandler:
 
 {question}
 
-{semantic_hints}
-
-위 문제를 신중히 분석하고, 각 선택지의 의미를 정확히 파악한 후 1부터 {max_choice}까지 중 하나의 정답을 선택하세요.
-선택지를 꼼꼼히 검토한 후 정답 번호만 답하세요.
+위 문제를 신중히 분석하고, 1부터 {max_choice}까지 중 하나의 정답을 선택하세요.
+각 선택지를 꼼꼼히 검토한 후 정답 번호만 답하세요.
 
 정답:""",
             
@@ -888,9 +660,7 @@ class SimpleModelHandler:
 {question}
 
 {instruction}
-{semantic_hints}
-
-각 선택지의 내용을 정확히 이해하고, 문제에서 요구하는 바에 따라 1부터 {max_choice}번 중 정답을 선택하세요.
+선택지를 모두 검토한 후 1부터 {max_choice}번 중 정답을 선택하세요.
 번호만 답하세요.
 
 답:""",
@@ -900,9 +670,7 @@ class SimpleModelHandler:
 문제: {question}
 
 {instruction}
-{semantic_hints}
-
-선택지별 의미를 분석하고, 문제의 핵심을 파악하여 정답을 1부터 {max_choice}번 중 하나의 번호로만 답하세요.
+정답을 1부터 {max_choice}번 중 하나의 번호로만 답하세요.
 
 정답:"""
         ]
@@ -959,7 +727,7 @@ class SimpleModelHandler:
         return GenerationConfig(**config_dict)
     
     def _process_enhanced_mc_answer(self, response: str, question: str, max_choice: int, domain: str = "일반") -> str:
-        """강화된 객관식 답변 처리"""
+        """객관식 답변 처리"""
         # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
         if max_choice <= 0:
             max_choice = 5
@@ -974,8 +742,8 @@ class SimpleModelHandler:
                     self.mc_answer_counts[max_choice] += 1
                 return num
         
-        # 유효한 답변을 찾지 못한 경우 강화된 컨텍스트 기반 폴백
-        return self._get_context_based_mc_answer_enhanced(question, max_choice, domain)
+        # 유효한 답변을 찾지 못한 경우 컨텍스트 기반 폴백
+        return self._get_context_based_mc_answer(question, max_choice, domain)
     
     def _process_intent_aware_subj_answer(self, response: str, question: str, intent_analysis: Dict = None) -> str:
         """의도 인식 기반 주관식 답변 처리"""
@@ -1160,7 +928,7 @@ class SimpleModelHandler:
             # max_choice가 0이거나 유효하지 않은 경우 기본값 설정
             if max_choice <= 0:
                 max_choice = 5
-            return self._get_context_based_mc_answer_enhanced(question, max_choice, domain)
+            return self._get_context_based_mc_answer(question, max_choice, domain)
         else:
             return self._generate_intent_based_template_answer(question, intent_analysis)
     
@@ -1300,9 +1068,7 @@ class SimpleModelHandler:
         return {
             "distributions": dict(self.answer_distributions),
             "counts": dict(self.mc_answer_counts),
-            "mc_accuracy_by_domain": dict(self.learning_data["mc_accuracy_by_domain"]),
-            "choice_content_analysis": dict(self.learning_data.get("choice_content_analysis", {})),
-            "semantic_similarity_patterns": dict(self.learning_data.get("semantic_similarity_patterns", {}))
+            "mc_accuracy_by_domain": dict(self.learning_data["mc_accuracy_by_domain"])
         }
     
     def get_learning_stats(self) -> Dict:
@@ -1315,9 +1081,7 @@ class SimpleModelHandler:
             "intent_based_answers_count": {k: len(v) for k, v in self.learning_data["intent_based_answers"].items()},
             "high_quality_templates_count": {k: len(v) for k, v in self.learning_data["high_quality_templates"].items()},
             "mc_accuracy_by_domain": dict(self.learning_data["mc_accuracy_by_domain"]),
-            "avg_quality": sum(self.learning_data["answer_quality_scores"]) / len(self.learning_data["answer_quality_scores"]) if self.learning_data["answer_quality_scores"] else 0,
-            "choice_content_analysis_count": len(self.learning_data.get("choice_content_analysis", {})),
-            "semantic_analysis_patterns": len(self.learning_data.get("semantic_similarity_patterns", {}))
+            "avg_quality": sum(self.learning_data["answer_quality_scores"]) / len(self.learning_data["answer_quality_scores"]) if self.learning_data["answer_quality_scores"] else 0
         }
     
     def cleanup(self):

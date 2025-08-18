@@ -7,7 +7,6 @@
 - 답변 검증
 - 한국어 전용 처리
 - 질문 의도 분석
-- 선택지 의미 분석 강화
 """
 
 import re
@@ -29,22 +28,6 @@ class SimpleDataProcessor:
         self.pkl_dir = PKL_DIR
         self.pkl_dir.mkdir(exist_ok=True)
         
-        # 기본 처리 통계 구조 설정
-        self.processing_stats_structure = {
-            "total_processed": 0,
-            "korean_compliance": 0,
-            "validation_failures": 0,
-            "domain_distribution": {},
-            "question_type_accuracy": {"correct": 0, "total": 0},
-            "choice_count_errors": 0,
-            "intent_analysis_accuracy": {"correct": 0, "total": 0},
-            "intent_match_accuracy": {"correct": 0, "total": 0},
-            "mc_classification_accuracy": {"correct": 0, "total": 0},
-            "semantic_analysis_accuracy": {"correct": 0, "total": 0},
-            "choice_content_extraction": {"success": 0, "total": 0},
-            "negative_question_detection": {"correct": 0, "total": 0}
-        }
-        
         # JSON 설정 파일에서 데이터 로드
         self._load_json_configs()
         
@@ -56,9 +39,6 @@ class SimpleDataProcessor:
         
         # 이전 처리 기록 로드
         self._load_processing_history()
-        
-        # 선택지 의미 분석 강화를 위한 키워드 사전
-        self._init_semantic_analysis_keywords()
     
     def _load_json_configs(self):
         """JSON 설정 파일들 로드"""
@@ -72,10 +52,7 @@ class SimpleDataProcessor:
             self.mc_keywords = processing_config['mc_keywords']
             self.question_intent_patterns = processing_config['question_intent_patterns']
             self.subj_patterns = processing_config['subj_patterns']
-            
-            # 기존 구조와 JSON 구조 병합
-            json_stats_structure = processing_config.get('processing_stats_structure', {})
-            self.processing_stats_structure.update(json_stats_structure)
+            self.processing_stats_structure = processing_config['processing_stats_structure']
             
             # knowledge_data.json에서 도메인 키워드 로드
             with open(JSON_CONFIG_FILES['knowledge_data'], 'r', encoding='utf-8') as f:
@@ -133,45 +110,17 @@ class SimpleDataProcessor:
         self.domain_keywords = {
             "일반": ["법령", "규정", "관리", "조치", "절차"]
         }
-    
-    def _init_semantic_analysis_keywords(self):
-        """의미 분석을 위한 키워드 사전 초기화"""
-        self.semantic_keywords = {
-            "금융투자": {
-                "핵심업무": ["투자", "자문", "매매", "중개", "집합투자", "신탁"],
-                "비핵심업무": ["보험", "소비자", "대출", "예금"],
-                "업무구분": ["투자자문업", "투자매매업", "투자중개업", "집합투자업", "신탁업"],
-                "비금융투자업": ["보험중개업", "소비자금융업", "은행업", "보험업"]
-            },
-            "위험관리": {
-                "계획요소": ["대상", "기간", "범위", "목표", "전략"],
-                "대응전략": ["회피", "수용", "전가", "감소", "완화"],
-                "실행리소스": ["인력", "자원", "조직", "담당자", "예산"],
-                "관리활동": ["모니터링", "평가", "보고", "검토", "개선"],
-                "부적절요소": ["수행인력", "담당자", "예산배정", "조직구성"]
-            },
-            "개인정보보호": {
-                "정책요소": ["경영진참여", "최고책임자", "자원할당", "조직구성"],
-                "처리활동": ["수집", "이용", "제공", "파기", "보관"],
-                "보호조치": ["암호화", "접근통제", "로그관리", "교육"],
-                "권리보장": ["열람권", "정정삭제권", "처리정지권", "손해배상"]
-            },
-            "전자금융": {
-                "요구사유": ["통화신용정책", "지급결제제도", "금융안정", "통계조사"],
-                "기관역할": ["정책수립", "감독", "조정", "분쟁해결"],
-                "거래보안": ["인증", "암호화", "접근매체", "전자서명"],
-                "비관련사유": ["경영실적", "보안강화", "일반통계", "개인정보"]
-            },
-            "사이버보안": {
-                "보안목적": ["투명성", "공급망보안", "취약점관리", "컴플라이언스"],
-                "기술요소": ["소프트웨어구성", "라이선스", "의존성", "버전관리"],
-                "비보안목적": ["접근제어", "개인정보보호", "다양성확보", "성능향상"]
-            },
-            "정보보안": {
-                "복구요소": ["복구절차", "비상연락체계", "복구목표시간", "데이터백업"],
-                "관리요소": ["정책수립", "위험평가", "보안조치", "교육훈련"],
-                "비복구요소": ["개인정보파기", "일반업무절차", "성과평가", "예산계획"]
-            }
+        
+        self.processing_stats_structure = {
+            "total_processed": 0,
+            "korean_compliance": 0,
+            "validation_failures": 0,
+            "domain_distribution": {},
+            "question_type_accuracy": {"correct": 0, "total": 0},
+            "choice_count_errors": 0,
+            "intent_analysis_accuracy": {"correct": 0, "total": 0},
+            "intent_match_accuracy": {"correct": 0, "total": 0},
+            "mc_classification_accuracy": {"correct": 0, "total": 0}
         }
     
     def _load_processing_history(self):
@@ -201,8 +150,8 @@ class SimpleDataProcessor:
         except Exception:
             pass
     
-    def analyze_question_intent_enhanced(self, question: str) -> Dict:
-        """강화된 질문 의도 분석"""
+    def analyze_question_intent(self, question: str) -> Dict:
+        """질문 의도 분석"""
         question_lower = question.lower()
         
         intent_analysis = {
@@ -211,17 +160,8 @@ class SimpleDataProcessor:
             "detected_patterns": [],
             "answer_type_required": "설명형",
             "secondary_intents": [],
-            "context_hints": [],
-            "question_structure": {},
-            "negative_indicators": [],
-            "expected_answer_characteristics": {}
+            "context_hints": []
         }
-        
-        # 질문 구조 분석
-        intent_analysis["question_structure"] = self._analyze_question_structure(question)
-        
-        # 부정형 질문 탐지 강화
-        intent_analysis["negative_indicators"] = self._detect_negative_patterns(question)
         
         # 각 의도 패턴별 점수 계산
         intent_scores = {}
@@ -262,232 +202,98 @@ class SimpleDataProcessor:
                     for intent, data in sorted_intents[1:3]
                 ]
             
-            # 답변 유형 결정 강화
+            # 답변 유형 결정
             primary = best_intent[0]
             if "기관" in primary:
                 intent_analysis["answer_type_required"] = "기관명"
                 intent_analysis["context_hints"].append("구체적인 기관명 필요")
-                intent_analysis["expected_answer_characteristics"] = {
-                    "must_include": ["위원회", "기관", "감독원"],
-                    "structure": "기관명 + 소속 + 역할",
-                    "length_range": (50, 200)
-                }
             elif "특징" in primary:
                 intent_analysis["answer_type_required"] = "특징설명"
                 intent_analysis["context_hints"].append("특징과 성질 나열")
-                intent_analysis["expected_answer_characteristics"] = {
-                    "must_include": ["특징", "특성", "성질"],
-                    "structure": "특징나열 + 설명",
-                    "length_range": (80, 300)
-                }
             elif "지표" in primary:
                 intent_analysis["answer_type_required"] = "지표나열"
                 intent_analysis["context_hints"].append("탐지 지표와 징후")
-                intent_analysis["expected_answer_characteristics"] = {
-                    "must_include": ["지표", "징후", "탐지"],
-                    "structure": "지표나열 + 활용방법",
-                    "length_range": (100, 350)
-                }
             elif "방안" in primary:
                 intent_analysis["answer_type_required"] = "방안제시"
                 intent_analysis["context_hints"].append("구체적 실행방안")
-                intent_analysis["expected_answer_characteristics"] = {
-                    "must_include": ["방안", "대책", "조치"],
-                    "structure": "방안제시 + 실행방법",
-                    "length_range": (100, 400)
-                }
             elif "절차" in primary:
                 intent_analysis["answer_type_required"] = "절차설명"
                 intent_analysis["context_hints"].append("단계별 절차")
-                intent_analysis["expected_answer_characteristics"] = {
-                    "must_include": ["절차", "단계", "순서"],
-                    "structure": "단계나열 + 설명",
-                    "length_range": (80, 300)
-                }
             elif "조치" in primary:
                 intent_analysis["answer_type_required"] = "조치설명"
                 intent_analysis["context_hints"].append("보안조치 내용")
-                intent_analysis["expected_answer_characteristics"] = {
-                    "must_include": ["조치", "대응", "보안"],
-                    "structure": "조치설명 + 효과",
-                    "length_range": (70, 250)
-                }
             elif "법령" in primary:
                 intent_analysis["answer_type_required"] = "법령설명"
                 intent_analysis["context_hints"].append("관련 법령과 규정")
-                intent_analysis["expected_answer_characteristics"] = {
-                    "must_include": ["법", "법령", "규정"],
-                    "structure": "법령명 + 내용",
-                    "length_range": (60, 200)
-                }
             elif "정의" in primary:
                 intent_analysis["answer_type_required"] = "정의설명"
                 intent_analysis["context_hints"].append("개념과 정의")
-                intent_analysis["expected_answer_characteristics"] = {
-                    "must_include": ["정의", "개념", "의미"],
-                    "structure": "정의 + 설명",
-                    "length_range": (50, 180)
-                }
         
-        # 추가 문맥 분석 강화
-        self._add_enhanced_context_analysis(question, intent_analysis)
+        # 추가 문맥 분석
+        self._add_context_analysis(question, intent_analysis)
         
         # 통계 업데이트
         self.processing_stats["intent_analysis_accuracy"]["total"] += 1
         
         return intent_analysis
     
-    def _analyze_question_structure(self, question: str) -> Dict:
-        """질문 구조 분석"""
-        structure = {
-            "has_choices": False,
-            "choice_count": 0,
-            "question_type": "unknown",
-            "negation_type": None,
-            "focus_area": None,
-            "complexity_level": "basic"
-        }
-        
-        # 선택지 존재 여부 및 개수
-        lines = question.split('\n')
-        choice_count = 0
-        for line in lines:
-            match = re.match(r'^(\d+)\s+(.+)', line.strip())
-            if match and 1 <= int(match.group(1)) <= 5:
-                choice_count += 1
-        
-        structure["has_choices"] = choice_count >= 3
-        structure["choice_count"] = choice_count
-        structure["question_type"] = "multiple_choice" if structure["has_choices"] else "subjective"
-        
-        # 부정형 질문 유형 분석
-        question_lower = question.lower()
-        if "해당하지.*않는" in question_lower:
-            structure["negation_type"] = "범주_예외"
-        elif "적절하지.*않은" in question_lower:
-            structure["negation_type"] = "부적절_요소"
-        elif "옳지.*않는" in question_lower:
-            structure["negation_type"] = "부정확_내용"
-        
-        # 질문 초점 영역
-        if "구분" in question_lower and "해당하지" in question_lower:
-            structure["focus_area"] = "카테고리_분류"
-        elif "계획" in question_lower and "요소" in question_lower:
-            structure["focus_area"] = "계획_구성"
-        elif "가장.*중요한" in question_lower:
-            structure["focus_area"] = "우선순위_판단"
-        
-        # 복잡도 수준
-        technical_indicators = ["관리체계", "법령", "규정", "정책", "절차", "기준"]
-        tech_count = sum(1 for indicator in technical_indicators if indicator in question_lower)
-        
-        if tech_count >= 3 or len(question) > 300:
-            structure["complexity_level"] = "advanced"
-        elif tech_count >= 1 or len(question) > 150:
-            structure["complexity_level"] = "intermediate"
-        
-        return structure
-    
-    def _detect_negative_patterns(self, question: str) -> List[str]:
-        """부정형 패턴 탐지"""
-        indicators = []
-        question_lower = question.lower()
-        
-        negative_patterns = [
-            ("해당하지_않는", r"해당하지.*않는"),
-            ("적절하지_않은", r"적절하지.*않은"),
-            ("옳지_않은", r"옳지.*않은"),
-            ("잘못된", r"잘못된"),
-            ("틀린", r"틀린"),
-            ("부적절한", r"부적절한"),
-            ("예외", r"예외"),
-            ("제외", r"제외")
-        ]
-        
-        for pattern_name, pattern in negative_patterns:
-            if re.search(pattern, question_lower):
-                indicators.append(pattern_name)
-        
-        return indicators
-    
-    def _add_enhanced_context_analysis(self, question: str, intent_analysis: Dict):
-        """강화된 추가 문맥 분석"""
+    def _add_context_analysis(self, question: str, intent_analysis: Dict):
+        """추가 문맥 분석"""
         question_lower = question.lower()
         
         # 긴급성 표시어 확인
-        urgency_keywords = ["긴급", "즉시", "신속", "빠른", "시급"]
+        urgency_keywords = ["긴급", "즉시", "신속", "빠른"]
         if any(keyword in question_lower for keyword in urgency_keywords):
             intent_analysis["context_hints"].append("긴급 대응 필요")
         
         # 예시 요구 확인
-        example_keywords = ["예시", "사례", "구체적", "실제", "실무적"]
+        example_keywords = ["예시", "사례", "구체적", "실제"]
         if any(keyword in question_lower for keyword in example_keywords):
             intent_analysis["context_hints"].append("구체적 예시 포함")
         
         # 비교 요구 확인
-        comparison_keywords = ["비교", "차이", "구별", "비교하여", "대비"]
+        comparison_keywords = ["비교", "차이", "구별", "비교하여"]
         if any(keyword in question_lower for keyword in comparison_keywords):
             intent_analysis["context_hints"].append("비교 분석 필요")
         
         # 단계적 설명 요구 확인
-        step_keywords = ["단계", "순서", "과정", "절차", "순차적"]
+        step_keywords = ["단계", "순서", "과정", "절차"]
         if any(keyword in question_lower for keyword in step_keywords):
             intent_analysis["context_hints"].append("단계별 설명 필요")
-        
-        # 법적 근거 요구 확인
-        legal_keywords = ["법령", "법률", "규정", "조항", "근거"]
-        if any(keyword in question_lower for keyword in legal_keywords):
-            intent_analysis["context_hints"].append("법적 근거 필요")
-        
-        # 도메인별 특화 분석
-        domain = self.extract_domain(question)
-        if domain in self.semantic_keywords:
-            domain_analysis = self._analyze_domain_specific_context(question, domain)
-            intent_analysis["context_hints"].extend(domain_analysis)
-    
-    def _analyze_domain_specific_context(self, question: str, domain: str) -> List[str]:
-        """도메인별 특화 컨텍스트 분석"""
-        hints = []
-        question_lower = question.lower()
-        
-        if domain == "금융투자" and "구분" in question_lower:
-            hints.append("금융투자업 카테고리 구분 필요")
-            if "해당하지" in question_lower:
-                hints.append("비금융투자업 식별 필요")
-        
-        elif domain == "위험관리" and "계획" in question_lower:
-            hints.append("계획수립과 실행단계 구분 필요")
-            if "적절하지" in question_lower:
-                hints.append("계획외 요소 식별 필요")
-        
-        elif domain == "개인정보보호" and "정책" in question_lower:
-            hints.append("정책수립 핵심요소 식별 필요")
-            if "중요한" in question_lower:
-                hints.append("우선순위 판단 필요")
-        
-        elif domain == "전자금융" and "요구" in question_lower:
-            hints.append("법적 요구사유 확인 필요")
-            if "경우" in question_lower:
-                hints.append("적용조건 분석 필요")
-        
-        return hints
-    
-    def analyze_question_intent(self, question: str) -> Dict:
-        """질문 의도 분석 (강화된 버전 사용)"""
-        return self.analyze_question_intent_enhanced(question)
     
     def extract_choice_range(self, question: str) -> Tuple[str, int]:
         """선택지 범위 추출"""
-        question_type = self.analyze_question_type_enhanced(question)
+        question_type = self.analyze_question_type(question)
         
         if question_type != "multiple_choice":
             return "subjective", 0
         
-        # 강화된 선택지 추출
-        choices_info = self.extract_choices_with_semantic_analysis(question)
+        # 줄바꿈으로 분리된 선택지 패턴 확인
+        lines = question.split('\n')
+        choice_numbers = []
         
-        if choices_info["valid_choice_count"] >= 3:
-            return "multiple_choice", choices_info["max_choice_number"]
+        for line in lines:
+            line = line.strip()
+            # "숫자 + 공백 + 텍스트" 패턴 매칭
+            match = re.match(r'^(\d+)\s+(.+)', line)
+            if match:
+                num = int(match.group(1))
+                content = match.group(2).strip()
+                if 1 <= num <= 5 and len(content) > 0:
+                    choice_numbers.append(num)
+        
+        # 연속된 선택지인지 확인
+        if choice_numbers:
+            choice_numbers.sort()
+            max_choice = max(choice_numbers)
+            min_choice = min(choice_numbers)
+            
+            # 연속성 검증 (1부터 시작하는 연속 선택지)
+            expected_count = max_choice - min_choice + 1
+            if (len(choice_numbers) == expected_count and 
+                min_choice == 1 and 
+                max_choice >= 3):
+                return "multiple_choice", max_choice
         
         # 전통적인 패턴으로 확인
         for i in range(5, 2, -1):
@@ -505,171 +311,32 @@ class SimpleDataProcessor:
         
         return "subjective", 0
     
-    def extract_choices_with_semantic_analysis(self, question: str) -> Dict:
-        """의미 분석을 포함한 선택지 추출"""
-        choice_info = {
-            "choices": {},
-            "valid_choice_count": 0,
-            "max_choice_number": 0,
-            "semantic_categories": {},
-            "outlier_candidates": [],
-            "content_analysis": {}
-        }
-        
-        lines = question.split('\n')
-        
-        # 선택지 추출
-        for line in lines:
-            line = line.strip()
-            match = re.match(r'^(\d+)\s+(.+)', line)
-            if match:
-                num = int(match.group(1))
-                content = match.group(2).strip()
-                if 1 <= num <= 5 and len(content) > 0:
-                    choice_info["choices"][str(num)] = content
-                    choice_info["valid_choice_count"] += 1
-                    choice_info["max_choice_number"] = max(choice_info["max_choice_number"], num)
-        
-        # 의미 분석
-        if choice_info["valid_choice_count"] >= 3:
-            domain = self.extract_domain(question)
-            choice_info["semantic_categories"] = self._categorize_choices(choice_info["choices"], domain)
-            choice_info["outlier_candidates"] = self._find_outlier_choices(choice_info["choices"], domain)
-            choice_info["content_analysis"] = self._analyze_choice_content_patterns(choice_info["choices"], domain)
-        
-        # 추출 성공률 업데이트 (키 존재 확인)
-        if "choice_content_extraction" in self.processing_stats:
-            self.processing_stats["choice_content_extraction"]["total"] += 1
-            if choice_info["valid_choice_count"] >= 3:
-                self.processing_stats["choice_content_extraction"]["success"] += 1
-        
-        return choice_info
-    
-    def _categorize_choices(self, choices: Dict[str, str], domain: str) -> Dict:
-        """선택지 카테고리 분류"""
-        categories = {}
-        
-        if domain not in self.semantic_keywords:
-            return categories
-        
-        domain_keywords = self.semantic_keywords[domain]
-        
-        for choice_num, content in choices.items():
-            content_lower = content.lower()
-            
-            # 각 카테고리별 점수 계산
-            category_scores = {}
-            for category, keywords in domain_keywords.items():
-                score = sum(1 for keyword in keywords if keyword in content_lower)
-                if score > 0:
-                    category_scores[category] = score
-            
-            # 가장 높은 점수의 카테고리 할당
-            if category_scores:
-                best_category = max(category_scores.items(), key=lambda x: x[1])[0]
-                categories[choice_num] = best_category
-            else:
-                categories[choice_num] = "기타"
-        
-        return categories
-    
-    def _find_outlier_choices(self, choices: Dict[str, str], domain: str) -> List[str]:
-        """이상치 선택지 찾기"""
-        outliers = []
-        
-        if domain not in self.semantic_keywords:
-            return outliers
-        
-        # 도메인 관련성 점수 계산
-        relevance_scores = {}
-        domain_keywords = self.semantic_keywords[domain]
-        all_keywords = []
-        for keywords in domain_keywords.values():
-            all_keywords.extend(keywords)
-        
-        for choice_num, content in choices.items():
-            content_lower = content.lower()
-            relevance_score = sum(1 for keyword in all_keywords if keyword in content_lower)
-            relevance_scores[choice_num] = relevance_score
-        
-        if relevance_scores:
-            scores = list(relevance_scores.values())
-            avg_score = sum(scores) / len(scores)
-            
-            # 평균의 절반 이하인 선택지를 이상치로 분류
-            for choice_num, score in relevance_scores.items():
-                if score < avg_score * 0.5:
-                    outliers.append(choice_num)
-        
-        return outliers
-    
-    def _analyze_choice_content_patterns(self, choices: Dict[str, str], domain: str) -> Dict:
-        """선택지 내용 패턴 분석"""
-        analysis = {
-            "length_distribution": {},
-            "keyword_density": {},
-            "structure_patterns": {},
-            "domain_specificity": {}
-        }
-        
-        for choice_num, content in choices.items():
-            # 길이 분석
-            analysis["length_distribution"][choice_num] = len(content)
-            
-            # 키워드 밀도
-            if domain in self.semantic_keywords:
-                all_keywords = []
-                for keywords in self.semantic_keywords[domain].values():
-                    all_keywords.extend(keywords)
-                
-                keyword_count = sum(1 for keyword in all_keywords if keyword in content.lower())
-                analysis["keyword_density"][choice_num] = keyword_count / len(content.split()) if content.split() else 0
-            
-            # 구조 패턴
-            if "업" in content:
-                analysis["structure_patterns"][choice_num] = "업무_유형"
-            elif any(word in content for word in ["요소", "사항", "내용"]):
-                analysis["structure_patterns"][choice_num] = "구성_요소"
-            elif any(word in content for word in ["방법", "방식", "절차"]):
-                analysis["structure_patterns"][choice_num] = "처리_방법"
-            else:
-                analysis["structure_patterns"][choice_num] = "일반_내용"
-        
-        return analysis
-    
-    def analyze_question_type_enhanced(self, question: str) -> str:
-        """강화된 질문 유형 분석"""
+    def analyze_question_type(self, question: str) -> str:
+        """질문 유형 분석"""
         
         question = question.strip()
-        
-        # 통계 카운터 확인 및 초기화
-        if "question_type_accuracy" in self.processing_stats:
-            self.processing_stats["question_type_accuracy"]["total"] += 1
-        if "mc_classification_accuracy" in self.processing_stats:
-            self.processing_stats["mc_classification_accuracy"]["total"] += 1
+        self.processing_stats["question_type_accuracy"]["total"] += 1
+        self.processing_stats["mc_classification_accuracy"]["total"] += 1
         
         # 주관식 패턴 우선 확인
         for pattern in self.subj_patterns:
             if re.search(pattern, question, re.IGNORECASE):
                 return "subjective"
         
-        # 강화된 객관식 확인
-        choices_info = self.extract_choices_with_semantic_analysis(question)
+        # 실제 데이터 패턴 기반 객관식 확인
+        # "숫자 + 공백 + 한글/영문" 패턴이 3개 이상 있는지 확인
+        choice_pattern = r'\n(\d+)\s+[가-힣\w]'
+        choice_matches = re.findall(choice_pattern, question)
         
-        if choices_info["valid_choice_count"] >= 3:
-            # 연속성 검증
-            choice_nums = [int(num) for num in choices_info["choices"].keys()]
+        if len(choice_matches) >= 3:
+            # 선택지 번호가 연속적인지 확인
+            choice_nums = [int(match) for match in choice_matches]
             choice_nums.sort()
-            
             if (choice_nums[0] == 1 and 
                 len(choice_nums) == choice_nums[-1] and
                 choice_nums[-1] <= 5):
-                
-                # 성공 카운터 증가
-                if "question_type_accuracy" in self.processing_stats:
-                    self.processing_stats["question_type_accuracy"]["correct"] += 1
-                if "mc_classification_accuracy" in self.processing_stats:
-                    self.processing_stats["mc_classification_accuracy"]["correct"] += 1
+                self.processing_stats["question_type_accuracy"]["correct"] += 1
+                self.processing_stats["mc_classification_accuracy"]["correct"] += 1
                 return "multiple_choice"
         
         # 객관식 키워드 확인
@@ -677,19 +344,15 @@ class SimpleDataProcessor:
             if re.search(pattern, question, re.IGNORECASE):
                 # 선택지가 있는지 추가 확인
                 if any(f'{i} ' in question for i in range(1, 6)):
-                    if "question_type_accuracy" in self.processing_stats:
-                        self.processing_stats["question_type_accuracy"]["correct"] += 1
-                    if "mc_classification_accuracy" in self.processing_stats:
-                        self.processing_stats["mc_classification_accuracy"]["correct"] += 1
+                    self.processing_stats["question_type_accuracy"]["correct"] += 1
+                    self.processing_stats["mc_classification_accuracy"]["correct"] += 1
                     return "multiple_choice"
         
         # 전통적인 객관식 패턴 확인
         for pattern in self.mc_patterns:
             if re.search(pattern, question, re.DOTALL | re.MULTILINE):
-                if "question_type_accuracy" in self.processing_stats:
-                    self.processing_stats["question_type_accuracy"]["correct"] += 1
-                if "mc_classification_accuracy" in self.processing_stats:
-                    self.processing_stats["mc_classification_accuracy"]["correct"] += 1
+                self.processing_stats["question_type_accuracy"]["correct"] += 1
+                self.processing_stats["mc_classification_accuracy"]["correct"] += 1
                 return "multiple_choice"
         
         # 길이와 구조 기반 추정
@@ -699,10 +362,6 @@ class SimpleDataProcessor:
             return "multiple_choice"
         
         return "subjective"
-    
-    def analyze_question_type(self, question: str) -> str:
-        """질문 유형 분석 (강화된 버전 사용)"""
-        return self.analyze_question_type_enhanced(question)
     
     def extract_domain(self, question: str) -> str:
         """도메인 추출"""
@@ -807,42 +466,16 @@ class SimpleDataProcessor:
         answer_num = int(answer)
         return 1 <= answer_num <= max_choice
     
-    def validate_answer_intent_match_enhanced(self, answer: str, question: str, intent_analysis: Dict) -> bool:
-        """강화된 답변과 질문 의도 일치성 검증"""
+    def validate_answer_intent_match(self, answer: str, question: str, intent_analysis: Dict) -> bool:
+        """답변과 질문 의도 일치성 검증"""
         if not answer or not intent_analysis:
             return False
         
         required_type = intent_analysis.get("answer_type_required", "설명형")
         answer_lower = answer.lower()
-        expected_chars = intent_analysis.get("expected_answer_characteristics", {})
         
-        # 기본 길이 검증
-        if "length_range" in expected_chars:
-            min_len, max_len = expected_chars["length_range"]
-            if not (min_len <= len(answer) <= max_len):
-                return False
-        
-        # 필수 포함 키워드 검증
-        if "must_include" in expected_chars:
-            must_keywords = expected_chars["must_include"]
-            found_count = sum(1 for keyword in must_keywords if keyword in answer_lower)
-            if found_count == 0:
-                return False
-        
-        # 유형별 세부 검증
-        match_found = self._validate_answer_type_match(answer_lower, required_type)
-        
-        # 통계 업데이트
-        if "intent_match_accuracy" in self.processing_stats:
-            self.processing_stats["intent_match_accuracy"]["total"] += 1
-            if match_found:
-                self.processing_stats["intent_match_accuracy"]["correct"] += 1
-        
-        return match_found
-    
-    def _validate_answer_type_match(self, answer_lower: str, answer_type: str) -> bool:
-        """답변 유형별 매칭 검증"""
-        if answer_type == "기관명":
+        # 기관명이 필요한 경우
+        if required_type == "기관명":
             # 구체적인 기관명이 포함되어야 하고, 최소 2개의 키워드 필요
             institution_keywords = [
                 "위원회", "감독원", "은행", "기관", "센터", "청", "부", "원", 
@@ -859,64 +492,75 @@ class SimpleDataProcessor:
             has_specific = any(inst in answer_lower for inst in specific_institutions)
             keyword_count = sum(1 for keyword in institution_keywords if keyword in answer_lower)
             
-            return has_specific and keyword_count >= 2
+            match_found = has_specific and keyword_count >= 2
         
-        elif answer_type == "특징설명":
+        # 특징 설명이 필요한 경우
+        elif required_type == "특징설명":
             feature_keywords = ["특징", "특성", "속성", "성질", "기능", "역할", "원리", "성격"]
             descriptive_words = ["위장", "은밀", "지속", "제어", "접근", "수행", "활동"]
             
             feature_count = sum(1 for keyword in feature_keywords if keyword in answer_lower)
             desc_count = sum(1 for word in descriptive_words if word in answer_lower)
             
-            return feature_count >= 1 and desc_count >= 2
+            match_found = feature_count >= 1 and desc_count >= 2
         
-        elif answer_type == "지표나열":
+        # 지표 나열이 필요한 경우
+        elif required_type == "지표나열":
             indicator_keywords = ["지표", "신호", "징후", "패턴", "행동", "활동", "모니터링", "탐지", "발견", "식별"]
             specific_indicators = ["네트워크", "트래픽", "프로세스", "파일", "시스템", "로그", "연결"]
             
             indicator_count = sum(1 for keyword in indicator_keywords if keyword in answer_lower)
             specific_count = sum(1 for word in specific_indicators if word in answer_lower)
             
-            return indicator_count >= 2 and specific_count >= 2
+            match_found = indicator_count >= 2 and specific_count >= 2
         
-        elif answer_type == "방안제시":
+        # 방안 제시가 필요한 경우
+        elif required_type == "방안제시":
             solution_keywords = ["방안", "대책", "조치", "해결", "대응", "관리", "처리", "절차", "개선", "예방"]
             action_words = ["수립", "구축", "시행", "실시", "강화", "개선", "마련"]
             
             solution_count = sum(1 for keyword in solution_keywords if keyword in answer_lower)
             action_count = sum(1 for word in action_words if word in answer_lower)
             
-            return solution_count >= 2 and action_count >= 1
+            match_found = solution_count >= 2 and action_count >= 1
         
-        elif answer_type == "절차설명":
+        # 절차 설명이 필요한 경우
+        elif required_type == "절차설명":
             procedure_keywords = ["절차", "과정", "단계", "순서", "프로세스", "진행", "수행", "실행"]
             step_indicators = ["첫째", "둘째", "먼저", "다음", "마지막", "단계적", "순차적"]
             
             proc_count = sum(1 for keyword in procedure_keywords if keyword in answer_lower)
             step_count = sum(1 for word in step_indicators if word in answer_lower)
             
-            return proc_count >= 1 and (step_count >= 1 or "," in answer_lower)
+            match_found = proc_count >= 1 and (step_count >= 1 or "," in answer)
         
-        elif answer_type == "조치설명":
+        # 조치 설명이 필요한 경우
+        elif required_type == "조치설명":
             measure_keywords = ["조치", "대응", "대책", "방안", "보안", "예방", "개선", "강화", "보완"]
-            return sum(1 for keyword in measure_keywords if keyword in answer_lower) >= 2
+            match_found = sum(1 for keyword in measure_keywords if keyword in answer_lower) >= 2
         
-        elif answer_type == "법령설명":
+        # 법령 설명이 필요한 경우
+        elif required_type == "법령설명":
             law_keywords = ["법", "법령", "법률", "규정", "조항", "규칙", "기준", "근거"]
-            return sum(1 for keyword in law_keywords if keyword in answer_lower) >= 2
+            match_found = sum(1 for keyword in law_keywords if keyword in answer_lower) >= 2
         
-        elif answer_type == "정의설명":
+        # 정의 설명이 필요한 경우
+        elif required_type == "정의설명":
             definition_keywords = ["정의", "개념", "의미", "뜻", "용어", "개념"]
-            return sum(1 for keyword in definition_keywords if keyword in answer_lower) >= 1
+            match_found = sum(1 for keyword in definition_keywords if keyword in answer_lower) >= 1
         
+        # 기본적으로 통과
         else:
-            # 기본적으로 통과
+            # 최소한의 의미있는 내용이 있어야 함
             meaningful_words = ["법령", "규정", "관리", "조치", "절차", "기준", "정책", "체계", "시스템"]
-            return sum(1 for word in meaningful_words if word in answer_lower) >= 2
-    
-    def validate_answer_intent_match(self, answer: str, question: str, intent_analysis: Dict) -> bool:
-        """답변과 질문 의도 일치성 검증 (강화된 버전 사용)"""
-        return self.validate_answer_intent_match_enhanced(answer, question, intent_analysis)
+            match_found = sum(1 for word in meaningful_words if word in answer_lower) >= 2
+        
+        # 통계 업데이트
+        self.processing_stats["intent_match_accuracy"]["total"] += 1
+        if match_found:
+            self.processing_stats["intent_match_accuracy"]["correct"] += 1
+        
+        return match_found
     
     def validate_korean_answer(self, answer: str, question_type: str, max_choice: int = 5, question: str = "") -> bool:
         """한국어 답변 유효성 검증"""
@@ -968,7 +612,7 @@ class SimpleDataProcessor:
                 self.processing_stats["validation_failures"] += 1
                 return False
             
-            # 질문 의도 일치성 검증 강화
+            # 질문 의도 일치성 검증
             if question:
                 intent_analysis = self.analyze_question_intent(question)
                 if not self.validate_answer_intent_match(answer, question, intent_analysis):
@@ -988,18 +632,24 @@ class SimpleDataProcessor:
     
     def extract_choices(self, question: str) -> List[str]:
         """객관식 선택지 추출"""
-        choices_info = self.extract_choices_with_semantic_analysis(question)
+        choices = []
         
-        if choices_info["valid_choice_count"] >= 3:
-            # 번호 순서대로 정렬하여 반환
-            choice_list = []
-            for i in range(1, choices_info["max_choice_number"] + 1):
-                if str(i) in choices_info["choices"]:
-                    choice_list.append(choices_info["choices"][str(i)])
-            return choice_list
+        # 실제 데이터 패턴: "1 소비자금융업\n2 투자자문업\n3 투자매매업"
+        lines = question.split('\n')
+        for line in lines:
+            line = line.strip()
+            match = re.match(r'^(\d+)\s+(.+)', line)
+            if match:
+                choice_num = int(match.group(1))
+                choice_content = match.group(2).strip()
+                if 1 <= choice_num <= 5 and len(choice_content) > 0:
+                    choices.append(choice_content)
+        
+        # 순서 정렬 (번호 순서대로)
+        if len(choices) >= 3:
+            return choices
         
         # 폴백: 전통적인 패턴으로도 확인
-        choices = []
         if not choices:
             patterns = [
                 r'(\d+)\s+([^0-9\n]+?)(?=\d+\s+|$)',
@@ -1095,44 +745,21 @@ class SimpleDataProcessor:
     def get_processing_stats(self) -> Dict:
         """처리 통계 반환"""
         total = max(self.processing_stats["total_processed"], 1)
+        intent_total = max(self.processing_stats["intent_analysis_accuracy"]["total"], 1)
+        intent_match_total = max(self.processing_stats["intent_match_accuracy"]["total"], 1)
+        mc_total = max(self.processing_stats["mc_classification_accuracy"]["total"], 1)
         
-        # 안전한 통계 계산
-        stats = {}
-        
-        # 기본 통계
-        stats["total_processed"] = self.processing_stats["total_processed"]
-        stats["korean_compliance_rate"] = (self.processing_stats["korean_compliance"] / total) * 100
-        stats["validation_failure_rate"] = (self.processing_stats["validation_failures"] / total) * 100
-        stats["choice_count_errors"] = self.processing_stats["choice_count_errors"]
-        
-        # 의도 분석 통계
-        intent_total = max(self.processing_stats.get("intent_analysis_accuracy", {"total": 1})["total"], 1)
-        stats["intent_analysis_accuracy_rate"] = (self.processing_stats.get("intent_analysis_accuracy", {"correct": 0})["correct"] / intent_total) * 100
-        
-        # 의도 매칭 통계
-        intent_match_total = max(self.processing_stats.get("intent_match_accuracy", {"total": 1})["total"], 1)
-        stats["intent_match_accuracy_rate"] = (self.processing_stats.get("intent_match_accuracy", {"correct": 0})["correct"] / intent_match_total) * 100
-        
-        # MC 분류 통계
-        mc_total = max(self.processing_stats.get("mc_classification_accuracy", {"total": 1})["total"], 1)
-        stats["mc_classification_accuracy_rate"] = (self.processing_stats.get("mc_classification_accuracy", {"correct": 0})["correct"] / mc_total) * 100
-        
-        # 의미 분석 통계
-        semantic_total = max(self.processing_stats.get("semantic_analysis_accuracy", {"total": 1})["total"], 1)
-        stats["semantic_analysis_accuracy_rate"] = (self.processing_stats.get("semantic_analysis_accuracy", {"correct": 0})["correct"] / semantic_total) * 100
-        
-        # 선택지 추출 통계
-        choice_extract_total = max(self.processing_stats.get("choice_content_extraction", {"total": 1})["total"], 1)
-        stats["choice_content_extraction_rate"] = (self.processing_stats.get("choice_content_extraction", {"success": 0})["success"] / choice_extract_total) * 100
-        
-        # 부정형 질문 탐지 통계
-        negative_total = max(self.processing_stats.get("negative_question_detection", {"total": 1})["total"], 1)
-        stats["negative_question_detection_rate"] = (self.processing_stats.get("negative_question_detection", {"correct": 0})["correct"] / negative_total) * 100
-        
-        stats["domain_distribution"] = dict(self.processing_stats["domain_distribution"])
-        stats["question_type_accuracy"] = self.processing_stats["question_type_accuracy"]
-        
-        return stats
+        return {
+            "total_processed": self.processing_stats["total_processed"],
+            "korean_compliance_rate": (self.processing_stats["korean_compliance"] / total) * 100,
+            "validation_failure_rate": (self.processing_stats["validation_failures"] / total) * 100,
+            "choice_count_errors": self.processing_stats["choice_count_errors"],
+            "intent_analysis_accuracy_rate": (self.processing_stats["intent_analysis_accuracy"]["correct"] / intent_total) * 100,
+            "intent_match_accuracy_rate": (self.processing_stats["intent_match_accuracy"]["correct"] / intent_match_total) * 100,
+            "mc_classification_accuracy_rate": (self.processing_stats["mc_classification_accuracy"]["correct"] / mc_total) * 100,
+            "domain_distribution": dict(self.processing_stats["domain_distribution"]),
+            "question_type_accuracy": self.processing_stats["question_type_accuracy"]
+        }
     
     def get_korean_requirements(self) -> Dict:
         """한국어 요구사항 반환"""
