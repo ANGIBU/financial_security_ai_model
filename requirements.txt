@@ -1,22 +1,17 @@
 # requirements.txt
-
-# 핵심 딥러닝 프레임워크 (대회 환경 호환)
 torch==2.1.0
 transformers==4.36.0
 tokenizers==0.15.0
 accelerate==0.25.0
 safetensors==0.4.1
-
-# 데이터 처리 (필수)
 pandas==2.0.3
 numpy==1.24.3
-
-# 기본 패키지 (transformers 의존성)
 packaging==23.2
 filelock==3.13.1
 pyyaml==6.0.1
 typing-extensions==4.8.0
 regex==2023.10.3
+huggingface-hub>=0.16.4,<1.0
 
 # 설치 가이드:
 # 1. PyTorch 설치 (CUDA 11.8 지원):
