@@ -216,7 +216,7 @@ def initialize_system():
 
 
 # 자동 초기화 (모듈 import 시 실행)
-if __name__ != "__main__":                  
+if __name__ != "__main__":
     try:
         initialize_system()
     except Exception as e:

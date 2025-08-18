@@ -17,6 +17,7 @@ import random
 import pickle
 import os
 import json
+import unicodedata
 from datetime import datetime
 from typing import Dict, Optional, Tuple, List
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
@@ -59,6 +60,9 @@ class SimpleModelHandler:
         # 학습 데이터 저장
         self.learning_data = self.learning_data_structure.copy()
 
+        # 한국어 텍스트 복구 설정
+        self._setup_korean_text_recovery()
+
         # 이전 학습 데이터 로드
         self._load_learning_data()
 
@@ -66,12 +70,15 @@ class SimpleModelHandler:
             print(f"모델 로딩: {self.model_name}")
             print(f"디바이스: {self.device}")
 
-        # 토크나이저 로드
+        # 토크나이저 로드 (한국어 최적화)
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_name,
             trust_remote_code=MODEL_CONFIG["trust_remote_code"],
             use_fast=MODEL_CONFIG["use_fast_tokenizer"],
         )
+
+        # 한국어 처리 최적화
+        self._optimize_tokenizer_for_korean()
 
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -97,6 +104,144 @@ class SimpleModelHandler:
             print(
                 f"이전 학습 데이터 로드: 성공 {len(self.learning_data['successful_answers'])}개, 실패 {len(self.learning_data['failed_answers'])}개"
             )
+
+    def _setup_korean_text_recovery(self):
+        """한국어 텍스트 복구 설정"""
+        # 깨진 한국어 문자 복구 매핑
+        self.korean_recovery_mapping = {
+            # 토크나이저에서 자주 깨지는 패턴들
+            "ト": "트",
+            "リ": "리",
+            "ス": "스",
+            "ン": "은",
+            "ー": "유",
+            "ィ": "이",
+            "ウ": "우",
+            "エ": "에",
+            "オ": "오",
+            "カ": "카",
+            "キ": "키",
+            "ク": "크",
+            "ケ": "케",
+            "コ": "코",
+            "サ": "사",
+            "シ": "시",
+            "セ": "세",
+            "ソ": "소",
+            "タ": "타",
+            "チ": "치",
+            "ツ": "츠",
+            "テ": "테",
+            "ナ": "나",
+            "ニ": "니",
+            "ヌ": "누",
+            "ネ": "네",
+            "ノ": "노",
+            "ハ": "하",
+            "ヒ": "히",
+            "フ": "후",
+            "ヘ": "헤",
+            "ホ": "호",
+            "マ": "마",
+            "ミ": "미",
+            "ム": "무",
+            "メ": "메",
+            "モ": "모",
+            "ヤ": "야",
+            "ユ": "유",
+            "ヨ": "요",
+            "ラ": "라",
+            "ル": "루",
+            "レ": "레",
+            "ロ": "로",
+            "ワ": "와",
+            "ヰ": "위",
+            "ヱ": "웨",
+            "ヲ": "워",
+            # 금융 용어 특화 복구
+            "금윋": "금융",
+            "윋": "융",
+            "젂": "전",
+            "엯": "연",
+            "룐": "른",
+            "겫": "결",
+            "뷮": "분",
+            "쟈": "저",
+            "럭": "력",
+            "솟": "솔",
+            "쟣": "저",
+            "뿣": "불",
+            "뻙": "분",
+            "걗": "것",
+            "룊": "른",
+            "믝": "미",
+            "읶": "인",
+            "멈": "멈",
+            "솔": "솔",
+            "랛": "란",
+            "궗": "사",
+            "쪗": "저",
+            "롸": "로",
+            "뿞": "분",
+            "딞": "딘",
+            "쭒": "주",
+            "놟": "놓",
+            "룍": "른",
+            "쫒": "조",
+            "놔": "놔",
+            # 레지스트리 관련 복구
+            "레지스ト리": "레지스트리",
+            "レジス트": "레지스",
+            "ト리": "트리",
+            "リ": "리",
+            # 추가 복구 패턴
+            "윈도": "윈도우",
+            "네트웜": "네트워크",
+            "시스텣": "시스템",
+            "프로세": "프로세스",
+            "모니터링": "모니터링",
+            "탐지": "탐지",
+            "보안": "보안",
+            "관리": "관리",
+            "법령": "법령",
+            "규정": "규정",
+            "조치": "조치",
+            "절차": "절차",
+            "대응": "대응",
+            "방안": "방안",
+            "기관": "기관",
+            "위원회": "위원회",
+            "감독원": "감독원",
+        }
+
+        # 문장 구조 복구 패턴
+        self.sentence_fix_patterns = [
+            # 조사 복구
+            (r"([가-힣])\s+(은|는|이|가|을|를|에|의|와|과|로|으로)\s+", r"\1\2 "),
+            # 어미 복구
+            (r"([가-힣])\s+(다|요|함|니다|습니다)\s*\.", r"\1\2."),
+            # 불완전한 문장 복구
+            (r"([가-힣])\s*$", r"\1."),
+            # 중복 문장부호 제거
+            (r"\.+", "."),
+            (r"\s*\.\s*", ". "),
+            # 띄어쓰기 정규화
+            (r"\s+", " "),
+        ]
+
+    def _optimize_tokenizer_for_korean(self):
+        """토크나이저 한국어 최적화"""
+        # 한국어 처리 개선을 위한 설정
+        if hasattr(self.tokenizer, "do_lower_case"):
+            self.tokenizer.do_lower_case = False
+
+        # 한국어 정규화 비활성화 (정보 손실 방지)
+        if hasattr(self.tokenizer, "normalize"):
+            self.tokenizer.normalize = False
+
+        # 특수 토큰 추가 (필요시)
+        special_tokens = ["<korean>", "</korean>"]
+        self.tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
 
     def _load_json_configs(self):
         """JSON 설정 파일들 로드"""
@@ -235,6 +380,84 @@ class SimpleModelHandler:
             if self.verbose:
                 print(f"학습 데이터 저장 오류: {e}")
 
+    def recover_korean_text(self, text: str) -> str:
+        """한국어 텍스트 복구"""
+        if not text:
+            return ""
+
+        # 유니코드 정규화
+        text = unicodedata.normalize("NFC", text)
+
+        # 깨진 문자 복구
+        for broken, correct in self.korean_recovery_mapping.items():
+            text = text.replace(broken, correct)
+
+        # 문장 구조 복구
+        for pattern, replacement in self.sentence_fix_patterns:
+            text = re.sub(pattern, replacement, text)
+
+        # 추가 정리
+        text = re.sub(r"\s+", " ", text).strip()
+
+        return text
+
+    def enhance_korean_answer_quality(
+        self, answer: str, question: str = "", intent_analysis: Dict = None
+    ) -> str:
+        """한국어 답변 품질 향상"""
+        if not answer:
+            return ""
+
+        # 1단계: 기본 복구
+        answer = self.recover_korean_text(answer)
+
+        # 2단계: 의도별 개선
+        if intent_analysis:
+            answer_type = intent_analysis.get("answer_type_required", "설명형")
+
+            # 기관명 답변 개선
+            if answer_type == "기관명":
+                # 기관명 키워드 강화
+                institution_keywords = ["위원회", "감독원", "은행", "기관", "센터"]
+                if not any(keyword in answer for keyword in institution_keywords):
+                    if "전자금융" in question or "분쟁조정" in question:
+                        answer = "전자금융분쟁조정위원회에서 " + answer
+                    elif "개인정보" in question:
+                        answer = "개인정보보호위원회에서 " + answer
+
+            # 특징 설명 개선
+            elif answer_type == "특징설명":
+                if "특징" not in answer and "특성" not in answer:
+                    answer = "주요 특징은 " + answer
+
+            # 지표 나열 개선
+            elif answer_type == "지표나열":
+                if "지표" not in answer and "탐지" not in answer:
+                    answer = "주요 탐지 지표는 " + answer
+
+        # 3단계: 문법 및 구조 개선
+        # 불완전한 문장 보완
+        if len(answer) > 10 and not answer.endswith((".", "다", "요", "함")):
+            if answer.endswith("니"):
+                answer += "다."
+            elif answer.endswith("습"):
+                answer += "니다."
+            else:
+                answer += "."
+
+        # 4단계: 길이 조절
+        if len(answer) > 400:
+            sentences = answer.split(". ")
+            if len(sentences) > 3:
+                answer = ". ".join(sentences[:3])
+                if not answer.endswith("."):
+                    answer += "."
+
+        # 5단계: 최종 정리
+        answer = re.sub(r"\s+", " ", answer).strip()
+
+        return answer
+
     def _extract_choice_count(self, question: str) -> int:
         """질문에서 선택지 개수 추출"""
         lines = question.split("\n")
@@ -320,187 +543,173 @@ class SimpleModelHandler:
 
         return context
 
-    def _create_intent_aware_prompt(
-        self, question: str, intent_analysis: Dict, domain_hints: Dict = None
+    def _create_enhanced_korean_prompt(
+        self,
+        question: str,
+        question_type: str,
+        intent_analysis: Dict = None,
+        domain_hints: Dict = None,
     ) -> str:
-        """의도 인식 기반 프롬프트 생성"""
-        primary_intent = intent_analysis.get("primary_intent", "일반")
-        answer_type = intent_analysis.get("answer_type_required", "설명형")
+        """강화된 한국어 프롬프트 생성"""
         domain = self._detect_domain(question)
-        context_hints = intent_analysis.get("context_hints", [])
-        intent_confidence = intent_analysis.get("intent_confidence", 0.0)
 
-        # 도메인 힌트 정보 추가
+        # 기본 한국어 전용 지시
+        korean_instruction = """
+반드시 다음 규칙을 엄격히 준수하여 답변하세요:
+1. 오직 한국어로만 답변 작성
+2. 영어나 일본어, 중국어 등 외국어 절대 사용 금지
+3. 깨진 문자나 특수 기호 사용 금지
+4. 완전한 한국어 문장으로 구성
+5. 문법에 맞는 자연스러운 한국어 표현 사용
+"""
+
+        # 의도별 특화 지시
+        intent_instruction = ""
+        if intent_analysis:
+            primary_intent = intent_analysis.get("primary_intent", "일반")
+            answer_type = intent_analysis.get("answer_type_required", "설명형")
+
+            if primary_intent in self.intent_specific_prompts:
+                intent_instruction = random.choice(
+                    self.intent_specific_prompts[primary_intent]
+                )
+
+            # 답변 유형별 추가 지침
+            if answer_type == "기관명":
+                intent_instruction += (
+                    "\n구체적인 기관명과 소속을 정확한 한국어로 명시하세요."
+                )
+            elif answer_type == "특징설명":
+                intent_instruction += "\n주요 특징을 체계적으로 한국어로 나열하세요."
+            elif answer_type == "지표나열":
+                intent_instruction += "\n탐지 지표를 구체적으로 한국어로 설명하세요."
+            elif answer_type == "방안제시":
+                intent_instruction += "\n실무적 대응방안을 한국어로 제시하세요."
+
+        # 힌트 정보 추가
         hint_context = ""
         if domain_hints:
             if "template_hints" in domain_hints and domain_hints["template_hints"]:
                 hint_context += f"\n참고 정보: {domain_hints['template_hints']}"
-
             if (
                 "institution_hints" in domain_hints
                 and domain_hints["institution_hints"]
             ):
-                hint_context += f"\n기관 관련 정보: {domain_hints['institution_hints']}"
-
+                hint_context += f"\n기관 정보: {domain_hints['institution_hints']}"
             if "improvement_type" in domain_hints:
                 improvement_type = domain_hints["improvement_type"]
                 if improvement_type == "korean_ratio_low":
-                    hint_context += "\n답변 작성 시 한국어만 사용하여 작성하세요."
+                    hint_context += "\n한국어 비율을 높여 완전한 한국어로만 작성하세요."
                 elif improvement_type == "intent_mismatch":
-                    hint_context += f"\n질문의 의도({primary_intent})에 정확히 부합하는 답변을 작성하세요."
-                elif improvement_type == "quality_low":
-                    hint_context += (
-                        "\n전문적이고 구체적인 내용으로 답변 품질을 높여주세요."
-                    )
+                    hint_context += f"\n질문 의도에 정확히 부합하는 답변을 작성하세요."
 
-        # 의도별 특화 프롬프트 선택
-        if primary_intent in self.intent_specific_prompts:
-            if intent_confidence > 0.7:
-                available_prompts = self.intent_specific_prompts[primary_intent]
-                intent_instruction = random.choice(available_prompts)
-            else:
-                intent_instruction = "다음 질문에 정확하고 상세하게 답변하세요."
-        else:
-            intent_instruction = "다음 질문에 정확하고 상세하게 답변하세요."
-
-        # 답변 유형별 추가 지침
-        type_guidance = ""
-        if answer_type == "기관명":
-            type_guidance = "구체적인 기관명이나 조직명을 반드시 포함하여 답변하세요. 해당 기관의 정확한 명칭과 소속을 명시하세요."
-        elif answer_type == "특징설명":
-            type_guidance = "주요 특징과 특성을 체계적으로 나열하고 설명하세요. 각 특징의 의미와 중요성을 포함하세요."
-        elif answer_type == "지표나열":
-            type_guidance = "관찰 가능한 지표와 탐지 방법을 구체적으로 제시하세요. 각 지표의 의미와 활용방법을 설명하세요."
-        elif answer_type == "방안제시":
-            type_guidance = "실무적이고 실행 가능한 대응방안을 제시하세요. 구체적인 실행 단계와 방법을 포함하세요."
-        elif answer_type == "절차설명":
-            type_guidance = "단계별 절차를 순서대로 설명하세요. 각 단계의 내용과 주의사항을 포함하세요."
-        elif answer_type == "조치설명":
-            type_guidance = "필요한 보안조치와 대응조치를 구체적으로 설명하세요."
-        elif answer_type == "법령설명":
-            type_guidance = "관련 법령과 규정을 근거로 설명하세요. 법적 근거와 요구사항을 명시하세요."
-        elif answer_type == "정의설명":
-            type_guidance = "정확한 정의와 개념을 설명하세요. 용어의 의미와 범위를 명확히 제시하세요."
-
-        # 컨텍스트 힌트 활용
-        context_instruction = ""
-        if context_hints:
-            context_instruction = (
-                f"답변 시 다음 사항을 고려하세요: {', '.join(context_hints)}"
+        if question_type == "multiple_choice":
+            return self._create_enhanced_mc_prompt(
+                question, self._extract_choice_count(question), domain, domain_hints
             )
-
-        # 고품질 프롬프트 패턴 활용
-        if primary_intent in self.learning_data["high_quality_templates"]:
-            templates = self.learning_data["high_quality_templates"][primary_intent]
-            if templates:
-                best_template = max(templates, key=lambda x: x.get("quality", 0))
-                if best_template["quality"] > 0.8:
-                    if "answer_template" in best_template:
-                        # 템플릿을 힌트로 활용하여 새로운 프롬프트 생성
-                        hint_context += f"\n참고 답변 패턴: {best_template['answer_template'][:100]}..."
-
-        prompts = [
-            f"""금융보안 전문가로서 다음 {domain} 관련 질문에 한국어로만 정확한 답변을 작성하세요.
+        else:
+            # 주관식 프롬프트
+            prompts = [
+                f"""다음은 {domain} 분야의 금융보안 전문 질문입니다.
 
 질문: {question}
 
+{korean_instruction}
+
 {intent_instruction}
-{type_guidance}
-{context_instruction}
 {hint_context}
 
-답변 작성 시 다음 사항을 준수하세요:
-- 반드시 한국어로만 작성
-- 질문의 의도에 정확히 부합하는 내용 포함
-- 관련 법령과 규정을 근거로 구체적 내용 포함
-- 실무적이고 전문적인 관점에서 설명
+전문가 수준의 정확한 답변을 완전한 한국어로만 작성하세요:
+- 모든 전문 용어를 한국어로 표기
+- 관련 법령과 규정을 한국어로 설명
+- 체계적이고 논리적인 한국어 문장 구성
+- 완전한 문장으로 마무리
 
 답변:""",
-            f"""{domain} 전문가의 관점에서 다음 질문에 한국어로만 답변하세요.
+                f"""금융보안 전문가로서 다음 {domain} 관련 질문에 완전한 한국어로만 답변하세요.
 
 {question}
 
-질문 의도: {primary_intent.replace('_', ' ')}
-요구되는 답변 유형: {answer_type}
-신뢰도: {intent_confidence:.1f}
+{korean_instruction}
 
 {intent_instruction}
-{type_guidance}
-{context_instruction}
 {hint_context}
 
-한국어 전용 답변 작성 기준:
-- 모든 전문 용어를 한국어로 표기
-- 질문이 요구하는 정확한 내용에 집중
-- 법적 근거와 실무 절차를 한국어로 설명
+답변 작성 기준:
+- 반드시 한국어로만 작성
+- 영어나 기타 외국어 사용 절대 금지
+- 깨진 문자나 특수 기호 사용 금지
+- 전문적이고 정확한 내용
+- 완전한 문장으로 구성
 
 답변:""",
-            f"""다음은 {domain} 분야의 전문 질문입니다. 질문의 의도를 정확히 파악하여 한국어로만 상세한 답변을 제공하세요.
+                f"""다음 질문에 대해 완전한 한국어로만 전문적인 답변을 작성하세요.
 
 질문: {question}
 
-분석된 질문 의도: {primary_intent}
-{intent_instruction}
-{type_guidance}
-{context_instruction}
-{hint_context}
-
-답변 요구사항:
-- 완전한 한국어 답변
-- 질문 의도에 정확히 부합하는 내용
-- 체계적이고 구체적인 한국어 설명
-- 관련 법령과 실무 기준 포함
-
-답변:""",
-            f"""질문 분석:
-- 분야: {domain}
-- 의도: {primary_intent}
-- 답변유형: {answer_type}
-- 신뢰도: {intent_confidence:.1f}
-
-질문: {question}
-
-위 분석을 바탕으로 다음 지침에 따라 답변하세요:
+{korean_instruction}
 
 {intent_instruction}
-{type_guidance}
-{context_instruction}
 {hint_context}
 
-답변 원칙:
-- 한국어 전용 작성
-- 의도에 정확히 부합
-- 구체적이고 실무적인 내용
-- 관련 법령 근거 포함
+한국어 전용 답변 작성 원칙:
+1. 모든 내용을 한국어로만 표현
+2. 전문 용어도 한국어로 설명
+3. 법령과 규정을 한국어로 인용
+4. 자연스러운 한국어 문법 사용
+5. 완전한 문장으로 마무리
 
 답변:""",
-        ]
+            ]
 
-        # 프롬프트 효과성 기록
-        selected_prompt = random.choice(prompts)
-        prompt_id = hash(selected_prompt) % 1000
+            return random.choice(prompts)
 
-        if primary_intent not in self.learning_data["intent_prompt_effectiveness"]:
-            self.learning_data["intent_prompt_effectiveness"][primary_intent] = {}
+    def _create_enhanced_mc_prompt(
+        self,
+        question: str,
+        max_choice: int,
+        domain: str = "일반",
+        domain_hints: Dict = None,
+    ) -> str:
+        """강화된 객관식 프롬프트 생성"""
+        if max_choice <= 0:
+            max_choice = 5
 
+        context = self._analyze_mc_context(question, domain)
+        choice_range = f"1번부터 {max_choice}번 중"
+
+        # 힌트 정보 추가
+        hint_context = ""
         if (
-            prompt_id
-            not in self.learning_data["intent_prompt_effectiveness"][primary_intent]
+            domain_hints
+            and "pattern_hints" in domain_hints
+            and domain_hints["pattern_hints"]
         ):
-            self.learning_data["intent_prompt_effectiveness"][primary_intent][
-                prompt_id
-            ] = {
-                "prompt": selected_prompt,
-                "use_count": 0,
-                "success_count": 0,
-                "avg_quality": 0.0,
-            }
+            hint_context = f"\n참고 정보: {domain_hints['pattern_hints']}"
 
-        self.learning_data["intent_prompt_effectiveness"][primary_intent][prompt_id][
-            "use_count"
-        ] += 1
+        # 컨텍스트에 따른 지시사항
+        if context["is_negative"]:
+            instruction = (
+                f"다음 중 해당하지 않거나 적절하지 않은 것을 {choice_range} 선택하세요."
+            )
+        elif context["is_positive"]:
+            instruction = (
+                f"다음 중 가장 적절하거나 옳은 것을 {choice_range} 선택하세요."
+            )
+        else:
+            instruction = f"정답을 {choice_range} 선택하세요."
 
-        return selected_prompt
+        return f"""다음은 {domain} 분야의 금융보안 객관식 문제입니다.
+
+{question}
+{hint_context}
+
+{instruction}
+
+각 선택지를 신중히 검토하고 정답 번호만 답하세요.
+반드시 1부터 {max_choice}까지의 숫자 중 하나만 답하세요.
+
+정답:"""
 
     def generate_answer(
         self,
@@ -512,26 +721,19 @@ class SimpleModelHandler:
     ) -> str:
         """답변 생성 - 반드시 LLM 사용"""
 
-        # 도메인 감지
-        domain = self._detect_domain(question)
-
         # 프롬프트 생성
-        if question_type == "multiple_choice":
-            prompt = self._create_enhanced_mc_prompt(
-                question, max_choice, domain, domain_hints
-            )
-        else:
-            if intent_analysis:
-                prompt = self._create_intent_aware_prompt(
-                    question, intent_analysis, domain_hints
-                )
-            else:
-                prompt = self._create_korean_subj_prompt(question, domain, domain_hints)
+        prompt = self._create_enhanced_korean_prompt(
+            question, question_type, intent_analysis, domain_hints
+        )
 
         try:
-            # 토크나이징
+            # 토크나이징 (한국어 최적화)
             inputs = self.tokenizer(
-                prompt, return_tensors="pt", truncation=True, max_length=1500
+                prompt,
+                return_tensors="pt",
+                truncation=True,
+                max_length=1500,
+                add_special_tokens=True,
             )
 
             if self.device == "cuda":
@@ -542,59 +744,45 @@ class SimpleModelHandler:
 
             # 모델 실행
             with torch.no_grad():
-                outputs = self.model.generate(**inputs, generation_config=gen_config)
+                outputs = self.model.generate(
+                    **inputs,
+                    generation_config=gen_config,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                )
 
-            # 디코딩
+            # 디코딩 (한국어 최적화)
             response = self.tokenizer.decode(
-                outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
+                outputs[0][inputs["input_ids"].shape[1] :],
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=True,
             ).strip()
 
             # 후처리
             if question_type == "multiple_choice":
                 answer = self._process_enhanced_mc_answer(
-                    response, question, max_choice, domain
+                    response, question, max_choice
                 )
-                # 선택지 범위 검증
-                if answer and answer.isdigit() and 1 <= int(answer) <= max_choice:
-                    self._add_learning_record(
-                        question,
-                        answer,
-                        question_type,
-                        True,
-                        max_choice,
-                        1.0,
-                        intent_analysis,
-                    )
-
-                    # 도메인별 정확도 업데이트
-                    if domain in self.learning_data["mc_accuracy_by_domain"]:
-                        self.learning_data["mc_accuracy_by_domain"][domain][
-                            "correct"
-                        ] += 1
-
-                    return answer
-                else:
-                    # 범위 벗어난 경우 재시도 없이 범위 내 답변 강제 생성
-                    valid_answer = self._force_valid_mc_answer(response, max_choice)
-                    self._add_learning_record(
-                        question,
-                        valid_answer,
-                        question_type,
-                        False,
-                        max_choice,
-                        0.5,
-                        intent_analysis,
-                    )
-                    return valid_answer
+                success = answer and answer.isdigit() and 1 <= int(answer) <= max_choice
+                self._add_learning_record(
+                    question,
+                    answer,
+                    question_type,
+                    success,
+                    max_choice,
+                    1.0 if success else 0.5,
+                    intent_analysis,
+                )
+                return answer
             else:
-                answer = self._process_intent_aware_subj_answer(
+                answer = self._process_enhanced_subj_answer(
                     response, question, intent_analysis
                 )
                 korean_ratio = self._calculate_korean_ratio(answer)
                 quality_score = self._calculate_answer_quality(
                     answer, question, intent_analysis
                 )
-                success = korean_ratio > 0.7 and quality_score > 0.5
+                success = korean_ratio > 0.8 and quality_score > 0.6
 
                 self._add_learning_record(
                     question,
@@ -611,7 +799,7 @@ class SimpleModelHandler:
             if self.verbose:
                 print(f"모델 실행 오류: {e}")
             fallback = self._get_fallback_answer_with_llm(
-                question_type, question, max_choice, intent_analysis, domain
+                question_type, question, max_choice, intent_analysis
             )
             self._add_learning_record(
                 question,
@@ -624,292 +812,83 @@ class SimpleModelHandler:
             )
             return fallback
 
-    def generate_contextual_mc_answer(
-        self, question: str, max_choice: int, domain: str
+    def _process_enhanced_subj_answer(
+        self, response: str, question: str, intent_analysis: Dict = None
     ) -> str:
-        """컨텍스트 기반 객관식 답변 생성 - LLM 사용"""
-        context_hints = self._analyze_mc_context(question, domain)
+        """강화된 주관식 답변 처리"""
+        if not response:
+            return ""
 
-        # 컨텍스트 정보를 포함한 특수 프롬프트
-        prompt = self._create_contextual_mc_prompt(
-            question, max_choice, domain, context_hints
+        # 1단계: 한국어 텍스트 복구
+        response = self.recover_korean_text(response)
+
+        # 2단계: 품질 향상
+        response = self.enhance_korean_answer_quality(
+            response, question, intent_analysis
         )
 
-        try:
-            inputs = self.tokenizer(
-                prompt, return_tensors="pt", truncation=True, max_length=1000
-            )
-            if self.device == "cuda":
-                inputs = inputs.to(self.model.device)
+        # 3단계: 기본 정리
+        response = re.sub(r"\s+", " ", response).strip()
 
-            gen_config = self._get_generation_config("multiple_choice")
+        # 4단계: 불필요한 내용 제거
+        # 프롬프트 관련 내용 제거
+        response = re.sub(r"답변[:：]\s*", "", response)
+        response = re.sub(r"질문[:：].*?\n", "", response)
+        response = re.sub(r"다음.*?답변하세요[.:]\s*", "", response)
 
-            with torch.no_grad():
-                outputs = self.model.generate(**inputs, generation_config=gen_config)
+        # 5단계: 한국어 검증
+        korean_ratio = self._calculate_korean_ratio(response)
 
-            response = self.tokenizer.decode(
-                outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
-            ).strip()
+        # 6단계: 의도별 답변 검증 및 개선
+        if intent_analysis:
+            answer_type = intent_analysis.get("answer_type_required", "설명형")
 
-            answer = self._process_enhanced_mc_answer(
-                response, question, max_choice, domain
-            )
+            # 기관명이 필요한 경우
+            if answer_type == "기관명":
+                institution_keywords = ["위원회", "감독원", "은행", "기관", "센터"]
+                if not any(keyword in response for keyword in institution_keywords):
+                    # 질문 내용을 바탕으로 적절한 기관명 추가
+                    if "전자금융" in question and "분쟁" in question:
+                        response = "전자금융분쟁조정위원회에서 " + response
+                    elif "개인정보" in question:
+                        response = "개인정보보호위원회에서 " + response
+                    elif "한국은행" in question:
+                        response = "한국은행에서 " + response
 
-            if not (answer and answer.isdigit() and 1 <= int(answer) <= max_choice):
-                answer = self._force_valid_mc_answer(response, max_choice)
-
-            return answer
-
-        except Exception as e:
-            if self.verbose:
-                print(f"컨텍스트 기반 답변 생성 오류: {e}")
-            return self._force_valid_mc_answer("", max_choice)
-
-    def generate_improved_answer(
-        self,
-        question: str,
-        question_type: str,
-        max_choice: int,
-        intent_analysis: Dict,
-        improvement_hints: Dict,
-    ) -> str:
-        """개선된 답변 생성 - LLM 사용"""
-        return self.generate_answer(
-            question, question_type, max_choice, intent_analysis, improvement_hints
-        )
-
-    def generate_fallback_mc_answer(
-        self, question: str, max_choice: int, domain: str
-    ) -> str:
-        """폴백 객관식 답변 생성 - LLM 사용"""
-        return self.generate_contextual_mc_answer(question, max_choice, domain)
-
-    def generate_fallback_subjective_answer(self, question: str) -> str:
-        """폴백 주관식 답변 생성 - LLM 사용"""
-        domain = self._detect_domain(question)
-        prompt = self._create_korean_subj_prompt(
-            question, domain, {"fallback_mode": True}
-        )
-
-        try:
-            inputs = self.tokenizer(
-                prompt, return_tensors="pt", truncation=True, max_length=1000
-            )
-            if self.device == "cuda":
-                inputs = inputs.to(self.model.device)
-
-            gen_config = self._get_generation_config("subjective")
-
-            with torch.no_grad():
-                outputs = self.model.generate(**inputs, generation_config=gen_config)
-
-            response = self.tokenizer.decode(
-                outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
-            ).strip()
-
-            return self._process_intent_aware_subj_answer(response, question, None)
-
-        except Exception as e:
-            if self.verbose:
-                print(f"폴백 주관식 답변 생성 오류: {e}")
-            return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
-
-    def _create_enhanced_mc_prompt(
-        self,
-        question: str,
-        max_choice: int,
-        domain: str = "일반",
-        domain_hints: Dict = None,
-    ) -> str:
-        """객관식 프롬프트 생성"""
-        if max_choice <= 0:
-            max_choice = 5
-
-        context = self._analyze_mc_context(question, domain)
-
-        # 선택지 범위 명시
-        choice_range = (
-            "에서 ".join([str(i) for i in range(1, max_choice + 1)]) + f"번 중"
-        )
-
-        # 힌트 정보 추가
-        hint_context = ""
-        if (
-            domain_hints
-            and "pattern_hints" in domain_hints
-            and domain_hints["pattern_hints"]
-        ):
-            hint_context = f"\n참고 정보: {domain_hints['pattern_hints']}"
-
-        if domain_hints and "context_hints" in domain_hints:
-            context_info = domain_hints["context_hints"]
-            if context_info.get("is_negative"):
-                hint_context += "\n이 문제는 '해당하지 않는' 또는 '적절하지 않은' 것을 찾는 문제입니다."
-            elif context_info.get("is_positive"):
-                hint_context += "\n이 문제는 '적절한' 또는 '옳은' 것을 찾는 문제입니다."
-
-        # 컨텍스트와 도메인에 따른 프롬프트 조정
-        if context["is_negative"]:
-            if domain == "금융투자":
-                instruction = f"금융투자업의 구분에서 해당하지 않는 것을 {choice_range} 찾으세요. 소비자금융업, 투자자문업, 투자매매업, 투자중개업, 보험중개업을 신중히 검토하세요."
-            elif domain == "위험관리":
-                instruction = f"위험 관리 계획 수립 시 고려해야 할 요소 중 적절하지 않은 것을 {choice_range} 찾으세요."
-            elif domain == "정보보안":
-                instruction = f"재해 복구 계획 수립 시 고려해야 할 요소 중 옳지 않은 것을 {choice_range} 찾으세요."
-            else:
-                instruction = (
-                    f"다음 중 해당하지 않거나 옳지 않은 것을 {choice_range} 찾으세요."
-                )
-        elif context["is_positive"]:
-            if domain == "개인정보보호":
-                instruction = (
-                    f"정책 수립 단계에서 가장 중요한 요소를 {choice_range} 찾으세요."
-                )
-            elif domain == "전자금융":
-                instruction = f"한국은행이 자료제출을 요구할 수 있는 경우를 {choice_range} 찾으세요."
-            elif domain == "사이버보안":
-                instruction = (
-                    f"SBOM을 활용하는 가장 적절한 이유를 {choice_range} 찾으세요."
+        # 7단계: 최종 검증 및 보완
+        if korean_ratio < 0.7 or len(response) < 30:
+            # 기본 응답으로 대체
+            if intent_analysis and intent_analysis.get("primary_intent"):
+                response = self._generate_basic_intent_answer(
+                    intent_analysis["primary_intent"]
                 )
             else:
-                instruction = (
-                    f"다음 중 가장 적절하거나 옳은 것을 {choice_range} 찾으세요."
-                )
-        else:
-            instruction = f"정답을 {choice_range} 선택하세요."
+                response = "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
 
-        prompts = [
-            f"""다음은 {domain} 분야의 금융보안 관련 문제입니다. {instruction}
+        # 8단계: 길이 조절
+        if len(response) > 350:
+            sentences = response.split(". ")
+            response = ". ".join(sentences[:3])
+            if not response.endswith("."):
+                response += "."
 
-{question}
-{hint_context}
+        # 9단계: 마침표 확인
+        if response and not response.endswith((".", "다", "요", "함")):
+            response += "."
 
-위 문제를 신중히 분석하고, 1부터 {max_choice}까지 중 하나의 정답을 선택하세요.
-각 선택지를 꼼꼼히 검토한 후 정답 번호만 답하세요.
-
-정답:""",
-            f"""금융보안 전문가로서 다음 {domain} 문제를 해결하세요.
-
-{question}
-{hint_context}
-
-{instruction}
-선택지를 모두 검토한 후 1부터 {max_choice}번 중 정답을 선택하세요.
-번호만 답하세요.
-
-답:""",
-            f"""다음 {domain} 분야 금융보안 문제를 분석하고 정답을 선택하세요.
-
-문제: {question}
-{hint_context}
-
-{instruction}
-정답을 1부터 {max_choice}번 중 하나의 번호로만 답하세요.
-
-정답:""",
-        ]
-
-        return random.choice(prompts)
-
-    def _create_contextual_mc_prompt(
-        self, question: str, max_choice: int, domain: str, context_hints: Dict
-    ) -> str:
-        """컨텍스트 기반 객관식 프롬프트"""
-        choice_range = (
-            "에서 ".join([str(i) for i in range(1, max_choice + 1)]) + f"번 중"
-        )
-
-        context_info = ""
-        if context_hints.get("is_negative"):
-            context_info = (
-                "이 문제는 해당하지 않거나 적절하지 않은 것을 찾는 문제입니다."
-            )
-        elif context_hints.get("is_positive"):
-            context_info = "이 문제는 가장 적절하거나 옳은 것을 찾는 문제입니다."
-
-        if context_hints.get("key_terms"):
-            context_info += f" 핵심 용어: {', '.join(context_hints['key_terms'])}"
-
-        return f"""다음은 {domain} 분야의 객관식 문제입니다.
-
-{question}
-
-{context_info}
-
-문제를 신중히 분석하여 {choice_range} 정답을 선택하세요.
-반드시 번호만 답하세요.
-
-정답:"""
-
-    def _create_korean_subj_prompt(
-        self, question: str, domain: str = "일반", domain_hints: Dict = None
-    ) -> str:
-        """한국어 전용 주관식 프롬프트 생성"""
-
-        # 힌트 정보 추가
-        hint_context = ""
-        if domain_hints:
-            if "template_hints" in domain_hints and domain_hints["template_hints"]:
-                hint_context += f"\n참고 정보: {domain_hints['template_hints']}"
-
-            if "fallback_mode" in domain_hints:
-                hint_context += "\n기본적인 답변을 한국어로만 작성하세요."
-
-        prompts = [
-            f"""금융보안 전문가로서 다음 {domain} 분야 질문에 대해 한국어로만 정확한 답변을 작성하세요.
-
-질문: {question}
-{hint_context}
-
-답변 작성 시 다음 사항을 준수하세요:
-- 반드시 한국어로만 작성
-- 관련 법령과 규정을 근거로 구체적 내용 포함
-- 실무적이고 전문적인 관점에서 설명
-- 영어 용어 사용 금지
-
-답변:""",
-            f"""다음은 {domain} 분야의 전문 질문입니다. 한국어로만 상세하고 정확한 답변을 제공하세요.
-
-{question}
-{hint_context}
-
-한국어 전용 답변 작성 기준:
-- 모든 전문 용어를 한국어로 표기
-- 법적 근거와 실무 절차를 한국어로 설명
-- 영어나 외국어 사용 금지
-
-답변:""",
-            f"""{domain} 전문가의 관점에서 다음 질문에 한국어로만 답변하세요.
-
-질문: {question}
-{hint_context}
-
-답변 요구사항:
-- 완전한 한국어 답변
-- 관련 법령과 규정을 한국어로 설명
-- 체계적이고 구체적인 한국어 설명
-
-답변:""",
-        ]
-
-        return random.choice(prompts)
-
-    def _get_generation_config(self, question_type: str) -> GenerationConfig:
-        """생성 설정"""
-        config_dict = GENERATION_CONFIG[question_type].copy()
-        config_dict["pad_token_id"] = self.tokenizer.pad_token_id
-        config_dict["eos_token_id"] = self.tokenizer.eos_token_id
-
-        return GenerationConfig(**config_dict)
+        return response
 
     def _process_enhanced_mc_answer(
-        self, response: str, question: str, max_choice: int, domain: str = "일반"
+        self, response: str, question: str, max_choice: int
     ) -> str:
-        """객관식 답변 처리"""
+        """강화된 객관식 답변 처리"""
         if max_choice <= 0:
             max_choice = 5
 
-        # 숫자 추출 (선택지 범위 내에서만)
+        # 1단계: 텍스트 복구
+        response = self.recover_korean_text(response)
+
+        # 2단계: 숫자 추출 (선택지 범위 내에서만)
         numbers = re.findall(r"[1-9]", response)
         for num in numbers:
             if 1 <= int(num) <= max_choice:
@@ -919,7 +898,7 @@ class SimpleModelHandler:
                     self.mc_answer_counts[max_choice] += 1
                 return num
 
-        # 유효한 답변을 찾지 못한 경우 강제 생성
+        # 3단계: 유효한 답변을 찾지 못한 경우 강제 생성
         return self._force_valid_mc_answer(response, max_choice)
 
     def _force_valid_mc_answer(self, response: str, max_choice: int) -> str:
@@ -939,100 +918,91 @@ class SimpleModelHandler:
         # 마지막 수단: 중간값 선택
         return str((max_choice + 1) // 2)
 
-    def _process_intent_aware_subj_answer(
-        self, response: str, question: str, intent_analysis: Dict = None
+    def generate_contextual_mc_answer(
+        self, question: str, max_choice: int, domain: str
     ) -> str:
-        """의도 인식 기반 주관식 답변 처리"""
-        # 기본 정리
-        response = re.sub(r"\s+", " ", response).strip()
+        """컨텍스트 기반 객관식 답변 생성"""
+        context_hints = self._analyze_mc_context(question, domain)
+        prompt = self._create_enhanced_mc_prompt(
+            question, max_choice, domain, {"context_hints": context_hints}
+        )
 
-        # 잘못된 인코딩으로 인한 깨진 문자 제거
-        response = re.sub(r"[^\w\s가-힣.,!?()[\]\-]", " ", response)
-        response = re.sub(r"\s+", " ", response).strip()
+        try:
+            inputs = self.tokenizer(
+                prompt, return_tensors="pt", truncation=True, max_length=1000
+            )
+            if self.device == "cuda":
+                inputs = inputs.to(self.model.device)
 
-        # 한국어 비율 확인
-        korean_ratio = self._calculate_korean_ratio(response)
+            gen_config = self._get_generation_config("multiple_choice")
 
-        # 의도별 답변 검증
-        is_intent_match = True
-        if intent_analysis:
-            primary_intent = intent_analysis.get("primary_intent", "일반")
-            answer_type = intent_analysis.get("answer_type_required", "설명형")
+            with torch.no_grad():
+                outputs = self.model.generate(**inputs, generation_config=gen_config)
 
-            # 기관명이 필요한 경우 기관명 포함 여부 확인
-            if answer_type == "기관명":
-                institution_keywords = [
-                    "위원회",
-                    "감독원",
-                    "은행",
-                    "기관",
-                    "센터",
-                    "청",
-                    "부",
-                    "원",
-                    "전자금융분쟁조정위원회",
-                    "금융감독원",
-                    "개인정보보호위원회",
-                    "개인정보침해신고센터",
-                    "한국은행",
-                    "금융위원회",
-                ]
-                is_intent_match = any(
-                    keyword in response for keyword in institution_keywords
-                )
+            response = self.tokenizer.decode(
+                outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
+            ).strip()
 
-            # 특징 설명이 필요한 경우
-            elif answer_type == "특징설명":
-                feature_keywords = [
-                    "특징",
-                    "특성",
-                    "속성",
-                    "성질",
-                    "기능",
-                    "역할",
-                    "원리",
-                ]
-                is_intent_match = any(
-                    keyword in response for keyword in feature_keywords
-                )
+            answer = self._process_enhanced_mc_answer(response, question, max_choice)
 
-            # 지표 나열이 필요한 경우
-            elif answer_type == "지표나열":
-                indicator_keywords = [
-                    "지표",
-                    "신호",
-                    "징후",
-                    "패턴",
-                    "행동",
-                    "활동",
-                    "모니터링",
-                    "탐지",
-                ]
-                is_intent_match = any(
-                    keyword in response for keyword in indicator_keywords
-                )
+            if not (answer and answer.isdigit() and 1 <= int(answer) <= max_choice):
+                answer = self._force_valid_mc_answer(response, max_choice)
 
-        # 품질이 너무 낮으면 기본 응답 사용
-        if korean_ratio < 0.5 or len(response) < 20 or not is_intent_match:
-            if intent_analysis and intent_analysis.get("primary_intent"):
-                return self._generate_basic_intent_answer(
-                    intent_analysis["primary_intent"]
-                )
-            else:
-                return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+            return answer
 
-        # 길이 제한
-        if len(response) > 350:
-            sentences = response.split(". ")
-            response = ". ".join(sentences[:3])
-            if not response.endswith("."):
-                response += "."
+        except Exception as e:
+            if self.verbose:
+                print(f"컨텍스트 기반 답변 생성 오류: {e}")
+            return self._force_valid_mc_answer("", max_choice)
 
-        # 마침표 확인
-        if not response.endswith((".", "다", "요", "함")):
-            response += "."
+    def generate_improved_answer(
+        self,
+        question: str,
+        question_type: str,
+        max_choice: int,
+        intent_analysis: Dict,
+        improvement_hints: Dict,
+    ) -> str:
+        """개선된 답변 생성"""
+        return self.generate_answer(
+            question, question_type, max_choice, intent_analysis, improvement_hints
+        )
 
-        return response
+    def generate_fallback_mc_answer(
+        self, question: str, max_choice: int, domain: str
+    ) -> str:
+        """폴백 객관식 답변 생성"""
+        return self.generate_contextual_mc_answer(question, max_choice, domain)
+
+    def generate_fallback_subjective_answer(self, question: str) -> str:
+        """폴백 주관식 답변 생성"""
+        domain = self._detect_domain(question)
+        prompt = self._create_enhanced_korean_prompt(
+            question, "subjective", None, {"fallback_mode": True}
+        )
+
+        try:
+            inputs = self.tokenizer(
+                prompt, return_tensors="pt", truncation=True, max_length=1000
+            )
+            if self.device == "cuda":
+                inputs = inputs.to(self.model.device)
+
+            gen_config = self._get_generation_config("subjective")
+
+            with torch.no_grad():
+                outputs = self.model.generate(**inputs, generation_config=gen_config)
+
+            response = self.tokenizer.decode(
+                outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
+            ).strip()
+
+            return self._process_enhanced_subj_answer(response, question, None)
+
+        except Exception as e:
+            if self.verbose:
+                print(f"폴백 주관식 답변 생성 오류: {e}")
+            return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
 
     def _generate_basic_intent_answer(self, primary_intent: str) -> str:
         """기본 의도별 답변 생성"""
@@ -1042,13 +1012,70 @@ class SimpleModelHandler:
             "지표_묻기": "관련 지표와 징후를 지속적으로 모니터링하고 분석해야 합니다.",
             "방안_묻기": "체계적인 관리 방안을 수립하고 지속적인 개선활동을 수행해야 합니다.",
             "절차_묻기": "관련 법령과 규정에 따라 절차를 수립하고 체계적으로 관리해야 합니다.",
-            "조치_묣기": "적절한 보안조치와 대응조치를 마련하여 체계적으로 관리해야 합니다.",
+            "조치_묻기": "적절한 보안조치와 대응조치를 마련하여 체계적으로 관리해야 합니다.",
         }
 
         return intent_responses.get(
             primary_intent,
             "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다.",
         )
+
+    def _get_generation_config(self, question_type: str) -> GenerationConfig:
+        """생성 설정"""
+        config_dict = GENERATION_CONFIG[question_type].copy()
+        config_dict["pad_token_id"] = self.tokenizer.pad_token_id
+        config_dict["eos_token_id"] = self.tokenizer.eos_token_id
+
+        return GenerationConfig(**config_dict)
+
+    def _detect_domain(self, question: str) -> str:
+        """도메인 감지"""
+        question_lower = question.lower()
+
+        if any(
+            word in question_lower
+            for word in ["개인정보", "정보주체", "만 14세", "법정대리인"]
+        ):
+            return "개인정보보호"
+        elif any(
+            word in question_lower
+            for word in ["트로이", "악성코드", "RAT", "원격제어", "딥페이크", "SBOM"]
+        ):
+            return "사이버보안"
+        elif any(
+            word in question_lower
+            for word in ["전자금융", "전자적", "분쟁조정", "금융감독원"]
+        ):
+            return "전자금융"
+        elif any(
+            word in question_lower
+            for word in ["정보보안", "isms", "관리체계", "정책 수립"]
+        ):
+            return "정보보안"
+        elif any(
+            word in question_lower
+            for word in ["위험관리", "위험 관리", "재해복구", "위험수용"]
+        ):
+            return "위험관리"
+        elif any(
+            word in question_lower for word in ["금융투자", "투자자문", "금융투자업"]
+        ):
+            return "금융투자"
+        else:
+            return "일반"
+
+    def _calculate_korean_ratio(self, text: str) -> float:
+        """한국어 비율 계산"""
+        if not text:
+            return 0.0
+
+        korean_chars = len(re.findall(r"[가-힣]", text))
+        total_chars = len(re.sub(r"[^\w가-힣]", "", text))
+
+        if total_chars == 0:
+            return 0.0
+
+        return korean_chars / total_chars
 
     def _calculate_answer_quality(
         self, answer: str, question: str, intent_analysis: Dict = None
@@ -1059,9 +1086,9 @@ class SimpleModelHandler:
 
         score = 0.0
 
-        # 한국어 비율 (25%)
+        # 한국어 비율 (30%)
         korean_ratio = self._calculate_korean_ratio(answer)
-        score += korean_ratio * 0.25
+        score += korean_ratio * 0.3
 
         # 길이 적절성 (15%)
         length = len(answer)
@@ -1084,15 +1111,15 @@ class SimpleModelHandler:
         if found_keywords > 0:
             score += min(found_keywords / len(domain_keywords), 1.0) * 0.15
 
-        # 의도 일치성 (30%)
+        # 의도 일치성 (25%)
         if intent_analysis:
             answer_type = intent_analysis.get("answer_type_required", "설명형")
             if self._check_intent_match(answer, answer_type):
-                score += 0.3
+                score += 0.25
             else:
                 score += 0.1
         else:
-            score += 0.2
+            score += 0.15
 
         return min(score, 1.0)
 
@@ -1215,64 +1242,15 @@ class SimpleModelHandler:
         question: str = "",
         max_choice: int = 5,
         intent_analysis: Dict = None,
-        domain: str = "일반",
     ) -> str:
-        """폴백 답변 - LLM 사용"""
+        """폴백 답변 생성"""
         if question_type == "multiple_choice":
             if max_choice <= 0:
                 max_choice = 5
+            domain = self._detect_domain(question)
             return self.generate_fallback_mc_answer(question, max_choice, domain)
         else:
             return self.generate_fallback_subjective_answer(question)
-
-    def _detect_domain(self, question: str) -> str:
-        """도메인 감지"""
-        question_lower = question.lower()
-
-        if any(
-            word in question_lower
-            for word in ["개인정보", "정보주체", "만 14세", "법정대리인"]
-        ):
-            return "개인정보보호"
-        elif any(
-            word in question_lower
-            for word in ["트로이", "악성코드", "RAT", "원격제어", "딥페이크", "SBOM"]
-        ):
-            return "사이버보안"
-        elif any(
-            word in question_lower
-            for word in ["전자금융", "전자적", "분쟁조정", "금융감독원"]
-        ):
-            return "전자금융"
-        elif any(
-            word in question_lower
-            for word in ["정보보안", "isms", "관리체계", "정책 수립"]
-        ):
-            return "정보보안"
-        elif any(
-            word in question_lower
-            for word in ["위험관리", "위험 관리", "재해복구", "위험수용"]
-        ):
-            return "위험관리"
-        elif any(
-            word in question_lower for word in ["금융투자", "투자자문", "금융투자업"]
-        ):
-            return "금융투자"
-        else:
-            return "일반"
-
-    def _calculate_korean_ratio(self, text: str) -> float:
-        """한국어 비율 계산"""
-        if not text:
-            return 0.0
-
-        korean_chars = len(re.findall(r"[가-힣]", text))
-        total_chars = len(re.sub(r"[^\w가-힣]", "", text))
-
-        if total_chars == 0:
-            return 0.0
-
-        return korean_chars / total_chars
 
     def _add_learning_record(
         self,
