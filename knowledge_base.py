@@ -4,10 +4,10 @@
 금융보안 지식베이스
 - 도메인별 키워드 분류
 - 전문 용어 처리
-- 한국어 전용 답변 템플릿 제공
+- 컨텍스트 정보 제공
 - 대회 규칙 준수 검증
 - 질문 의도별 지식 제공
-- 객관식 패턴 분석 및 답변 추론 강화
+- 객관식 패턴 분석 및 컨텍스트 제공
 """
 
 import pickle
@@ -36,7 +36,7 @@ class FinancialSecurityKnowledgeBase:
         # 템플릿 품질 평가 기준 (config.py에서 로드)
         self.template_quality_criteria = TEMPLATE_QUALITY_CRITERIA
         
-        # 객관식 패턴 분석 강화를 위한 추가 데이터
+        # 객관식 패턴 분석을 위한 추가 데이터
         self._init_enhanced_mc_patterns()
         
         # 질문 분석 이력
@@ -50,8 +50,8 @@ class FinancialSecurityKnowledgeBase:
                 "technical_terms": 0
             },
             "intent_analysis_history": {},
-            "template_usage_stats": {},
-            "template_effectiveness": {},
+            "context_usage_stats": {},
+            "context_effectiveness": {},
             "mc_pattern_accuracy": {},
             "institution_question_accuracy": {},
             "semantic_pattern_effectiveness": {},
@@ -111,7 +111,7 @@ class FinancialSecurityKnowledgeBase:
         self.mc_answer_patterns = {}
     
     def _init_enhanced_mc_patterns(self):
-        """강화된 객관식 패턴 초기화"""
+        """객관식 패턴 초기화"""
         # 도메인별 세밀한 패턴 분석을 위한 키워드 맵
         self.enhanced_mc_patterns = {
             "금융투자": {
@@ -123,7 +123,7 @@ class FinancialSecurityKnowledgeBase:
                         "금융투자법_대상": ["투자자문업", "투자매매업", "투자중개업"],
                         "타법_대상": ["보험중개업", "소비자금융업"]
                     },
-                    "expected_answers": ["1", "5"],  # 소비자금융업, 보험중개업
+                    "context_hint": "금융투자업 카테고리에 속하지 않는 업무를 찾는 문제입니다",
                     "reasoning": "금융투자업 카테고리에 속하지 않는 업무 식별"
                 }
             },
@@ -136,7 +136,7 @@ class FinancialSecurityKnowledgeBase:
                         "대응전략": ["회피", "수용", "전가", "감소"],
                         "관리활동": ["모니터링", "평가", "보고"]
                     },
-                    "expected_answers": ["1"],  # 수행인력
+                    "context_hint": "계획 수립 단계에서 고려하지 않는 실행 리소스를 찾는 문제입니다",
                     "reasoning": "계획 수립 단계에서 고려하지 않는 실행 리소스 식별"
                 }
             },
@@ -148,7 +148,7 @@ class FinancialSecurityKnowledgeBase:
                         "절차요소": ["정책제개정", "자원할당", "교육계획"],
                         "운영요소": ["모니터링", "평가", "개선"]
                     },
-                    "expected_answers": ["2"],  # 경영진의 참여
+                    "context_hint": "정책 수립에서 가장 중요한 핵심 요소를 찾는 문제입니다",
                     "reasoning": "정책 수립에서 가장 중요한 핵심 요소 식별"
                 }
             },
@@ -159,7 +159,7 @@ class FinancialSecurityKnowledgeBase:
                         "법정사유": ["통화신용정책", "지급결제제도", "금융안정"],
                         "비법정사유": ["보안강화", "통계조사", "경영실적", "개인정보"]
                     },
-                    "expected_answers": ["4"],  # 통화신용정책
+                    "context_hint": "한국은행법에 따른 자료제출 요구 사유를 찾는 문제입니다",
                     "reasoning": "한국은행법에 따른 자료제출 요구 사유 식별"
                 }
             },
@@ -170,7 +170,7 @@ class FinancialSecurityKnowledgeBase:
                         "주목적": ["소프트웨어공급망보안", "투명성", "취약점관리"],
                         "부차목적": ["접근제어", "개인정보보호", "다양성"]
                     },
-                    "expected_answers": ["5"],  # 소프트웨어 공급망 보안
+                    "context_hint": "SBOM의 주요 활용 목적을 찾는 문제입니다",
                     "reasoning": "SBOM의 주요 활용 목적 식별"
                 }
             },
@@ -181,7 +181,7 @@ class FinancialSecurityKnowledgeBase:
                         "복구요소": ["복구절차", "비상연락체계", "복구목표시간"],
                         "비복구요소": ["개인정보파기", "일반업무", "성과평가"]
                     },
-                    "expected_answers": ["3"],  # 개인정보 파기 절차
+                    "context_hint": "재해복구와 관련 없는 요소를 찾는 문제입니다",
                     "reasoning": "재해복구와 관련 없는 요소 식별"
                 }
             }
@@ -218,13 +218,13 @@ class FinancialSecurityKnowledgeBase:
             pass
     
     def analyze_question_enhanced(self, question: str) -> Dict:
-        """강화된 질문 분석"""
+        """질문 분석"""
         question_lower = question.lower()
         
         # 기본 분석
         basic_analysis = self.analyze_question(question)
         
-        # 강화된 객관식 패턴 분석
+        # 객관식 패턴 분석
         enhanced_mc_analysis = self._analyze_enhanced_mc_patterns(question, basic_analysis["domain"][0] if basic_analysis["domain"] else "일반")
         
         # 선택지 의미 분석
@@ -248,11 +248,11 @@ class FinancialSecurityKnowledgeBase:
         return enhanced_analysis
     
     def _analyze_enhanced_mc_patterns(self, question: str, domain: str) -> Dict:
-        """강화된 객관식 패턴 분석"""
+        """객관식 패턴 분석"""
         pattern_analysis = {
             "matched_pattern": None,
             "pattern_confidence": 0.0,
-            "expected_answer": None,
+            "context_hint": "",
             "reasoning": "",
             "choice_analysis": {},
             "domain_specific": False
@@ -272,7 +272,7 @@ class FinancialSecurityKnowledgeBase:
             if indicator_matches >= 2:  # 최소 2개 지표 매칭
                 pattern_analysis["matched_pattern"] = pattern_name
                 pattern_analysis["pattern_confidence"] = min(indicator_matches / len(pattern_data["question_indicators"]), 1.0)
-                pattern_analysis["expected_answer"] = random.choice(pattern_data["expected_answers"])
+                pattern_analysis["context_hint"] = pattern_data["context_hint"]
                 pattern_analysis["reasoning"] = pattern_data["reasoning"]
                 pattern_analysis["choice_analysis"] = pattern_data["choice_analysis"]
                 pattern_analysis["domain_specific"] = True
@@ -287,7 +287,7 @@ class FinancialSecurityKnowledgeBase:
             "category_mapping": {},
             "outlier_detection": [],
             "semantic_confidence": 0.0,
-            "recommended_answer": None
+            "context_suggestion": ""
         }
         
         # 선택지 추출
@@ -331,16 +331,16 @@ class FinancialSecurityKnowledgeBase:
             for choice_num, category in semantic_analysis["category_mapping"].items():
                 if category in rare_categories:
                     semantic_analysis["outlier_detection"].append(choice_num)
+            
+            # 컨텍스트 제안
+            if semantic_analysis["outlier_detection"] and self._is_negative_question(question):
+                semantic_analysis["context_suggestion"] = "부정형 질문에서 다른 카테고리에 속하는 선택지가 탐지되었습니다."
         
         # 신뢰도 계산
         if semantic_analysis["category_mapping"]:
             mapped_count = len(semantic_analysis["category_mapping"])
             total_choices = len(choices)
             semantic_analysis["semantic_confidence"] = mapped_count / total_choices
-        
-        # 권장 답변 (부정형 질문에서 이상치 우선)
-        if semantic_analysis["outlier_detection"] and self._is_negative_question(question):
-            semantic_analysis["recommended_answer"] = semantic_analysis["outlier_detection"][0]
         
         return semantic_analysis
     
@@ -351,7 +351,8 @@ class FinancialSecurityKnowledgeBase:
             "negative_type": None,
             "target_concept": None,
             "exclusion_logic": None,
-            "confidence": 0.0
+            "confidence": 0.0,
+            "context_guidance": ""
         }
         
         question_lower = question.lower()
@@ -371,6 +372,7 @@ class FinancialSecurityKnowledgeBase:
                 negative_analysis["negative_type"] = pattern_name
                 negative_analysis["exclusion_logic"] = exclusion_type
                 negative_analysis["confidence"] = 0.8
+                negative_analysis["context_guidance"] = f"{exclusion_type}를 찾는 부정형 질문입니다"
                 break
         
         # 대상 개념 식별
@@ -394,7 +396,7 @@ class FinancialSecurityKnowledgeBase:
         if basic_analysis.get("complexity", 0) > 0.5:
             confidence_scores.append(0.7)
         
-        # 강화된 MC 패턴 신뢰도
+        # 패턴 신뢰도
         if enhanced_mc.get("pattern_confidence", 0) > 0:
             confidence_scores.append(enhanced_mc["pattern_confidence"])
         
@@ -431,11 +433,11 @@ class FinancialSecurityKnowledgeBase:
         return any(re.search(indicator, question_lower) for indicator in negative_indicators)
     
     def _add_to_enhanced_analysis_history(self, question: str, analysis: Dict):
-        """강화된 분석 이력에 추가"""
+        """분석 이력에 추가"""
         # 기존 이력 추가 로직
         self._add_to_analysis_history(question, analysis)
         
-        # 강화된 패턴 효과성 기록
+        # 패턴 효과성 기록
         if analysis.get("enhanced_mc_pattern", {}).get("matched_pattern"):
             pattern_name = analysis["enhanced_mc_pattern"]["matched_pattern"]
             if pattern_name not in self.analysis_history["semantic_pattern_effectiveness"]:
@@ -497,62 +499,88 @@ class FinancialSecurityKnowledgeBase:
             if target_concept:
                 pattern_data["target_concepts"][target_concept] = pattern_data["target_concepts"].get(target_concept, 0) + 1
     
-    def get_enhanced_mc_answer(self, question: str) -> Dict:
-        """강화된 객관식 답변 생성"""
-        analysis = self.analyze_question_enhanced(question)
+    def get_institutional_context(self, institution_type: str) -> str:
+        """기관별 컨텍스트 정보 제공 (답변 직접 반환 대신)"""
         
-        answer_info = {
-            "answer": None,
-            "confidence": 0.0,
-            "reasoning": "",
-            "method": "unknown"
+        if institution_type in self.institution_database:
+            info = self.institution_database[institution_type]
+            
+            # 컨텍스트 정보 구성 (직접 답변이 아닌 참고 정보)
+            context_parts = []
+            
+            if "기관명" in info:
+                context_parts.append(f"담당 기관: {info['기관명']}")
+            
+            if "소속" in info:
+                context_parts.append(f"소속: {info['소속']}")
+            
+            if "역할" in info:
+                context_parts.append(f"역할: {info['역할']}")
+            
+            if "근거법" in info:
+                context_parts.append(f"근거법: {info['근거법']}")
+            
+            return " / ".join(context_parts)
+        
+        # 기본 컨텍스트
+        return "해당 분야의 전문 기관에서 업무를 담당합니다"
+    
+    def get_domain_context(self, domain: str, intent_type: str = "일반") -> str:
+        """도메인별 컨텍스트 정보 제공"""
+        
+        # 컨텍스트 사용 통계 업데이트
+        context_key = f"{domain}_{intent_type}"
+        if context_key not in self.analysis_history["context_usage_stats"]:
+            self.analysis_history["context_usage_stats"][context_key] = 0
+        self.analysis_history["context_usage_stats"][context_key] += 1
+        
+        # 도메인별 참고 정보 구성
+        context_parts = []
+        
+        # 도메인 키워드 정보
+        if domain in self.domain_keywords:
+            keywords = self.domain_keywords[domain][:5]  # 상위 5개 키워드만
+            context_parts.append(f"주요 키워드: {', '.join(keywords)}")
+        
+        # 한국어 전문 용어 정보
+        domain_terms = [term for term in self.korean_financial_terms.keys() 
+                       if any(keyword in term for keyword in self.domain_keywords.get(domain, []))][:3]
+        if domain_terms:
+            context_parts.append(f"전문 용어: {', '.join(domain_terms)}")
+        
+        # 의도별 지침
+        intent_guidance_map = {
+            "기관_묻기": "구체적인 기관명과 소속을 포함하여 답변하세요",
+            "특징_묻기": "주요 특징과 특성을 체계적으로 설명하세요",
+            "지표_묻기": "관찰 가능한 지표와 탐지 방법을 제시하세요",
+            "방안_묻기": "실무적이고 실행 가능한 방안을 제시하세요",
+            "절차_묻기": "단계별 절차를 순서대로 설명하세요",
+            "조치_묻기": "필요한 보안조치와 대응조치를 설명하세요"
         }
         
-        # 1순위: 강화된 패턴 매칭
-        enhanced_mc = analysis.get("enhanced_mc_pattern", {})
-        if enhanced_mc.get("expected_answer") and enhanced_mc.get("pattern_confidence", 0) > 0.6:
-            answer_info["answer"] = enhanced_mc["expected_answer"]
-            answer_info["confidence"] = enhanced_mc["pattern_confidence"]
-            answer_info["reasoning"] = enhanced_mc["reasoning"]
-            answer_info["method"] = "enhanced_pattern_matching"
-            return answer_info
+        if intent_type in intent_guidance_map:
+            context_parts.append(intent_guidance_map[intent_type])
         
-        # 2순위: 의미 분석 기반
-        semantic_analysis = analysis.get("choice_semantic_analysis", {})
-        if semantic_analysis.get("recommended_answer") and semantic_analysis.get("semantic_confidence", 0) > 0.5:
-            answer_info["answer"] = semantic_analysis["recommended_answer"]
-            answer_info["confidence"] = semantic_analysis["semantic_confidence"]
-            answer_info["reasoning"] = "의미 분석을 통한 이상치 탐지"
-            answer_info["method"] = "semantic_analysis"
-            return answer_info
+        return " / ".join(context_parts) if context_parts else "관련 법령과 규정에 따라 답변하세요"
+    
+    def get_mc_pattern_context(self, question: str) -> str:
+        """객관식 패턴 기반 컨텍스트 제공 (답변 직접 반환 대신)"""
         
-        # 3순위: 기존 패턴 매칭
-        mc_pattern_info = analysis.get("mc_pattern_info", {})
-        if mc_pattern_info.get("likely_answer") and mc_pattern_info.get("confidence", 0) > 0.3:
-            answer_info["answer"] = mc_pattern_info["likely_answer"]
-            answer_info["confidence"] = mc_pattern_info["confidence"]
-            answer_info["reasoning"] = "기존 패턴 매칭"
-            answer_info["method"] = "basic_pattern_matching"
-            return answer_info
+        question_lower = question.lower()
+        context_info = []
         
-        # 4순위: 부정형 질문 로직
-        negative_analysis = analysis.get("negative_analysis", {})
-        if negative_analysis.get("is_negative") and negative_analysis.get("confidence", 0) > 0.5:
-            # 부정형 질문에서는 첫 번째나 마지막 선택지가 답일 가능성 높음
-            domain = analysis["domain"][0] if analysis["domain"] else "일반"
-            if domain == "금융투자":
-                answer_info["answer"] = random.choice(["1", "5"])
-            elif domain == "위험관리":
-                answer_info["answer"] = "1"
-            else:
-                answer_info["answer"] = "1"
+        # 실제 데이터 패턴 매칭
+        for pattern_key, pattern_data in self.mc_answer_patterns.items():
+            keyword_matches = sum(1 for keyword in pattern_data["question_keywords"] 
+                                if keyword in question_lower)
             
-            answer_info["confidence"] = 0.4
-            answer_info["reasoning"] = f"부정형 질문 로직: {negative_analysis['exclusion_logic']}"
-            answer_info["method"] = "negative_question_logic"
-            return answer_info
+            if keyword_matches >= 2:
+                context_info.append(f"문제 유형: {pattern_key}")
+                if "explanation" in pattern_data:
+                    context_info.append(f"참고: {pattern_data['explanation']}")
+                break
         
-        return answer_info
+        return " / ".join(context_info) if context_info else ""
     
     def analyze_question(self, question: str) -> Dict:
         """질문 분석 (기존 로직 유지)"""
@@ -621,7 +649,7 @@ class FinancialSecurityKnowledgeBase:
         pattern_info = {
             "is_mc_question": False,
             "pattern_type": None,
-            "likely_answer": None,
+            "context_hint": None,
             "confidence": 0.0,
             "pattern_key": None
         }
@@ -634,7 +662,7 @@ class FinancialSecurityKnowledgeBase:
             if keyword_matches >= 2:
                 pattern_info["is_mc_question"] = True
                 pattern_info["pattern_type"] = pattern_key
-                pattern_info["likely_answer"] = pattern_data["correct_answer"]
+                pattern_info["context_hint"] = pattern_data.get("explanation", "")
                 pattern_info["confidence"] = keyword_matches / len(pattern_data["question_keywords"])
                 pattern_info["pattern_key"] = pattern_key
                 break
@@ -650,7 +678,8 @@ class FinancialSecurityKnowledgeBase:
             "institution_type": None,
             "relevant_institution": None,
             "confidence": 0.0,
-            "question_pattern": None
+            "question_pattern": None,
+            "context_hint": ""
         }
         
         # 기관 질문 패턴 확인
@@ -675,6 +704,7 @@ class FinancialSecurityKnowledgeBase:
             institution_info["is_institution_question"] = True
             institution_info["confidence"] = min(pattern_matches / 2, 1.0)
             institution_info["question_pattern"] = matched_pattern
+            institution_info["context_hint"] = "기관명을 포함한 답변이 필요합니다"
             
             # 분야별 기관 확인
             for institution_key, institution_data in self.institution_database.items():
@@ -811,184 +841,6 @@ class FinancialSecurityKnowledgeBase:
         
         self.analysis_history["question_patterns"].append(pattern)
     
-    def get_korean_subjective_template(self, domain: str, intent_type: str = "일반") -> str:
-        """한국어 주관식 답변 템플릿 반환"""
-        
-        # 템플릿 사용 통계 업데이트
-        template_key = f"{domain}_{intent_type}"
-        if template_key not in self.analysis_history["template_usage_stats"]:
-            self.analysis_history["template_usage_stats"][template_key] = 0
-        self.analysis_history["template_usage_stats"][template_key] += 1
-        
-        # 도메인과 의도에 맞는 템플릿 선택
-        if domain in self.korean_subjective_templates:
-            domain_templates = self.korean_subjective_templates[domain]
-            
-            # 의도별 템플릿이 있는지 확인
-            if isinstance(domain_templates, dict):
-                if intent_type in domain_templates:
-                    templates = domain_templates[intent_type]
-                elif "일반" in domain_templates:
-                    templates = domain_templates["일반"]
-                else:
-                    # dict의 첫 번째 값 사용
-                    templates = list(domain_templates.values())[0]
-            else:
-                templates = domain_templates
-        else:
-            # 일반 템플릿 사용
-            if "일반" in self.korean_subjective_templates:
-                templates = self.korean_subjective_templates["일반"]["일반"]
-            else:
-                templates = ["관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."]
-        
-        # 품질 기반 템플릿 선택
-        if isinstance(templates, list) and len(templates) > 1:
-            # 템플릿 품질 평가 후 선택
-            quality_scores = []
-            for template in templates:
-                quality = self._evaluate_template_quality(template, intent_type)
-                quality_scores.append((template, quality))
-            
-            # 상위 품질 템플릿 중에서 선택
-            quality_scores.sort(key=lambda x: x[1], reverse=True)
-            top_templates = [t for t, q in quality_scores[:3]]
-            selected_template = random.choice(top_templates)
-        else:
-            selected_template = random.choice(templates) if isinstance(templates, list) else templates
-        
-        # 한국어 전용 검증
-        import re
-        selected_template = re.sub(r'[a-zA-Z]+', '', selected_template)
-        selected_template = re.sub(r'\s+', ' ', selected_template).strip()
-        
-        # 템플릿 효과성 기록
-        if template_key not in self.analysis_history["template_effectiveness"]:
-            self.analysis_history["template_effectiveness"][template_key] = {
-                "usage_count": 0,
-                "avg_length": 0,
-                "korean_ratio": 0
-            }
-        
-        effectiveness = self.analysis_history["template_effectiveness"][template_key]
-        effectiveness["usage_count"] += 1
-        effectiveness["avg_length"] = (effectiveness["avg_length"] * (effectiveness["usage_count"] - 1) + len(selected_template)) / effectiveness["usage_count"]
-        
-        korean_chars = len(re.findall(r'[가-힣]', selected_template))
-        total_chars = len(re.sub(r'[^\w가-힣]', '', selected_template))
-        korean_ratio = korean_chars / total_chars if total_chars > 0 else 0
-        effectiveness["korean_ratio"] = (effectiveness["korean_ratio"] * (effectiveness["usage_count"] - 1) + korean_ratio) / effectiveness["usage_count"]
-        
-        return selected_template
-    
-    def _evaluate_template_quality(self, template: str, intent_type: str) -> float:
-        """템플릿 품질 평가"""
-        score = 0.0
-        
-        # 길이 적절성 (25%)
-        length = len(template)
-        min_len, max_len = self.template_quality_criteria["length_range"]
-        if min_len <= length <= max_len:
-            score += 0.25
-        elif length < min_len:
-            score += (length / min_len) * 0.25
-        else:
-            score += (max_len / length) * 0.25
-        
-        # 한국어 비율 (25%)
-        korean_chars = len(re.findall(r'[가-힣]', template))
-        total_chars = len(re.sub(r'[^\w가-힣]', '', template))
-        korean_ratio = korean_chars / total_chars if total_chars > 0 else 0
-        
-        if korean_ratio >= self.template_quality_criteria["korean_ratio_min"]:
-            score += 0.25
-        else:
-            score += korean_ratio * 0.25
-        
-        # 구조적 키워드 포함 (25%)
-        structure_keywords = self.template_quality_criteria["structure_keywords"]
-        found_structure = sum(1 for keyword in structure_keywords if keyword in template)
-        score += min(found_structure / len(structure_keywords), 1.0) * 0.25
-        
-        # 의도별 키워드 포함 (25%)
-        if intent_type in self.template_quality_criteria["intent_keywords"]:
-            intent_keywords = self.template_quality_criteria["intent_keywords"][intent_type]
-            found_intent = sum(1 for keyword in intent_keywords if keyword in template)
-            score += min(found_intent / len(intent_keywords), 1.0) * 0.25
-        else:
-            score += 0.15
-        
-        return min(score, 1.0)
-    
-    def get_institution_specific_answer(self, institution_type: str) -> str:
-        """기관별 구체적 답변 반환"""
-        if institution_type in self.institution_database:
-            info = self.institution_database[institution_type]
-            
-            if institution_type == "전자금융분쟁조정":
-                return f"{info['기관명']}에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 {info['소속']} 내에 설치되어 운영되며, {info['근거법']}에 따라 이용자의 분쟁조정 신청을 접수하고 처리합니다. {info['상세정보']}"
-            
-            elif institution_type == "개인정보보호":
-                return f"{info['기관명']}이 개인정보 보호에 관한 업무를 총괄하며, {info['신고기관']}에서 신고 접수 및 상담 업무를 담당합니다. 이는 {info['근거법']}에 근거하여 운영되며, {info['상세정보']}"
-            
-            elif institution_type == "금융투자분쟁조정":
-                return f"{info['기관명']}에서 금융투자 관련 분쟁조정 업무를 담당하며, {info['소속']} 내에 설치되어 {info['근거법']}에 따라 운영됩니다. {info['상세정보']}"
-            
-            elif institution_type == "한국은행":
-                return f"{info['기관명']}이 {info['역할']}을 수행하며, {info['상세정보']}"
-        
-        # 기본 답변
-        return "관련 법령에 따라 해당 분야의 전문 기관에서 업무를 담당하고 있습니다."
-    
-    def get_mc_pattern_answer(self, question: str) -> str:
-        """객관식 패턴 기반 답변 반환 (강화된 버전 사용)"""
-        enhanced_answer_info = self.get_enhanced_mc_answer(question)
-        
-        if enhanced_answer_info["answer"] and enhanced_answer_info["confidence"] > 0.3:
-            return enhanced_answer_info["answer"]
-        
-        return None
-    
-    def get_subjective_template(self, domain: str, intent_type: str = "일반") -> str:
-        """주관식 답변 템플릿 반환"""
-        return self.get_korean_subjective_template(domain, intent_type)
-    
-    def _calculate_complexity(self, question: str) -> float:
-        """질문 복잡도 계산"""
-        # 길이 기반 복잡도
-        length_factor = min(len(question) / 200, 1.0)
-        
-        # 한국어 전문 용어 개수
-        korean_term_count = sum(1 for term in self.korean_financial_terms.keys() 
-                               if term in question)
-        term_factor = min(korean_term_count / 3, 1.0)
-        
-        # 도메인 개수
-        domain_count = sum(1 for keywords in self.domain_keywords.values() 
-                          if any(keyword in question.lower() for keyword in keywords))
-        domain_factor = min(domain_count / 2, 1.0)
-        
-        return (length_factor + term_factor + domain_factor) / 3
-    
-    def _find_korean_technical_terms(self, question: str) -> List[str]:
-        """한국어 전문 용어 찾기"""
-        found_terms = []
-        
-        for term in self.korean_financial_terms.keys():
-            if term in question:
-                found_terms.append(term)
-        
-        return found_terms
-    
-    def _determine_technical_level(self, complexity: float, korean_terms: List[str]) -> str:
-        """기술 수준 결정"""
-        if complexity > 0.7 or len(korean_terms) >= 2:
-            return "고급"
-        elif complexity > 0.4 or len(korean_terms) >= 1:
-            return "중급"
-        else:
-            return "초급"
-    
     def get_domain_specific_guidance(self, domain: str) -> Dict:
         """도메인별 지침 반환"""
         guidance = {
@@ -1065,8 +917,8 @@ class FinancialSecurityKnowledgeBase:
             "complexity_distribution": dict(self.analysis_history["complexity_distribution"]),
             "compliance_check": dict(self.analysis_history["compliance_check"]),
             "intent_analysis_history": dict(self.analysis_history["intent_analysis_history"]),
-            "template_usage_stats": dict(self.analysis_history["template_usage_stats"]),
-            "template_effectiveness": dict(self.analysis_history["template_effectiveness"]),
+            "context_usage_stats": dict(self.analysis_history["context_usage_stats"]),
+            "context_effectiveness": dict(self.analysis_history["context_effectiveness"]),
             "mc_pattern_accuracy": dict(self.analysis_history["mc_pattern_accuracy"]),
             "institution_question_accuracy": dict(self.analysis_history["institution_question_accuracy"]),
             "semantic_pattern_effectiveness": dict(self.analysis_history["semantic_pattern_effectiveness"]),
@@ -1076,7 +928,7 @@ class FinancialSecurityKnowledgeBase:
             "total_analyzed": len(self.analysis_history["question_patterns"]),
             "korean_terms_available": len(self.korean_financial_terms),
             "institutions_available": len(self.institution_database),
-            "template_domains": len(self.korean_subjective_templates),
+            "context_domains": len(self.korean_subjective_templates),
             "mc_patterns_available": len(self.mc_answer_patterns),
             "enhanced_patterns_available": len(self.enhanced_mc_patterns)
         }
@@ -1111,20 +963,41 @@ class FinancialSecurityKnowledgeBase:
         
         return compliance
     
-    def get_high_quality_template(self, domain: str, intent_type: str, min_quality: float = 0.8) -> str:
-        """고품질 템플릿 반환"""
-        template_key = f"{domain}_{intent_type}"
+    def _calculate_complexity(self, question: str) -> float:
+        """질문 복잡도 계산"""
+        # 길이 기반 복잡도
+        length_factor = min(len(question) / 200, 1.0)
         
-        # 효과성이 검증된 템플릿 우선 사용
-        if template_key in self.analysis_history["template_effectiveness"]:
-            effectiveness = self.analysis_history["template_effectiveness"][template_key]
-            if (effectiveness["korean_ratio"] >= min_quality and 
-                effectiveness["usage_count"] >= 5):
-                # 검증된 고품질 템플릿 사용
-                return self.get_korean_subjective_template(domain, intent_type)
+        # 한국어 전문 용어 개수
+        korean_term_count = sum(1 for term in self.korean_financial_terms.keys() 
+                               if term in question)
+        term_factor = min(korean_term_count / 3, 1.0)
         
-        # 기본 템플릿 반환
-        return self.get_korean_subjective_template(domain, intent_type)
+        # 도메인 개수
+        domain_count = sum(1 for keywords in self.domain_keywords.values() 
+                          if any(keyword in question.lower() for keyword in keywords))
+        domain_factor = min(domain_count / 2, 1.0)
+        
+        return (length_factor + term_factor + domain_factor) / 3
+    
+    def _find_korean_technical_terms(self, question: str) -> List[str]:
+        """한국어 전문 용어 찾기"""
+        found_terms = []
+        
+        for term in self.korean_financial_terms.keys():
+            if term in question:
+                found_terms.append(term)
+        
+        return found_terms
+    
+    def _determine_technical_level(self, complexity: float, korean_terms: List[str]) -> str:
+        """기술 수준 결정"""
+        if complexity > 0.7 or len(korean_terms) >= 2:
+            return "고급"
+        elif complexity > 0.4 or len(korean_terms) >= 1:
+            return "중급"
+        else:
+            return "초급"
     
     def cleanup(self):
         """정리"""
