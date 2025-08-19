@@ -280,26 +280,29 @@ def select_test_size():
     print("\n테스트할 문항 수를 선택하세요:")
 
     test_options = TEST_CONFIG["test_sizes"]
-    print(f"1. {test_options['quick']}문항 (빠른 테스트)")
-    print(f"2. {test_options['basic']}문항 (기본 테스트)")
-    print(f"3. {test_options['detailed']}문항 (정밀 테스트)")
-    print(f"4. {test_options['full']}문항 (전체 테스트)")
+    print(f"1. {test_options['mini']}문항 (미니 테스트)")
+    print(f"2. {test_options['quick']}문항 (빠른 테스트)")
+    print(f"3. {test_options['basic']}문항 (기본 테스트)")
+    print(f"4. {test_options['detailed']}문항 (정밀 테스트)")
+    print(f"5. {test_options['full']}문항 (전체 테스트)")
     print()
 
     while True:
         try:
-            choice = input("선택 (1-4): ").strip()
+            choice = input("선택 (1-5): ").strip()
 
             if choice == "1":
-                return test_options["quick"]
+                return test_options["mini"]
             elif choice == "2":
-                return test_options["basic"]
+                return test_options["quick"]
             elif choice == "3":
-                return test_options["detailed"]
+                return test_options["basic"]
             elif choice == "4":
+                return test_options["detailed"]
+            elif choice == "5":
                 return test_options["full"]
             else:
-                print("잘못된 선택입니다. 1, 2, 3, 4 중 하나를 입력하세요.")
+                print("잘못된 선택입니다. 1, 2, 3, 4, 5 중 하나를 입력하세요.")
 
         except KeyboardInterrupt:
             print("\n프로그램을 종료합니다.")
