@@ -149,7 +149,7 @@ TEMPLATE_QUALITY_CRITERIA = {
 
 # === 테스트 설정 ===
 TEST_CONFIG = {
-    "test_sizes": {"mini": 7, "quick": 10, "basic": 50, "detailed": 100, "full": 515},
+    "test_sizes": {"mini": 7, "basic": 50, "detailed": 100},
     "default_test_size": 50,
 }
 
