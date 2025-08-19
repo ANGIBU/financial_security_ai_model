@@ -39,455 +39,8 @@ class SimpleDataProcessor:
         # 처리 통계
         self.processing_stats = self.processing_stats_structure.copy()
 
-        # 한국어 문자 복구 매핑
-        self._setup_korean_character_mapping()
-
         # 이전 처리 기록 로드
         self._load_processing_history()
-
-    def _setup_korean_character_mapping(self):
-        """한국어 문자 복구 매핑 설정"""
-        self.broken_char_mapping = {
-            # 흔히 깨지는 한국어 문자들 복구
-            "ト": "트",
-            "リ": "리",
-            "ス": "스",
-            "ン": "은",
-            "ー": "유",
-            "ィ": "이",
-            "ウ": "우",
-            "エ": "에",
-            "オ": "오",
-            "カ": "카",
-            "キ": "키",
-            "ク": "크",
-            "ケ": "케",
-            "コ": "코",
-            "サ": "사",
-            "シ": "시",
-            "ス": "스",
-            "セ": "세",
-            "ソ": "소",
-            "タ": "타",
-            "チ": "치",
-            "ツ": "츠",
-            "テ": "테",
-            "ト": "토",
-            "ナ": "나",
-            "ニ": "니",
-            "ヌ": "누",
-            "ネ": "네",
-            "ノ": "노",
-            "ハ": "하",
-            "ヒ": "히",
-            "フ": "후",
-            "ヘ": "헤",
-            "ホ": "호",
-            "マ": "마",
-            "ミ": "미",
-            "ム": "무",
-            "メ": "메",
-            "モ": "모",
-            "ヤ": "야",
-            "ユ": "유",
-            "ヨ": "요",
-            "ラ": "라",
-            "リ": "리",
-            "ル": "루",
-            "レ": "레",
-            "ロ": "로",
-            "ワ": "와",
-            "ヰ": "위",
-            "ヱ": "웨",
-            "ヲ": "워",
-            "ン": "은",
-            # 자주 깨지는 패턴들
-            "윋": "융",
-            "윕": "웁",
-            "윗": "웃",
-            "윘": "웨",
-            "윙": "웅",
-            "윚": "워",
-            "윛": "웠",
-            "윜": "웬",
-            "윝": "웰",
-            "윞": "웸",
-            "윟": "웹",
-            "유": "웽",
-            "육": "위",
-            "윢": "윅",
-            "윣": "윈",
-            "윤": "윤",
-            "윥": "율",
-            "윦": "윰",
-            "윧": "윱",
-            "율": "윳",
-            "윩": "융",
-            "윪": "윷",
-            "윫": "으",
-            "윬": "은",
-            "윭": "을",
-            "윮": "음",
-            "윯": "읍",
-            "윰": "응",
-            "윱": "의",
-            "윲": "이",
-            "윳": "익",
-            "윴": "인",
-            "융": "일",
-            "윶": "임",
-            "윷": "입",
-            "윸": "잇",
-            "윹": "잉",
-            "윺": "잎",
-            "윻": "자",
-            "으": "작",
-            "윽": "잔",
-            "윾": "잠",
-            "윿": "잡",
-            "융": "융",
-            "읶": "인",
-            "럭": "력",
-            "럼": "럼",
-            "업": "업",
-            "뗴": "떼",
-            "궗": "고",
-            "뿉": "분",
-            "갞": "같",
-            "궤": "권",
-            "똴": "된",
-            "벁": "법",
-            "샙": "사",
-            "엸": "에",
-            "룐": "른",
-            "력": "력",
-            "뎝": "든",
-            "훤": "훤",
-            "쐞": "쉬",
-            "쟣": "저",
-            "슢": "시",
-            "럇": "러",
-            "럳": "럴",
-            "뜰": "뜰",
-            "뿔": "뿔",
-            "똘": "똘",
-            "쓸": "쓸",
-            "꺼": "거",
-            "뜨": "뜨",
-            "써": "써",
-            "띠": "띠",
-            "뿌": "뿌",
-            "꼬": "고",
-            "뽀": "보",
-            "까": "가",
-            "빠": "바",
-            "싸": "사",
-            "짜": "자",
-            "쨰": "째",
-            "쪄": "저",
-            "껴": "겨",
-            "쩌": "저",
-            "쪽": "쪽",
-            "찌": "찌",
-            "께": "게",
-            "쪙": "정",
-            "ㄱ": "ㄱ",
-            "ㄴ": "ㄴ",
-            "ㄷ": "ㄷ",
-            "ㄹ": "ㄹ",
-            "ㅁ": "ㅁ",
-            "ㅂ": "ㅂ",
-            "ㅅ": "ㅅ",
-            "ㅇ": "ㅇ",
-            "ㅈ": "ㅈ",
-            "ㅊ": "ㅊ",
-            "ㅋ": "ㅋ",
-            "ㅌ": "ㅌ",
-            "ㅍ": "ㅍ",
-            "ㅎ": "ㅎ",
-        }
-
-        # 금융 용어 복구 매핑
-        self.financial_term_mapping = {
-            "금윋": "금융",
-            "윋": "융",
-            "젂": "전",
-            "엯": "연",
-            "룐": "른",
-            "겫": "결",
-            "뷮": "분",
-            "쟈": "저",
-            "럭": "력",
-            "솟": "솔",
-            "쟣": "저",
-            "뿣": "불",
-            "뻙": "분",
-            "걗": "것",
-            "룊": "른",
-            "믝": "미",
-            "읶": "인",
-            "멈": "멈",
-            "솔": "솔",
-            "랛": "란",
-            "궗": "사",
-            "쪗": "저",
-            "롸": "로",
-            "뿞": "분",
-            "딞": "딘",
-            "쭒": "주",
-            "놟": "놓",
-            "룍": "른",
-            "쫒": "조",
-            "놔": "놔",
-            "쓸": "쓸",
-            "놨": "놨",
-            "눔": "놈",
-            "뽑": "뽑",
-            "롭": "롭",
-            "냅": "납",
-            "뚫": "뚫",
-            "챙": "챙",
-            "뽑": "뽑",
-            "봊": "봄",
-            "빽": "백",
-            "펴": "펴",
-            "팰": "팬",
-            "쳅": "쳐",
-            "댄": "댄",
-            "댤": "댤",
-            "뎃": "데",
-            "뎝": "든",
-            "덬": "덴",
-            "덺": "덴",
-            "뗄": "떨",
-            "뗻": "던",
-            "뗴": "떼",
-            "뚜": "뚜",
-            "뛰": "뛰",
-            "뛸": "뛸",
-            "뜨": "뜨",
-            "뜰": "뜰",
-            "뜻": "뜻",
-            "뜸": "뜸",
-            "뜹": "떱",
-            "뜻": "뜻",
-            "뜽": "뜽",
-            "띠": "띠",
-            "띤": "띤",
-            "띨": "띨",
-            "띰": "띰",
-            "띱": "띱",
-            "띳": "띳",
-            "띵": "띵",
-            "띻": "띻",
-            "라": "라",
-            "락": "락",
-            "란": "란",
-            "랄": "랄",
-            "람": "람",
-            "랍": "랍",
-            "랏": "랏",
-            "랑": "랑",
-            "랗": "랗",
-            "래": "래",
-            "랙": "랙",
-            "랜": "랜",
-            "랠": "랠",
-            "램": "램",
-            "랩": "랩",
-            "랫": "랫",
-            "랭": "랭",
-            "랯": "랯",
-            "량": "량",
-            "럇": "러",
-            "럌": "런",
-            "럏": "럽",
-            "럐": "런",
-            "럗": "럴",
-            "럙": "럭",
-            "럜": "럼",
-            "럝": "럽",
-            "럟": "럿",
-            "럠": "령",
-            "럡": "력",
-            "럣": "로",
-            "럥": "록",
-            "럦": "론",
-            "럧": "롤",
-            "럨": "롬",
-            "럩": "롭",
-            "럫": "롯",
-            "러": "롱",
-            "럮": "루",
-            "럯": "룩",
-            "런": "룬",
-            "럱": "룰",
-            "럲": "룸",
-            "럳": "룹",
-            "럵": "룻",
-            "럶": "룽",
-            "럷": "류",
-            "럸": "륙",
-            "럹": "륜",
-            "럺": "률",
-            "럻": "륨",
-            "럼": "럼",
-            "럽": "럽",
-            "럾": "륫",
-            "럿": "릉",
-            "레": "레",
-            "렉": "렉",
-            "렌": "렌",
-            "렐": "렐",
-            "렘": "렘",
-            "렙": "렙",
-            "렛": "렛",
-            "렝": "렝",
-            "렞": "력",
-            "려": "려",
-            "력": "력",
-            "렦": "련",
-            "렧": "렬",
-            "련": "렴",
-            "렩": "렵",
-            "렪": "렸",
-            "렫": "령",
-            "렬": "렬",
-            "렭": "렭",
-            "렮": "로",
-            "렯": "록",
-            "렰": "론",
-            "렱": "롤",
-            "렲": "롬",
-            "렳": "롭",
-            "렴": "렴",
-            "렵": "렵",
-            "렶": "렸",
-            "렷": "령",
-            "렸": "렸",
-            "례": "례",
-            "렺": "례",
-            "렻": "렴",
-            "렼": "렵",
-            "렽": "렸",
-            "렾": "령",
-            "렿": "로",
-            "례": "록",
-            "롁": "론",
-            "롂": "롤",
-            "롃": "롬",
-            "롄": "롭",
-            "롅": "롯",
-            "롆": "롱",
-            "롇": "롸",
-            "롈": "롹",
-            "롉": "론",
-            "롊": "롤",
-            "롋": "롬",
-            "롌": "롭",
-            "롍": "롯",
-            "롎": "롱",
-            "로": "로",
-            "록": "록",
-            "론": "론",
-            "롤": "롤",
-            "롬": "롬",
-            "롭": "롭",
-            "롯": "롯",
-            "롱": "롱",
-            "롴": "료",
-            "롵": "룍",
-            "롶": "룐",
-            "롷": "룔",
-            "롸": "롸",
-            "롹": "록",
-            "롺": "룍",
-            "롻": "룐",
-            "롼": "룔",
-            "롽": "룝",
-            "롾": "룟",
-            "롿": "룡",
-            "뢰": "뢰",
-            "뢱": "룍",
-            "뢲": "룐",
-            "뢳": "룔",
-            "뢴": "룡",
-            "뢵": "료",
-            "뢶": "룍",
-            "뢷": "룐",
-            "뢸": "룔",
-            "뢹": "룝",
-            "뢺": "룟",
-            "뢻": "룡",
-            "뢼": "루",
-            "뢽": "룩",
-            "뢾": "룬",
-            "뢿": "룰",
-            "룀": "룸",
-            "룁": "룹",
-            "룂": "룻",
-            "룃": "룽",
-            "룄": "류",
-            "룅": "륙",
-            "룆": "륜",
-            "룇": "률",
-            "룈": "륨",
-            "룉": "륩",
-            "룊": "륫",
-            "룋": "릉",
-            "료": "료",
-            "룍": "룍",
-            "룎": "룐",
-            "룏": "룔",
-            "룐": "룐",
-            "룑": "룔",
-            "룒": "룝",
-            "룓": "룟",
-            "룔": "룔",
-            "룕": "룝",
-            "룖": "룟",
-            "룗": "룡",
-            "류": "류",
-            "륙": "륙",
-            "륚": "륨",
-            "륛": "륩",
-            "륜": "륜",
-            "륝": "률",
-            "륞": "륨",
-            "륟": "륩",
-            "률": "률",
-            "륡": "률",
-            "륢": "륨",
-            "륣": "륩",
-            "륤": "륫",
-            "륥": "릉",
-            "륦": "륭",
-            "륧": "륫",
-            "륨": "륨",
-            "륩": "륩",
-            "륪": "륫",
-            "륫": "륫",
-            "륬": "릉",
-            "륭": "륭",
-            "륮": "르",
-            "륯": "륵",
-            "으": "으",
-            "육": "육",
-            "은": "은",
-            "을": "을",
-            "음": "음",
-            "읍": "읍",
-            "응": "응",
-            "의": "의",
-            "이": "이",
-            "익": "익",
-            "인": "인",
-            "일": "일",
-            "임": "임",
-            "입": "입",
-            "잇": "잇",
-            "잉": "잉",
-        }
 
     def _load_json_configs(self):
         """JSON 설정 파일들 로드"""
@@ -509,6 +62,13 @@ class SimpleDataProcessor:
                 "processing_stats_structure"
             ]
 
+            # 한국어 복구 설정 로드
+            self.korean_recovery_config = processing_config["korean_text_recovery"]
+            self.korean_quality_patterns = processing_config["korean_quality_patterns"]
+
+            # 한국어 복구 매핑 구성
+            self._setup_korean_recovery_mappings()
+
             # knowledge_data.json에서 도메인 키워드 로드
             with open(JSON_CONFIG_FILES["knowledge_data"], "r", encoding="utf-8") as f:
                 knowledge_data = json.load(f)
@@ -526,6 +86,42 @@ class SimpleDataProcessor:
         except Exception as e:
             print(f"설정 파일 로드 중 오류: {e}")
             self._load_default_configs()
+
+    def _setup_korean_recovery_mappings(self):
+        """JSON에서 로드한 한국어 복구 매핑 설정"""
+        # 복구 매핑 통합
+        self.korean_recovery_mapping = {}
+
+        # 깨진 유니코드 문자 제거
+        for broken, replacement in self.korean_recovery_config[
+            "broken_unicode_chars"
+        ].items():
+            # 유니코드 이스케이프 시퀀스를 실제 문자로 변환
+            try:
+                actual_char = broken.encode().decode("unicode_escape")
+                self.korean_recovery_mapping[actual_char] = replacement
+            except:
+                pass
+
+        # 일본어 카타카나 제거
+        self.korean_recovery_mapping.update(
+            self.korean_recovery_config["japanese_katakana_removal"]
+        )
+
+        # 깨진 한국어 패턴 제거
+        self.korean_recovery_mapping.update(
+            self.korean_recovery_config["broken_korean_patterns"]
+        )
+
+        # 띄어쓰기 문제 수정
+        self.korean_recovery_mapping.update(
+            self.korean_recovery_config["spaced_korean_fixes"]
+        )
+
+        # 일반적인 한국어 오타 수정
+        self.korean_recovery_mapping.update(
+            self.korean_recovery_config["common_korean_typos"]
+        )
 
     def _load_default_configs(self):
         """기본 설정 로드 (JSON 파일 로드 실패 시)"""
@@ -574,7 +170,32 @@ class SimpleDataProcessor:
             "intent_analysis_accuracy": {"correct": 0, "total": 0},
             "intent_match_accuracy": {"correct": 0, "total": 0},
             "mc_classification_accuracy": {"correct": 0, "total": 0},
+            "text_recovery_success": 0,
+            "korean_quality_improvements": 0,
         }
+
+        # 기본 한국어 복구 매핑
+        self.korean_recovery_mapping = {
+            "어어지인": "",
+            "선 어": "",
+            "언 어": "",
+            "순 어": "",
+            "ᄒᆞᆫ": "",
+            "작로": "으로",
+        }
+
+        # 기본 품질 패턴
+        self.korean_quality_patterns = [
+            {
+                "pattern": r"([가-힣])\s+(은|는|이|가|을|를|에|의|와|과|로|으로)\s+",
+                "replacement": r"\1\2 ",
+            },
+            {
+                "pattern": r"([가-힣])\s+(다|요|함|니다|습니다)\s*\.",
+                "replacement": r"\1\2.",
+            },
+            {"pattern": r"\s+", "replacement": " "},
+        ]
 
     def _load_processing_history(self):
         """이전 처리 기록 로드"""
@@ -604,142 +225,50 @@ class SimpleDataProcessor:
             pass
 
     def restore_korean_characters(self, text: str) -> str:
-        """깨진 한국어 문자 복구"""
+        """JSON 설정 기반 깨진 한국어 문자 복구"""
         if not text:
             return ""
+
+        original_text = text
 
         # 유니코드 정규화
         text = unicodedata.normalize("NFC", text)
 
-        # 깨진 문자 복구
-        for broken, correct in self.broken_char_mapping.items():
+        # JSON에서 로드한 매핑을 사용하여 깨진 문자 복구
+        for broken, correct in self.korean_recovery_mapping.items():
             text = text.replace(broken, correct)
 
-        # 금융 용어 복구
-        for broken, correct in self.financial_term_mapping.items():
-            text = text.replace(broken, correct)
-
-        # 추가 패턴 기반 복구
-        # 연속된 이상한 문자들 복구
-        text = re.sub(r"[ㄱ-ㅎㅏ-ㅣ]{2,}", "", text)  # 자음/모음만 있는 부분 제거
-
-        # 일본어 문자 → 한국어 변환
-        japanese_to_korean = {
-            "が": "가",
-            "き": "기",
-            "く": "구",
-            "け": "게",
-            "こ": "고",
-            "さ": "사",
-            "し": "시",
-            "す": "수",
-            "せ": "세",
-            "そ": "소",
-            "た": "타",
-            "ち": "치",
-            "つ": "츠",
-            "て": "테",
-            "と": "토",
-            "な": "나",
-            "に": "니",
-            "ぬ": "누",
-            "ね": "네",
-            "の": "노",
-            "は": "하",
-            "ひ": "히",
-            "ふ": "후",
-            "へ": "헤",
-            "ほ": "호",
-            "ま": "마",
-            "み": "미",
-            "む": "무",
-            "め": "메",
-            "も": "모",
-            "や": "야",
-            "ゆ": "유",
-            "よ": "요",
-            "ら": "라",
-            "り": "리",
-            "る": "루",
-            "れ": "레",
-            "ろ": "로",
-            "わ": "와",
-            "ゐ": "위",
-            "ゑ": "웨",
-            "を": "워",
-            "ん": "은",
-        }
-
-        for jp, kr in japanese_to_korean.items():
-            text = text.replace(jp, kr)
+        # 복구 성공 여부 확인
+        if text != original_text:
+            self.processing_stats["text_recovery_success"] += 1
 
         return text
 
     def enhance_korean_text_quality(self, text: str) -> str:
-        """한국어 텍스트 품질 향상"""
+        """JSON 설정 기반 한국어 텍스트 품질 향상"""
         if not text:
             return ""
+
+        original_text = text
 
         # 1단계: 기본 복구
         text = self.restore_korean_characters(text)
 
-        # 2단계: 띄어쓰기 정규화
-        text = re.sub(r"\s+", " ", text)
-
-        # 3단계: 문장 부호 정리
-        text = re.sub(r"([.!?])\s*([.!?])+", r"\1", text)  # 중복 문장부호 제거
-        text = re.sub(r"([가-힣])([.!?])", r"\1\2", text)  # 문장부호 앞 공백 제거
-
-        # 4단계: 의미없는 문자 제거
-        text = re.sub(r"[^\w\s가-힣.,!?()[\]\-:;/]", " ", text)
-
-        # 5단계: 완전히 깨진 문장 복구 시도
-        # 특정 패턴들 복구
-        common_fixes = {
-            r"젂자금융": "전자금융",
-            r"룐급": "는급",
-            r"윋거래": "융거래",
-            r"겗": "것",
-            r"뿞쟁": "분쟁",
-            r"쫄젓": "조정",
-            r"긲융": "금융",
-            r"듀": "되",
-            r"룾": "는",
-            r"읶": "인",
-            r"젂": "전",
-            r"엯": "연",
-            r"룐": "른",
-            r"겫": "결",
-            r"뷮": "분",
-            r"쟈": "저",
-            r"럭": "력",
-            r"솟": "솔",
-            r"쟣": "저",
-            r"뿣": "불",
-            r"뻙": "분",
-            r"걗": "것",
-            r"룊": "른",
-            r"믝": "미",
-            r"멈": "멈",
-            r"솔": "솔",
-            r"랛": "란",
-            r"궗": "사",
-            r"쪗": "저",
-            r"롸": "로",
-            r"뿞": "분",
-            r"딞": "딘",
-            r"쭒": "주",
-            r"놟": "놓",
-            r"룍": "른",
-            r"쫒": "조",
-            r"놔": "놔",
-        }
-
-        for pattern, replacement in common_fixes.items():
+        # 2단계: 품질 패턴 적용 (JSON에서 로드한 패턴 사용)
+        for pattern_config in self.korean_quality_patterns:
+            pattern = pattern_config["pattern"]
+            replacement = pattern_config["replacement"]
             text = re.sub(pattern, replacement, text)
 
-        # 6단계: 연속된 공백 정리
+        # 3단계: 의미없는 문자 제거
+        text = re.sub(r"[^\w\s가-힣.,!?()[\]\-:;/]", " ", text)
+
+        # 4단계: 연속된 공백 정리
         text = re.sub(r"\s+", " ", text).strip()
+
+        # 품질 개선 통계 업데이트
+        if text != original_text:
+            self.processing_stats["korean_quality_improvements"] += 1
 
         return text
 
@@ -748,7 +277,7 @@ class SimpleDataProcessor:
         if not text:
             return ""
 
-        # 문장 개선 패턴들
+        # 문장 개선 패턴들 (JSON 패턴으로 확장 가능)
         grammar_fixes = [
             # 조사 개선
             (r"([가-힣])\s+은\s+", r"\1은 "),
@@ -1604,7 +1133,7 @@ class SimpleDataProcessor:
 
             # 의미 없는 짧은 문장 제거
             if len(answer) < 20:
-                return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+                return "답변 길이가 부족하여 생성에 실패했습니다."
 
             # 길이 제한
             if len(answer) > self.korean_requirements["max_length"]:
@@ -1664,6 +1193,14 @@ class SimpleDataProcessor:
             * 100,
             "domain_distribution": dict(self.processing_stats["domain_distribution"]),
             "question_type_accuracy": self.processing_stats["question_type_accuracy"],
+            "text_recovery_success_rate": (
+                self.processing_stats["text_recovery_success"] / total
+            )
+            * 100,
+            "korean_quality_improvement_rate": (
+                self.processing_stats["korean_quality_improvements"] / total
+            )
+            * 100,
         }
 
     def get_korean_requirements(self) -> Dict:

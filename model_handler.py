@@ -60,9 +60,6 @@ class SimpleModelHandler:
         # 학습 데이터 저장
         self.learning_data = self.learning_data_structure.copy()
 
-        # 한국어 텍스트 복구 설정
-        self._setup_korean_text_recovery()
-
         # 이전 학습 데이터 로드
         self._load_learning_data()
 
@@ -105,130 +102,6 @@ class SimpleModelHandler:
                 f"이전 학습 데이터 로드: 성공 {len(self.learning_data['successful_answers'])}개, 실패 {len(self.learning_data['failed_answers'])}개"
             )
 
-    def _setup_korean_text_recovery(self):
-        """한국어 텍스트 복구 설정"""
-        # 깨진 한국어 문자 복구 매핑
-        self.korean_recovery_mapping = {
-            # 토크나이저에서 자주 깨지는 패턴들
-            "ト": "트",
-            "リ": "리",
-            "ス": "스",
-            "ン": "은",
-            "ー": "유",
-            "ィ": "이",
-            "ウ": "우",
-            "エ": "에",
-            "オ": "오",
-            "カ": "카",
-            "キ": "키",
-            "ク": "크",
-            "ケ": "케",
-            "コ": "코",
-            "サ": "사",
-            "シ": "시",
-            "セ": "세",
-            "ソ": "소",
-            "タ": "타",
-            "チ": "치",
-            "ツ": "츠",
-            "テ": "테",
-            "ナ": "나",
-            "ニ": "니",
-            "ヌ": "누",
-            "ネ": "네",
-            "ノ": "노",
-            "ハ": "하",
-            "ヒ": "히",
-            "フ": "후",
-            "ヘ": "헤",
-            "ホ": "호",
-            "マ": "마",
-            "ミ": "미",
-            "ム": "무",
-            "メ": "메",
-            "モ": "모",
-            "ヤ": "야",
-            "ユ": "유",
-            "ヨ": "요",
-            "ラ": "라",
-            "ル": "루",
-            "レ": "레",
-            "ロ": "로",
-            "ワ": "와",
-            "ヰ": "위",
-            "ヱ": "웨",
-            "ヲ": "워",
-            # 금융 용어 특화 복구
-            "금윋": "금융",
-            "윋": "융",
-            "젂": "전",
-            "엯": "연",
-            "룐": "른",
-            "겫": "결",
-            "뷮": "분",
-            "쟈": "저",
-            "럭": "력",
-            "솟": "솔",
-            "쟣": "저",
-            "뿣": "불",
-            "뻙": "분",
-            "걗": "것",
-            "룊": "른",
-            "믝": "미",
-            "읶": "인",
-            "멈": "멈",
-            "솔": "솔",
-            "랛": "란",
-            "궗": "사",
-            "쪗": "저",
-            "롸": "로",
-            "뿞": "분",
-            "딞": "딘",
-            "쭒": "주",
-            "놟": "놓",
-            "룍": "른",
-            "쫒": "조",
-            "놔": "놔",
-            # 레지스트리 관련 복구
-            "레지스ト리": "레지스트리",
-            "レジス트": "레지스",
-            "ト리": "트리",
-            "リ": "리",
-            # 추가 복구 패턴
-            "윈도": "윈도우",
-            "네트웜": "네트워크",
-            "시스텣": "시스템",
-            "프로세": "프로세스",
-            "모니터링": "모니터링",
-            "탐지": "탐지",
-            "보안": "보안",
-            "관리": "관리",
-            "법령": "법령",
-            "규정": "규정",
-            "조치": "조치",
-            "절차": "절차",
-            "대응": "대응",
-            "방안": "방안",
-            "기관": "기관",
-            "위원회": "위원회",
-            "감독원": "감독원",
-        }
-
-        # 문장 구조 복구 패턴
-        self.sentence_fix_patterns = [
-            # 조사 복구
-            (r"([가-힣])\s+(은|는|이|가|을|를|에|의|와|과|로|으로)\s+", r"\1\2 "),
-            # 어미 복구
-            (r"([가-힣])\s+(다|요|함|니다|습니다)\s*\.", r"\1\2."),
-            # 불완전한 문장 복구
-            (r"([가-힣])\s*$", r"\1."),
-            # 중복 문장부호 제거
-            (r"\.+", "."),
-            (r"\s*\.\s*", ". "),
-            # 띄어쓰기 정규화
-            (r"\s+", " "),
-        ]
-
     def _optimize_tokenizer_for_korean(self):
         """토크나이저 한국어 최적화"""
         # 한국어 처리 개선을 위한 설정
@@ -250,6 +123,12 @@ class SimpleModelHandler:
             with open(JSON_CONFIG_FILES["model_config"], "r", encoding="utf-8") as f:
                 model_config = json.load(f)
 
+            # processing_config.json 로드 (한국어 복구 설정 포함)
+            with open(
+                JSON_CONFIG_FILES["processing_config"], "r", encoding="utf-8"
+            ) as f:
+                processing_config = json.load(f)
+
             # 모델 관련 데이터 할당
             self.mc_context_patterns = model_config["mc_context_patterns"]
             self.intent_specific_prompts = model_config["intent_specific_prompts"]
@@ -258,6 +137,13 @@ class SimpleModelHandler:
             ].copy()
             self.mc_answer_counts = model_config["mc_answer_counts_default"].copy()
             self.learning_data_structure = model_config["learning_data_structure"]
+
+            # 한국어 복구 설정 로드
+            self.korean_recovery_config = processing_config["korean_text_recovery"]
+            self.korean_quality_patterns = processing_config["korean_quality_patterns"]
+
+            # 한국어 복구 매핑 구성
+            self._setup_korean_recovery_mappings()
 
             print("모델 설정 파일 로드 완료")
 
@@ -270,6 +156,42 @@ class SimpleModelHandler:
         except Exception as e:
             print(f"설정 파일 로드 중 오류: {e}")
             self._load_default_configs()
+
+    def _setup_korean_recovery_mappings(self):
+        """JSON에서 로드한 한국어 복구 매핑 설정"""
+        # 복구 매핑 통합
+        self.korean_recovery_mapping = {}
+
+        # 깨진 유니코드 문자 제거
+        for broken, replacement in self.korean_recovery_config[
+            "broken_unicode_chars"
+        ].items():
+            # 유니코드 이스케이프 시퀀스를 실제 문자로 변환
+            try:
+                actual_char = broken.encode().decode("unicode_escape")
+                self.korean_recovery_mapping[actual_char] = replacement
+            except:
+                pass
+
+        # 일본어 카타카나 제거
+        self.korean_recovery_mapping.update(
+            self.korean_recovery_config["japanese_katakana_removal"]
+        )
+
+        # 깨진 한국어 패턴 제거
+        self.korean_recovery_mapping.update(
+            self.korean_recovery_config["broken_korean_patterns"]
+        )
+
+        # 띄어쓰기 문제 수정
+        self.korean_recovery_mapping.update(
+            self.korean_recovery_config["spaced_korean_fixes"]
+        )
+
+        # 일반적인 한국어 오타 수정
+        self.korean_recovery_mapping.update(
+            self.korean_recovery_config["common_korean_typos"]
+        )
 
     def _load_default_configs(self):
         """기본 설정 로드 (JSON 파일 로드 실패 시)"""
@@ -318,6 +240,29 @@ class SimpleModelHandler:
             "negative_vs_positive_patterns": {},
             "choice_distribution_learning": {},
         }
+
+        # 기본 한국어 복구 매핑
+        self.korean_recovery_mapping = {
+            "어어지인": "",
+            "선 어": "",
+            "언 어": "",
+            "순 어": "",
+            "ᄒᆞᆫ": "",
+            "작로": "으로",
+        }
+
+        # 기본 품질 패턴
+        self.korean_quality_patterns = [
+            {
+                "pattern": r"([가-힣])\s+(은|는|이|가|을|를|에|의|와|과|로|으로)\s+",
+                "replacement": r"\1\2 ",
+            },
+            {
+                "pattern": r"([가-힣])\s+(다|요|함|니다|습니다)\s*\.",
+                "replacement": r"\1\2.",
+            },
+            {"pattern": r"\s+", "replacement": " "},
+        ]
 
     def _load_learning_data(self):
         """이전 학습 데이터 로드"""
@@ -381,19 +326,21 @@ class SimpleModelHandler:
                 print(f"학습 데이터 저장 오류: {e}")
 
     def recover_korean_text(self, text: str) -> str:
-        """한국어 텍스트 복구"""
+        """JSON 설정 기반 한국어 텍스트 복구"""
         if not text:
             return ""
 
         # 유니코드 정규화
         text = unicodedata.normalize("NFC", text)
 
-        # 깨진 문자 복구
+        # 깨진 문자 복구 (JSON에서 로드한 매핑 사용)
         for broken, correct in self.korean_recovery_mapping.items():
             text = text.replace(broken, correct)
 
-        # 문장 구조 복구
-        for pattern, replacement in self.sentence_fix_patterns:
+        # 품질 패턴 적용 (JSON에서 로드한 패턴 사용)
+        for pattern_config in self.korean_quality_patterns:
+            pattern = pattern_config["pattern"]
+            replacement = pattern_config["replacement"]
             text = re.sub(pattern, replacement, text)
 
         # 추가 정리
@@ -556,11 +503,12 @@ class SimpleModelHandler:
         # 기본 한국어 전용 지시
         korean_instruction = """
 반드시 다음 규칙을 엄격히 준수하여 답변하세요:
-1. 오직 한국어로만 답변 작성
-2. 영어나 일본어, 중국어 등 외국어 절대 사용 금지
+1. 오직 완전한 한국어로만 답변 작성
+2. 영어, 일본어, 중국어 등 외국어 절대 사용 금지
 3. 깨진 문자나 특수 기호 사용 금지
 4. 완전한 한국어 문장으로 구성
 5. 문법에 맞는 자연스러운 한국어 표현 사용
+6. 공백이 섞인 단어나 분리된 문자 사용 금지
 """
 
         # 의도별 특화 지시
@@ -863,7 +811,7 @@ class SimpleModelHandler:
                     intent_analysis["primary_intent"]
                 )
             else:
-                response = "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+                response = "주관식 답변 생성에 실패했습니다."
 
         # 8단계: 길이 조절
         if len(response) > 350:
@@ -1002,23 +950,11 @@ class SimpleModelHandler:
         except Exception as e:
             if self.verbose:
                 print(f"폴백 주관식 답변 생성 오류: {e}")
-            return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+            return f"주관식 답변 생성에 실패했습니다. (도메인: {domain})"
 
     def _generate_basic_intent_answer(self, primary_intent: str) -> str:
         """기본 의도별 답변 생성"""
-        intent_responses = {
-            "기관_묻기": "해당 분야의 전문 기관에서 관련 업무를 담당하고 있습니다.",
-            "특징_묻기": "주요 특징과 성질을 체계적으로 분석하고 관리해야 합니다.",
-            "지표_묻기": "관련 지표와 징후를 지속적으로 모니터링하고 분석해야 합니다.",
-            "방안_묻기": "체계적인 관리 방안을 수립하고 지속적인 개선활동을 수행해야 합니다.",
-            "절차_묻기": "관련 법령과 규정에 따라 절차를 수립하고 체계적으로 관리해야 합니다.",
-            "조치_묻기": "적절한 보안조치와 대응조치를 마련하여 체계적으로 관리해야 합니다.",
-        }
-
-        return intent_responses.get(
-            primary_intent,
-            "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다.",
-        )
+        return f"답변 생성에 실패했습니다. (의도: {primary_intent})"
 
     def _get_generation_config(self, question_type: str) -> GenerationConfig:
         """생성 설정"""
