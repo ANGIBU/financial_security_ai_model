@@ -460,6 +460,41 @@
       "룍": "른",
       "쫒": "조",
       "놔": "놔"
+    },
+    "critical_repetitive_patterns": {
+      "갈취 묻는 말": "",
+      "묻고 갈취": "",
+      "갈취": "",
+      "() 기반": "",
+      "()는": "",
+      "() 특징": "",
+      "() 지표": "",
+      "() 방안": "",
+      "()를": "",
+      "()에": "",
+      "()의": "",
+      "()와": "",
+      "()로": "",
+      "() 는": "",
+      "() 이": "",
+      "() 가": "",
+      "() 을": "",
+      "() 에": "",
+      "() 와": "",
+      "() 로": "",
+      "괄호": "",
+      "(괄호)": "",
+      "　　": " ",
+      "말 말": "말",
+      "말말": "말",
+      "말말말": "말"
+    },
+    "pattern_variations": {
+      "갈취.*갈취": "",
+      "묻는.*묻는": "",
+      "말.*말.*말": "말",
+      "(.{1,5})\\s*\\1\\s*\\1\\s*\\1": "\\1",
+      "(.{2,8})\\s*\\1\\s*\\1": "\\1"
     }
   },
   "korean_quality_patterns": [
@@ -486,8 +521,50 @@
     {
       "pattern": "\\s+",
       "replacement": " "
+    },
+    {
+      "pattern": "\\(\\s*\\)",
+      "replacement": ""
+    },
+    {
+      "pattern": "\\(\\s*\\)\\s*[가-힣]{1,3}",
+      "replacement": ""
+    },
+    {
+      "pattern": "[.,!?]{3,}",
+      "replacement": "."
+    },
+    {
+      "pattern": "\\s+[.,!?]\\s+",
+      "replacement": ". "
     }
   ],
+  "repetition_detection_rules": {
+    "critical_word_patterns": [
+      "갈취",
+      "묻는",
+      "말"
+    ],
+    "ngram_repetition_limits": {
+      "unigram": 4,
+      "bigram": 3,
+      "trigram": 2,
+      "fourgram": 1
+    },
+    "sentence_repetition_limit": 2,
+    "phrase_repetition_limit": 3,
+    "detection_methods": [
+      "exact_match",
+      "semantic_similarity",
+      "pattern_matching",
+      "length_based"
+    ],
+    "early_termination_triggers": [
+      "critical_pattern_detected",
+      "repetition_threshold_exceeded",
+      "quality_degradation_detected"
+    ]
+  },
   "processing_stats_structure": {
     "total_processed": 0,
     "korean_compliance": 0,
@@ -499,6 +576,12 @@
     "intent_match_accuracy": {"correct": 0, "total": 0},
     "mc_classification_accuracy": {"correct": 0, "total": 0},
     "text_recovery_success": 0,
-    "korean_quality_improvements": 0
+    "korean_quality_improvements": 0,
+    "repetitive_pattern_removed": 0,
+    "critical_pattern_detected": 0,
+    "early_termination_count": 0,
+    "fallback_generation_count": 0,
+    "pattern_recovery_success": 0,
+    "quality_rescue_count": 0
   }
 }

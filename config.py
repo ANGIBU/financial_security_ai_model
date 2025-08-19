@@ -40,19 +40,24 @@ MODEL_CONFIG = {
     "use_fast_tokenizer": True,
 }
 
-# 생성 설정
+# 생성 설정 (반복 방지 강화)
 GENERATION_CONFIG = {
     "multiple_choice": {
         "max_new_tokens": 15,
         "temperature": 0.3,
         "top_p": 0.8,
         "do_sample": True,
+        "repetition_penalty": 1.2,
+        "no_repeat_ngram_size": 3,
     },
     "subjective": {
-        "max_new_tokens": 350,
-        "temperature": 0.6,
-        "top_p": 0.9,
+        "max_new_tokens": 300,
+        "temperature": 0.5,
+        "top_p": 0.85,
         "do_sample": True,
+        "repetition_penalty": 1.3,
+        "no_repeat_ngram_size": 4,
+        "length_penalty": 1.1,
     },
 }
 
@@ -68,6 +73,10 @@ OPTIMIZATION_CONFIG = {
     "domain_specific_optimization": True,
     "institution_question_priority": True,
     "mc_context_weighting": True,
+    "repetition_detection_enabled": True,
+    "critical_pattern_monitoring": True,
+    "early_repetition_cutoff": True,
+    "repetition_penalty_adaptive": True,
 }
 
 # === 한국어 처리 설정 ===
@@ -76,6 +85,8 @@ KOREAN_REQUIREMENTS = {
     "max_english_ratio": 0.1,
     "min_length": 30,
     "max_length": 500,
+    "repetition_tolerance": 2,
+    "critical_repetition_limit": 3,
 }
 
 # === 메모리 관리 설정 ===
@@ -87,6 +98,7 @@ MEMORY_CONFIG = {
         "failed_answers": 500,
         "quality_scores": 1000,
         "choice_range_errors": 100,
+        "repetitive_answers": 200,
     },
 }
 
@@ -95,6 +107,7 @@ TIME_LIMITS = {
     "total_inference_minutes": 270,  # 4시간 30분
     "warmup_timeout": 30,  # 워밍업 제한시간 (초)
     "single_question_timeout": 30,  # 단일 질문 제한시간 (초)
+    "generation_timeout": 20,  # 생성 제한시간 (초)
 }
 
 # === 진행률 표시 설정 ===
@@ -109,6 +122,7 @@ LOGGING_CONFIG = {
     "enable_error_logging": True,
     "log_processing_times": True,
     "log_quality_scores": True,
+    "log_repetition_patterns": True,
 }
 
 # === 템플릿 품질 평가 기준 ===
@@ -124,6 +138,13 @@ TEMPLATE_QUALITY_CRITERIA = {
         "절차_묻기": ["절차", "과정", "단계", "순서"],
         "조치_묻기": ["조치", "대응", "보안", "예방"],
     },
+    "forbidden_patterns": [
+        "갈취 묻는 말",
+        "묻고 갈취",
+        "갈취",
+        r"(.{2,8})\s*\1\s*\1\s*\1",
+        r"(.{1,3})\s*(\1\s*){4,}",
+    ],
 }
 
 # === 테스트 설정 ===
@@ -146,6 +167,25 @@ STATS_CONFIG = {
     "track_intent_accuracy": True,
     "track_template_effectiveness": True,
     "calculate_reliability_score": True,
+    "track_repetition_patterns": True,
+    "monitor_quality_degradation": True,
+}
+
+# === 반복 패턴 모니터링 설정 ===
+REPETITION_MONITORING = {
+    "critical_patterns": [
+        "갈취 묻는 말",
+        "묻고 갈취",
+        "갈취",
+    ],
+    "repetition_thresholds": {
+        "word_repeat_limit": 4,
+        "phrase_repeat_limit": 3,
+        "sentence_repeat_limit": 2,
+    },
+    "pattern_detection_sensitivity": 0.8,
+    "early_termination_enabled": True,
+    "fallback_trigger_count": 3,
 }
 
 # === JSON 설정 파일 경로 ===
@@ -195,10 +235,75 @@ def validate_config():
     if not 0 <= OPTIMIZATION_CONFIG["intent_confidence_threshold"] <= 1:
         errors.append("intent_confidence_threshold는 0과 1 사이여야 합니다")
 
+    # 반복 패턴 설정 검증
+    if REPETITION_MONITORING["word_repeat_limit"] < 2:
+        errors.append("word_repeat_limit는 2 이상이어야 합니다")
+
+    if not 0 <= REPETITION_MONITORING["pattern_detection_sensitivity"] <= 1:
+        errors.append("pattern_detection_sensitivity는 0과 1 사이여야 합니다")
+
     if errors:
         raise ValueError(f"설정 오류: {'; '.join(errors)}")
 
     return True
+
+
+# === 반복 패턴 감지 설정 조정 함수 ===
+def adjust_repetition_sensitivity(level: str = "medium"):
+    """반복 패턴 감지 민감도 조정"""
+    sensitivity_levels = {
+        "low": {
+            "word_repeat_limit": 6,
+            "phrase_repeat_limit": 4,
+            "sentence_repeat_limit": 3,
+            "pattern_detection_sensitivity": 0.6,
+        },
+        "medium": {
+            "word_repeat_limit": 4,
+            "phrase_repeat_limit": 3,
+            "sentence_repeat_limit": 2,
+            "pattern_detection_sensitivity": 0.8,
+        },
+        "high": {
+            "word_repeat_limit": 3,
+            "phrase_repeat_limit": 2,
+            "sentence_repeat_limit": 1,
+            "pattern_detection_sensitivity": 0.9,
+        },
+    }
+
+    if level in sensitivity_levels:
+        REPETITION_MONITORING["repetition_thresholds"].update(
+            sensitivity_levels[level]
+        )
+        REPETITION_MONITORING["pattern_detection_sensitivity"] = sensitivity_levels[
+            level
+        ]["pattern_detection_sensitivity"]
+
+
+# === 생성 설정 동적 조정 함수 ===
+def adjust_generation_for_repetition_risk(question_type: str, risk_level: str = "medium"):
+    """반복 위험에 따른 생성 설정 조정"""
+    risk_adjustments = {
+        "low": {
+            "repetition_penalty": 1.1,
+            "no_repeat_ngram_size": 2,
+            "temperature": 0.6,
+        },
+        "medium": {
+            "repetition_penalty": 1.3,
+            "no_repeat_ngram_size": 4,
+            "temperature": 0.5,
+        },
+        "high": {
+            "repetition_penalty": 1.5,
+            "no_repeat_ngram_size": 5,
+            "temperature": 0.4,
+        },
+    }
+
+    if risk_level in risk_adjustments and question_type in GENERATION_CONFIG:
+        GENERATION_CONFIG[question_type].update(risk_adjustments[risk_level])
 
 
 # === 초기화 함수 ===
@@ -208,11 +313,15 @@ def initialize_system():
     ensure_directories()
     validate_config()
 
+    # 반복 패턴 모니터링 기본 설정
+    adjust_repetition_sensitivity("medium")
+
     if VERBOSE_MODE:
         print("시스템 설정 완료")
         print(f"기본 모델: {DEFAULT_MODEL_NAME}")
         print(f"디바이스: {get_device()}")
         print(f"오프라인 모드: {OFFLINE_MODE}")
+        print(f"반복 패턴 모니터링: {OPTIMIZATION_CONFIG['repetition_detection_enabled']}")
 
 
 # 자동 초기화 (모듈 import 시 실행)
