@@ -149,7 +149,7 @@ TEMPLATE_QUALITY_CRITERIA = {
 
 # === 테스트 설정 ===
 TEST_CONFIG = {
-    "test_sizes": {"mini": 5, "quick": 10, "basic": 50, "detailed": 100, "full": 515},
+    "test_sizes": {"mini": 7, "quick": 10, "basic": 50, "detailed": 100, "full": 515},
     "default_test_size": 50,
 }
 
@@ -236,8 +236,9 @@ def validate_config():
         errors.append("intent_confidence_threshold는 0과 1 사이여야 합니다")
 
     # 반복 패턴 설정 검증
-    if REPETITION_MONITORING["word_repeat_limit"] < 2:
-        errors.append("word_repeat_limit는 2 이상이어야 합니다")
+    if "repetition_thresholds" in REPETITION_MONITORING and "word_repeat_limit" in REPETITION_MONITORING["repetition_thresholds"]:
+        if REPETITION_MONITORING["repetition_thresholds"]["word_repeat_limit"] < 2:
+            errors.append("word_repeat_limit는 2 이상이어야 합니다")
 
     if not 0 <= REPETITION_MONITORING["pattern_detection_sensitivity"] <= 1:
         errors.append("pattern_detection_sensitivity는 0과 1 사이여야 합니다")
@@ -273,12 +274,13 @@ def adjust_repetition_sensitivity(level: str = "medium"):
     }
 
     if level in sensitivity_levels:
-        REPETITION_MONITORING["repetition_thresholds"].update(
-            sensitivity_levels[level]
-        )
-        REPETITION_MONITORING["pattern_detection_sensitivity"] = sensitivity_levels[
-            level
-        ]["pattern_detection_sensitivity"]
+        # repetition_thresholds 키 업데이트
+        for key, value in sensitivity_levels[level].items():
+            if key != "pattern_detection_sensitivity":
+                REPETITION_MONITORING["repetition_thresholds"][key] = value
+        
+        # 패턴 감지 민감도 업데이트
+        REPETITION_MONITORING["pattern_detection_sensitivity"] = sensitivity_levels[level]["pattern_detection_sensitivity"]
 
 
 # === 생성 설정 동적 조정 함수 ===
@@ -303,7 +305,9 @@ def adjust_generation_for_repetition_risk(question_type: str, risk_level: str = 
     }
 
     if risk_level in risk_adjustments and question_type in GENERATION_CONFIG:
-        GENERATION_CONFIG[question_type].update(risk_adjustments[risk_level])
+        # 기존 설정을 유지하면서 업데이트
+        for key, value in risk_adjustments[risk_level].items():
+            GENERATION_CONFIG[question_type][key] = value
 
 
 # === 초기화 함수 ===
@@ -311,6 +315,15 @@ def initialize_system():
     """시스템 초기화"""
     setup_environment()
     ensure_directories()
+    
+    # REPETITION_MONITORING 초기 설정 확인
+    if "repetition_thresholds" not in REPETITION_MONITORING:
+        REPETITION_MONITORING["repetition_thresholds"] = {
+            "word_repeat_limit": 4,
+            "phrase_repeat_limit": 3,
+            "sentence_repeat_limit": 2,
+        }
+    
     validate_config()
 
     # 반복 패턴 모니터링 기본 설정
@@ -322,6 +335,7 @@ def initialize_system():
         print(f"디바이스: {get_device()}")
         print(f"오프라인 모드: {OFFLINE_MODE}")
         print(f"반복 패턴 모니터링: {OPTIMIZATION_CONFIG['repetition_detection_enabled']}")
+        print(f"반복 감지 민감도: {REPETITION_MONITORING['pattern_detection_sensitivity']}")
 
 
 # 자동 초기화 (모듈 import 시 실행)
@@ -330,3 +344,11 @@ if __name__ != "__main__":
         initialize_system()
     except Exception as e:
         print(f"설정 초기화 중 오류: {e}")
+        # 기본 설정으로 폴백
+        try:
+            setup_environment()
+            ensure_directories()
+            print("기본 설정으로 시스템을 시작합니다.")
+        except Exception as fallback_error:
+            print(f"기본 설정 로드도 실패: {fallback_error}")
+            print("수동으로 설정을 확인해주세요.")

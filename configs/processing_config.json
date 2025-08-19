@@ -545,14 +545,17 @@
       "묻는",
       "말"
     ],
+    "repetition_thresholds": {
+      "word_repeat_limit": 4,
+      "phrase_repeat_limit": 3,
+      "sentence_repeat_limit": 2
+    },
     "ngram_repetition_limits": {
       "unigram": 4,
       "bigram": 3,
       "trigram": 2,
       "fourgram": 1
     },
-    "sentence_repetition_limit": 2,
-    "phrase_repetition_limit": 3,
     "detection_methods": [
       "exact_match",
       "semantic_similarity",
