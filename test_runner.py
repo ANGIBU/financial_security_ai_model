@@ -46,9 +46,7 @@ def run_test(test_size: int = None, verbose: bool = True):
         import pandas as pd
 
         test_df = pd.read_csv(test_file, encoding=FILE_VALIDATION["encoding"])
-        submission_df = pd.read_csv(
-            submission_file, encoding=FILE_VALIDATION["encoding"]
-        )
+        submission_df = pd.read_csv(submission_file, encoding=FILE_VALIDATION["encoding"])
 
         print(f"전체 데이터: {len(test_df)}개 문항")
         print(f"테스트 크기: {test_size}개 문항")
@@ -59,9 +57,7 @@ def run_test(test_size: int = None, verbose: bool = True):
             temp_submission = submission_df.head(test_size).copy()
 
             output_file = DEFAULT_FILES["test_output_file"]
-            results = engine.execute_inference_with_data(
-                test_df, temp_submission, output_file
-            )
+            results = engine.execute_inference_with_data(test_df, temp_submission, output_file)
         else:
             output_file = DEFAULT_FILES["test_output_file"]
             results = engine.execute_inference(test_file, submission_file, output_file)
@@ -97,9 +93,7 @@ def print_enhanced_results(results: dict, output_file: str, test_size: int):
     mc_context_accuracy = results.get("mc_context_accuracy_rate", 0)
     mc_pattern_match = results.get("mc_pattern_match_rate", 0)
 
-    print(
-        f"\n=== 객관식 성능 (전체의 {(mc_count/results['total_questions']*100):.0f}%) ==="
-    )
+    print(f"\n=== 객관식 성능 (전체의 {(mc_count/results['total_questions']*100):.0f}%) ===")
     print(f"객관식 문항: {mc_count}개")
     print(f"기본 성공률: {mc_success_rate:.1f}%")
     print(f"컨텍스트 정확도: {mc_context_accuracy:.1f}%")
@@ -118,9 +112,7 @@ def print_enhanced_results(results: dict, output_file: str, test_size: int):
     korean_compliance = results.get("korean_compliance_rate", 0)
     avg_quality = results.get("avg_quality_score", 0)
 
-    print(
-        f"\n=== 주관식 성능 (전체의 {(subj_count/results['total_questions']*100):.0f}%) ==="
-    )
+    print(f"\n=== 주관식 성능 (전체의 {(subj_count/results['total_questions']*100):.0f}%) ===")
     print(f"주관식 문항: {subj_count}개")
     if subj_count > 0:
         print(f"의도 일치율: {intent_success_rate:.1f}%")

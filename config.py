@@ -40,7 +40,7 @@ MODEL_CONFIG = {
     "use_fast_tokenizer": True,
 }
 
-# 생성 설정 (반복 방지 강화)
+# 생성 설정
 GENERATION_CONFIG = {
     "multiple_choice": {
         "max_new_tokens": 15,
@@ -283,15 +283,13 @@ def adjust_repetition_sensitivity(level: str = "medium"):
                 REPETITION_MONITORING["repetition_thresholds"][key] = value
 
         # 패턴 감지 민감도 업데이트
-        REPETITION_MONITORING["pattern_detection_sensitivity"] = sensitivity_levels[
-            level
-        ]["pattern_detection_sensitivity"]
+        REPETITION_MONITORING["pattern_detection_sensitivity"] = sensitivity_levels[level][
+            "pattern_detection_sensitivity"
+        ]
 
 
 # === 생성 설정 동적 조정 함수 ===
-def adjust_generation_for_repetition_risk(
-    question_type: str, risk_level: str = "medium"
-):
+def adjust_generation_for_repetition_risk(question_type: str, risk_level: str = "medium"):
     """반복 위험에 따른 생성 설정 조정"""
     risk_adjustments = {
         "low": {
@@ -341,12 +339,8 @@ def initialize_system():
         print(f"기본 모델: {DEFAULT_MODEL_NAME}")
         print(f"디바이스: {get_device()}")
         print(f"오프라인 모드: {OFFLINE_MODE}")
-        print(
-            f"반복 패턴 모니터링: {OPTIMIZATION_CONFIG['repetition_detection_enabled']}"
-        )
-        print(
-            f"반복 감지 민감도: {REPETITION_MONITORING['pattern_detection_sensitivity']}"
-        )
+        print(f"반복 패턴 모니터링: {OPTIMIZATION_CONFIG['repetition_detection_enabled']}")
+        print(f"반복 감지 민감도: {REPETITION_MONITORING['pattern_detection_sensitivity']}")
 
 
 # 자동 초기화 (모듈 import 시 실행)
