@@ -106,6 +106,9 @@ class FinancialAIInference:
             "grammar_fix_count": 0,
             "korean_ratio_improvements": 0,
             "answer_structure_improvements": 0,
+            "template_examples_used": 0,
+            "llm_generation_count": 0,
+            "template_guided_answers": 0,
         }
 
         # 성능 최적화 설정 (config.py에서 로드)
@@ -144,7 +147,7 @@ class FinancialAIInference:
                 )
                 return answer
 
-            # 주관식 처리
+            # 주관식 처리 - 템플릿 예시 활용 강화
             else:
                 intent_analysis = self.data_processor.analyze_question_intent(question)
                 self.stats["intent_analysis_accuracy"] += 1
@@ -165,7 +168,8 @@ class FinancialAIInference:
                         question, kb_analysis, intent_analysis
                     )
                 else:
-                    answer = self._process_subjective_with_enhanced_llm(
+                    # 일반 주관식 처리 - 템플릿 예시 활용
+                    answer = self._process_subjective_with_template_examples(
                         question, domain, intent_analysis, kb_analysis
                     )
 
@@ -244,6 +248,7 @@ class FinancialAIInference:
             self.stats["model_success"] += 1
             self.stats["korean_compliance"] += 1
             self.stats["llm_usage_rate"] += 1
+            self.stats["llm_generation_count"] += 1
             return answer
         else:
             # 범위 오류 시 강화된 LLM 재시도
@@ -259,7 +264,68 @@ class FinancialAIInference:
                 self.stats["mc_answers_by_range"][max_choice][fallback] += 1
 
             self.stats["llm_usage_rate"] += 1
+            self.stats["llm_generation_count"] += 1
             return fallback
+
+    def _process_subjective_with_template_examples(
+        self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict
+    ) -> str:
+        """템플릿 예시를 활용한 강화된 주관식 처리"""
+
+        # 템플릿 예시 정보 수집
+        template_examples = None
+        if (
+            intent_analysis
+            and intent_analysis.get("intent_confidence", 0)
+            >= self.optimization_config["intent_confidence_threshold"]
+        ):
+
+            primary_intent = intent_analysis.get("primary_intent", "일반")
+
+            # 의도별 특화 템플릿 예시 수집
+            if self.optimization_config["template_preference"]:
+                if "기관" in primary_intent:
+                    intent_key = "기관_묻기"
+                elif "특징" in primary_intent:
+                    intent_key = "특징_묻기"
+                elif "지표" in primary_intent:
+                    intent_key = "지표_묻기"
+                elif "방안" in primary_intent:
+                    intent_key = "방안_묻기"
+                elif "절차" in primary_intent:
+                    intent_key = "절차_묻기"
+                elif "조치" in primary_intent:
+                    intent_key = "조치_묻기"
+                else:
+                    intent_key = "일반"
+
+                # 템플릿 예시 수집 - 실제 예시 텍스트 반환
+                template_examples = self.knowledge_base.get_template_examples(
+                    domain, intent_key
+                )
+                if template_examples:
+                    self.stats["intent_specific_answers"] += 1
+                    self.stats["template_usage"] += 1
+                    self.stats["hint_usage_rate"] += 1
+                    self.stats["template_examples_used"] += 1
+                    self.stats["template_guided_answers"] += 1
+
+        # 강화된 LLM 답변 생성 - 템플릿 예시 전달
+        answer = self.model_handler.generate_answer(
+            question,
+            "subjective",
+            5,
+            intent_analysis,
+            domain_hints={
+                "domain": domain, 
+                "template_examples": template_examples,
+                "template_guidance": True
+            },
+        )
+
+        self.stats["llm_usage_rate"] += 1
+        self.stats["llm_generation_count"] += 1
+        return answer
 
     def _enhanced_retry_mc_with_llm(
         self, question: str, max_choice: int, domain: str
@@ -297,6 +363,7 @@ class FinancialAIInference:
         ):
             retry_answer = str((max_choice + 1) // 2)
 
+        self.stats["llm_generation_count"] += 1
         return retry_answer
 
     def _process_institution_question_with_enhanced_llm(
@@ -331,6 +398,7 @@ class FinancialAIInference:
         answer = self._enhance_institution_answer(answer, question, institution_info)
 
         self.stats["llm_usage_rate"] += 1
+        self.stats["llm_generation_count"] += 1
         return answer
 
     def _enhance_institution_answer(
@@ -355,59 +423,6 @@ class FinancialAIInference:
             elif "금융투자" in question and "분쟁" in question:
                 answer = "금융분쟁조정위원회에서 " + answer
 
-        return answer
-
-    def _process_subjective_with_enhanced_llm(
-        self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict
-    ) -> str:
-        """강화된 주관식 처리"""
-
-        # 템플릿/패턴 힌트 정보 수집
-        template_hints = None
-        if (
-            intent_analysis
-            and intent_analysis.get("intent_confidence", 0)
-            >= self.optimization_config["intent_confidence_threshold"]
-        ):
-
-            primary_intent = intent_analysis.get("primary_intent", "일반")
-
-            # 의도별 특화 힌트 정보 수집
-            if self.optimization_config["template_preference"]:
-                if "기관" in primary_intent:
-                    intent_key = "기관_묻기"
-                elif "특징" in primary_intent:
-                    intent_key = "특징_묻기"
-                elif "지표" in primary_intent:
-                    intent_key = "지표_묻기"
-                elif "방안" in primary_intent:
-                    intent_key = "방안_묻기"
-                elif "절차" in primary_intent:
-                    intent_key = "절차_묻기"
-                elif "조치" in primary_intent:
-                    intent_key = "조치_묻기"
-                else:
-                    intent_key = "일반"
-
-                # 템플릿 힌트 수집
-                template_hints = self.knowledge_base.get_template_hints(
-                    domain, intent_key
-                )
-                if template_hints:
-                    self.stats["intent_specific_answers"] += 1
-                    self.stats["template_usage"] += 1
-                    self.stats["hint_usage_rate"] += 1
-
-        # 강화된 LLM 답변 생성
-        answer = self.model_handler.generate_answer(
-            question,
-            "subjective",
-            5,
-            intent_analysis,
-            domain_hints={"domain": domain, "template_hints": template_hints},
-        )
-
-        self.stats["llm_usage_rate"] += 1
         return answer
 
     def _enhanced_validate_and_improve_answer(
@@ -466,7 +481,7 @@ class FinancialAIInference:
             if intent_match:
                 self.stats["intent_match_success"] += 1
             else:
-                # 의도 불일치시 LLM 재생성
+                # 의도 불일치시 템플릿 가이드와 함께 LLM 재생성
                 answer = self._get_enhanced_improved_answer_with_llm(
                     question, domain, intent_analysis, kb_analysis, "intent_mismatch"
                 )
@@ -626,7 +641,7 @@ class FinancialAIInference:
         kb_analysis: Dict = None,
         improvement_type: str = "general",
     ) -> str:
-        """강화된 개선 답변 생성"""
+        """강화된 개선 답변 생성 - 템플릿 예시 활용"""
 
         # 개선 힌트 정보 수집
         improvement_hints = {"improvement_type": improvement_type, "domain": domain}
@@ -641,7 +656,7 @@ class FinancialAIInference:
                     self.knowledge_base.get_institution_hints(institution_type)
                 )
 
-        # 의도별 개선 힌트
+        # 의도별 개선 힌트 및 템플릿 예시
         if intent_analysis:
             primary_intent = intent_analysis.get("primary_intent", "일반")
 
@@ -660,10 +675,12 @@ class FinancialAIInference:
             else:
                 intent_key = "일반"
 
-            improvement_hints["template_hints"] = (
-                self.knowledge_base.get_template_hints(domain, intent_key)
-            )
-            improvement_hints["intent_specific"] = True
+            # 템플릿 예시 추가
+            template_examples = self.knowledge_base.get_template_examples(domain, intent_key)
+            if template_examples:
+                improvement_hints["template_examples"] = template_examples
+                improvement_hints["intent_specific"] = True
+                self.stats["template_examples_used"] += 1
 
         # 강화된 LLM을 통한 개선된 답변 생성
         answer = self.model_handler.generate_improved_answer(
@@ -676,6 +693,7 @@ class FinancialAIInference:
         )
 
         self.stats["llm_usage_rate"] += 1
+        self.stats["llm_generation_count"] += 1
         return answer
 
     def _post_process_improved_answer(
@@ -890,6 +908,7 @@ class FinancialAIInference:
             fallback_answer = str(random.randint(1, max_choice))
 
         self.stats["llm_usage_rate"] += 1
+        self.stats["llm_generation_count"] += 1
         return fallback_answer
 
     def _get_enhanced_safe_fallback_with_llm(
@@ -916,6 +935,7 @@ class FinancialAIInference:
             fallback_answer = self.data_processor.clean_korean_text(fallback_answer)
 
             self.stats["llm_usage_rate"] += 1
+            self.stats["llm_generation_count"] += 1
             return fallback_answer
 
     def _update_stats(
@@ -1151,6 +1171,9 @@ class FinancialAIInference:
                 self.stats["answer_structure_improvements"] / total
             )
             * 100,
+            "template_examples_usage_rate": (self.stats["template_examples_used"] / max(self.stats["subj_count"], 1)) * 100,
+            "llm_generation_rate": (self.stats["llm_generation_count"] / total) * 100,
+            "template_guided_answer_rate": (self.stats["template_guided_answers"] / max(self.stats["subj_count"], 1)) * 100,
             "avg_processing_time": (
                 sum(self.stats["processing_times"])
                 / len(self.stats["processing_times"])
@@ -1235,6 +1258,9 @@ def main():
             print(f"모델 성공률: {results['model_success_rate']:.1f}%")
             print(f"한국어 준수율: {results['korean_compliance_rate']:.1f}%")
             print(f"LLM 사용률: {results['llm_usage_rate']:.1f}%")
+            print(f"LLM 생성률: {results['llm_generation_rate']:.1f}%")
+            print(f"템플릿 예시 활용률: {results['template_examples_usage_rate']:.1f}%")
+            print(f"템플릿 가이드 답변률: {results['template_guided_answer_rate']:.1f}%")
             print(f"텍스트 복구율: {results['text_recovery_rate']:.1f}%")
             print(f"문법 수정률: {results['grammar_fix_rate']:.1f}%")
             if results["choice_range_error_rate"] > 0:

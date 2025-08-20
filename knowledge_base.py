@@ -4,7 +4,7 @@
 금융보안 지식베이스
 - 도메인별 키워드 분류
 - 전문 용어 처리
-- 한국어 전용 답변 템플릿 힌트 제공
+- 한국어 전용 답변 템플릿 예시 제공
 - 대회 규칙 준수 검증
 - 질문 의도별 지식 제공
 """
@@ -479,21 +479,21 @@ class FinancialSecurityKnowledgeBase:
 
         return None
 
-    def get_template_hints(self, domain: str, intent_type: str = "일반") -> str:
-        """템플릿 힌트 반환 - 직접 답변 대신 힌트 정보 제공"""
+    def get_template_examples(self, domain: str, intent_type: str = "일반") -> List[str]:
+        """템플릿 예시 반환 - LLM이 참고할 수 있는 실제 템플릿 예시 제공"""
 
-        # 템플릿 힌트 사용 통계 업데이트
+        # 템플릿 사용 통계 업데이트
         template_key = f"{domain}_{intent_type}"
         if template_key not in self.analysis_history["template_usage_stats"]:
             self.analysis_history["template_usage_stats"][template_key] = 0
         self.analysis_history["template_usage_stats"][template_key] += 1
 
         # 힌트 통계 업데이트
-        if "template_hints" not in self.analysis_history["hint_provision_stats"]:
-            self.analysis_history["hint_provision_stats"]["template_hints"] = 0
-        self.analysis_history["hint_provision_stats"]["template_hints"] += 1
+        if "template_examples" not in self.analysis_history["hint_provision_stats"]:
+            self.analysis_history["hint_provision_stats"]["template_examples"] = 0
+        self.analysis_history["hint_provision_stats"]["template_examples"] += 1
 
-        # 도메인과 의도에 맞는 힌트 정보 생성
+        # 도메인과 의도에 맞는 템플릿 예시 반환
         if domain in self.korean_subjective_templates:
             domain_templates = self.korean_subjective_templates[domain]
 
@@ -513,50 +513,52 @@ class FinancialSecurityKnowledgeBase:
             if "일반" in self.korean_subjective_templates:
                 templates = self.korean_subjective_templates["일반"]["일반"]
             else:
-                return None
+                return []
 
-        # 템플릿에서 핵심 키워드와 구조 추출하여 힌트 생성
+        # 템플릿 예시 반환 (리스트 형태)
         if isinstance(templates, list) and len(templates) > 0:
-            sample_template = templates[0]
+            return templates[:3]  # 최대 3개 예시 반환
+        else:
+            return []
 
-            # 핵심 키워드 추출
-            key_phrases = []
-            if "법령" in sample_template:
-                key_phrases.append("관련 법령")
-            if "규정" in sample_template:
-                key_phrases.append("규정")
-            if "관리" in sample_template:
-                key_phrases.append("관리 방안")
-            if "조치" in sample_template:
-                key_phrases.append("보안조치")
-            if "절차" in sample_template:
-                key_phrases.append("절차")
-            if "기관" in sample_template:
-                key_phrases.append("관련 기관")
+    def get_template_hints(self, domain: str, intent_type: str = "일반") -> str:
+        """템플릿 힌트 반환 - 구조적 가이드 제공"""
+        
+        # 기본 구조 힌트 생성
+        structure_hints = []
+        
+        if intent_type == "기관_묻기":
+            structure_hints = [
+                "구체적인 기관명을 명시하세요",
+                "소속 기관과 함께 제시하세요", 
+                "관련 법령에 따른 담당기관을 포함하세요"
+            ]
+        elif intent_type == "특징_묻기":
+            structure_hints = [
+                "주요 특징을 체계적으로 나열하세요",
+                "기술적 특성과 동작 원리를 중심으로 설명하세요",
+                "다른 유형과 구별되는 특징을 강조하세요"
+            ]
+        elif intent_type == "지표_묻기":
+            structure_hints = [
+                "탐지 지표를 구체적으로 나열하세요",
+                "네트워크, 시스템, 파일 관련 지표를 포함하세요",
+                "모니터링과 분석 방법을 설명하세요"
+            ]
+        elif intent_type == "방안_묻기":
+            structure_hints = [
+                "실무적이고 구체적인 대응방안을 제시하세요",
+                "예방, 탐지, 대응, 복구 단계를 포함하세요",
+                "기술적 방안과 관리적 방안을 모두 제시하세요"
+            ]
+        else:
+            structure_hints = [
+                "전문적이고 체계적인 내용으로 구성하세요",
+                "관련 법령과 규정을 참고하세요",
+                "실무적 관점에서 설명하세요"
+            ]
 
-            # 힌트 정보 생성
-            if key_phrases:
-                hint_info = f"{intent_type}에 대한 답변 시 다음 요소들을 포함하세요: {', '.join(key_phrases)}"
-            else:
-                hint_info = f"{domain} 분야의 {intent_type} 관련 전문적인 내용을 포함하여 답변하세요."
-
-            # 답변 구조 힌트 추가
-            if intent_type == "기관_묻기":
-                hint_info += " 구체적인 기관명과 소속을 명시하세요."
-            elif intent_type == "특징_묻기":
-                hint_info += " 주요 특징을 체계적으로 나열하세요."
-            elif intent_type == "지표_묻기":
-                hint_info += " 탐지 지표와 모니터링 방법을 설명하세요."
-            elif intent_type == "방안_묻기":
-                hint_info += " 실무적이고 구체적인 대응방안을 제시하세요."
-            elif intent_type == "절차_묻기":
-                hint_info += " 단계별 절차를 순서대로 설명하세요."
-            elif intent_type == "조치_묻기":
-                hint_info += " 구체적인 보안조치와 대응조치를 설명하세요."
-
-            return hint_info
-
-        return None
+        return " ".join(structure_hints)
 
     def get_institution_hints(self, institution_type: str) -> str:
         """기관별 힌트 정보 반환 - 직접 답변 대신 힌트 정보 제공"""
@@ -599,18 +601,17 @@ class FinancialSecurityKnowledgeBase:
 
     def get_korean_subjective_template(
         self, domain: str, intent_type: str = "일반"
-    ) -> str:
-        """한국어 주관식 답변 템플릿 반환 - 힌트용으로 변경"""
-        # 이 메서드는 이제 힌트 정보만 반환
-        return self.get_template_hints(domain, intent_type)
+    ) -> List[str]:
+        """한국어 주관식 답변 템플릿 반환 - 실제 템플릿 예시 제공"""
+        return self.get_template_examples(domain, intent_type)
 
     def get_high_quality_template(
         self, domain: str, intent_type: str, min_quality: float = 0.8
-    ) -> str:
-        """고품질 템플릿 반환 - 힌트용으로 변경"""
+    ) -> List[str]:
+        """고품질 템플릿 반환 - 검증된 고품질 템플릿 예시 제공"""
         template_key = f"{domain}_{intent_type}"
 
-        # 효과성이 검증된 템플릿 힌트 우선 사용
+        # 효과성이 검증된 템플릿 우선 사용
         if template_key in self.analysis_history["template_effectiveness"]:
             effectiveness = self.analysis_history["template_effectiveness"][
                 template_key
@@ -619,15 +620,15 @@ class FinancialSecurityKnowledgeBase:
                 effectiveness["korean_ratio"] >= min_quality
                 and effectiveness["usage_count"] >= 5
             ):
-                # 검증된 고품질 템플릿의 힌트 정보 제공
-                return self.get_template_hints(domain, intent_type)
+                # 검증된 고품질 템플릿 반환
+                return self.get_template_examples(domain, intent_type)
 
-        # 기본 템플릿 힌트 반환
-        return self.get_template_hints(domain, intent_type)
+        # 기본 템플릿 반환
+        return self.get_template_examples(domain, intent_type)
 
-    def get_subjective_template(self, domain: str, intent_type: str = "일반") -> str:
-        """주관식 답변 템플릿 반환 - 힌트용으로 변경"""
-        return self.get_template_hints(domain, intent_type)
+    def get_subjective_template(self, domain: str, intent_type: str = "일반") -> List[str]:
+        """주관식 답변 템플릿 반환 - 실제 템플릿 예시 제공"""
+        return self.get_template_examples(domain, intent_type)
 
     def _calculate_complexity(self, question: str) -> float:
         """질문 복잡도 계산"""

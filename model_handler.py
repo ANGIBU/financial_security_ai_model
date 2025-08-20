@@ -601,7 +601,7 @@ class SimpleModelHandler:
         intent_analysis: Dict = None,
         domain_hints: Dict = None,
     ) -> str:
-        """강화된 한국어 프롬프트 생성"""
+        """강화된 한국어 프롬프트 생성 - 템플릿 예시 활용"""
         domain = self._detect_domain(question)
 
         # 기본 한국어 전용 지시 (반복 방지 강화)
@@ -619,8 +619,10 @@ class SimpleModelHandler:
 10. 완전하고 명확한 문장으로 마무리
 """
 
-        # 의도별 특화 지시
+        # 의도별 특화 지시 및 템플릿 예시
         intent_instruction = ""
+        template_examples = ""
+        
         if intent_analysis:
             primary_intent = intent_analysis.get("primary_intent", "일반")
             answer_type = intent_analysis.get("answer_type_required", "설명형")
@@ -629,6 +631,19 @@ class SimpleModelHandler:
                 intent_instruction = random.choice(
                     self.intent_specific_prompts[primary_intent]
                 )
+
+            # 템플릿 예시 추가 (domain_hints에서 전달됨)
+            if domain_hints and "template_examples" in domain_hints:
+                examples = domain_hints["template_examples"]
+                if examples and isinstance(examples, list):
+                    # 2-3개의 예시를 선택하여 제공
+                    selected_examples = examples[:min(3, len(examples))]
+                    
+                    template_examples = "\n\n참고할 답변 예시 (이와 유사한 수준과 구조로 작성하되, 내용은 질문에 맞게 변형하세요):\n"
+                    for i, example in enumerate(selected_examples, 1):
+                        template_examples += f"예시 {i}: {example}\n"
+                    
+                    template_examples += "\n위 예시들을 참고하여 질문의 내용에 맞는 구체적이고 전문적인 답변을 새롭게 작성하세요."
 
             # 답변 유형별 추가 지침
             if answer_type == "기관명":
@@ -645,12 +660,7 @@ class SimpleModelHandler:
         # 힌트 정보 추가
         hint_context = ""
         if domain_hints:
-            if "template_hints" in domain_hints and domain_hints["template_hints"]:
-                hint_context += f"\n참고 정보: {domain_hints['template_hints']}"
-            if (
-                "institution_hints" in domain_hints
-                and domain_hints["institution_hints"]
-            ):
+            if "institution_hints" in domain_hints and domain_hints["institution_hints"]:
                 hint_context += f"\n기관 정보: {domain_hints['institution_hints']}"
             if "improvement_type" in domain_hints:
                 improvement_type = domain_hints["improvement_type"]
@@ -664,7 +674,7 @@ class SimpleModelHandler:
                 question, self._extract_choice_count(question), domain, domain_hints
             )
         else:
-            # 주관식 프롬프트
+            # 주관식 프롬프트 (템플릿 예시 포함)
             prompts = [
                 f"""다음은 {domain} 분야의 금융보안 전문 질문입니다.
 
@@ -674,6 +684,7 @@ class SimpleModelHandler:
 
 {intent_instruction}
 {hint_context}
+{template_examples}
 
 전문가 수준의 정확한 답변을 완전한 한국어로만 작성하세요:
 - 모든 전문 용어를 한국어로 표기
@@ -681,6 +692,7 @@ class SimpleModelHandler:
 - 체계적이고 논리적인 한국어 문장 구성
 - 완전한 문장으로 마무리
 - 동일한 표현의 반복 절대 금지
+- 참고 예시의 수준과 구조를 유지하되 질문에 맞는 새로운 내용으로 작성
 
 답변:""",
                 f"""금융보안 전문가로서 다음 {domain} 관련 질문에 완전한 한국어로만 답변하세요.
@@ -691,6 +703,7 @@ class SimpleModelHandler:
 
 {intent_instruction}
 {hint_context}
+{template_examples}
 
 답변 작성 기준:
 - 반드시 한국어로만 작성
@@ -700,25 +713,7 @@ class SimpleModelHandler:
 - 완전한 문장으로 구성
 - 논리적 흐름 유지
 - 반복 표현 사용 금지
-
-답변:""",
-                f"""다음 질문에 대해 완전한 한국어로만 전문적인 답변을 작성하세요.
-
-질문: {question}
-
-{korean_instruction}
-
-{intent_instruction}
-{hint_context}
-
-한국어 전용 답변 작성 원칙:
-1. 모든 내용을 한국어로만 표현
-2. 전문 용어도 한국어로 설명
-3. 법령과 규정을 한국어로 인용
-4. 자연스러운 한국어 문법 사용
-5. 완전한 문장으로 마무리
-6. 일관되고 논리적인 내용 구성
-7. 불필요한 반복 피하기
+- 참고 예시를 바탕으로 질문에 특화된 답변 작성
 
 답변:""",
             ]
@@ -782,9 +777,37 @@ class SimpleModelHandler:
     ) -> str:
         """답변 생성 - 반드시 LLM 사용"""
 
+        # 템플릿 예시를 domain_hints에 추가
+        enhanced_domain_hints = domain_hints.copy() if domain_hints else {}
+        
+        if question_type == "subjective" and intent_analysis:
+            # knowledge_base에서 템플릿 예시 가져오기
+            domain = self._detect_domain(question)
+            primary_intent = intent_analysis.get("primary_intent", "일반")
+            
+            # 의도 매핑
+            intent_key = "일반"
+            if "기관" in primary_intent:
+                intent_key = "기관_묻기"
+            elif "특징" in primary_intent:
+                intent_key = "특징_묻기"
+            elif "지표" in primary_intent:
+                intent_key = "지표_묻기"
+            elif "방안" in primary_intent:
+                intent_key = "방안_묻기"
+            elif "절차" in primary_intent:
+                intent_key = "절차_묻기"
+            elif "조치" in primary_intent:
+                intent_key = "조치_묻기"
+            
+            # knowledge_base에서 템플릿 예시 가져오기 (임시로 여기서 직접 처리)
+            template_examples = self._get_template_examples_from_knowledge(domain, intent_key)
+            if template_examples:
+                enhanced_domain_hints["template_examples"] = template_examples
+
         # 프롬프트 생성
         prompt = self._create_enhanced_korean_prompt(
-            question, question_type, intent_analysis, domain_hints
+            question, question_type, intent_analysis, enhanced_domain_hints
         )
 
         try:
@@ -881,6 +904,41 @@ class SimpleModelHandler:
                 intent_analysis,
             )
             return fallback
+
+    def _get_template_examples_from_knowledge(self, domain: str, intent_key: str) -> List[str]:
+        """지식베이스에서 템플릿 예시 가져오기 (임시 구현)"""
+        # 이 부분은 실제로는 knowledge_base 인스턴스를 주입받아야 하지만
+        # 임시로 기본 템플릿 예시를 제공합니다
+        
+        templates_mapping = {
+            "사이버보안": {
+                "특징_묻기": [
+                    "트로이 목마 기반 원격제어 악성코드는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하며, 은밀성과 지속성을 특징으로 합니다.",
+                    "해당 악성코드는 사용자를 속여 시스템에 침투하여 외부 공격자가 원격으로 제어하는 특성을 가지며, 시스템 깊숙이 숨어서 장기간 활동하면서 정보 수집과 원격 제어 기능을 수행합니다.",
+                ],
+                "지표_묻기": [
+                    "네트워크 트래픽 모니터링에서 비정상적인 외부 통신 패턴, 시스템 동작 분석에서 비인가 프로세스 실행, 파일 생성 및 수정 패턴의 이상 징후, 입출력 장치에 대한 비정상적 접근 등이 주요 탐지 지표입니다.",
+                    "원격 접속 흔적, 의심스러운 네트워크 연결, 시스템 파일 변조, 레지스트리 수정, 비정상적인 메모리 사용 패턴, 알려지지 않은 프로세스 실행 등을 통해 탐지할 수 있습니다.",
+                ],
+            },
+            "개인정보보호": {
+                "기관_묻기": [
+                    "개인정보보호위원회가 개인정보 보호에 관한 업무를 총괄하며, 개인정보침해신고센터에서 신고 접수 및 상담 업무를 담당합니다.",
+                    "개인정보보호위원회는 개인정보 보호 정책 수립과 감시 업무를 수행하는 중앙 행정기관이며, 개인정보 분쟁조정위원회에서 관련 분쟁의 조정 업무를 담당합니다.",
+                ],
+            },
+            "전자금융": {
+                "기관_묻기": [
+                    "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 금융감독원 내에 설치되어 운영됩니다.",
+                    "금융감독원 내 전자금융분쟁조정위원회가 이용자의 분쟁조정 신청을 접수하고 처리하는 업무를 수행합니다.",
+                ],
+            },
+        }
+        
+        if domain in templates_mapping and intent_key in templates_mapping[domain]:
+            return templates_mapping[domain][intent_key]
+        
+        return []
 
     def _retry_generation_with_different_settings(
         self,
