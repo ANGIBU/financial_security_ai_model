@@ -479,7 +479,9 @@ class FinancialSecurityKnowledgeBase:
 
         return None
 
-    def get_template_examples(self, domain: str, intent_type: str = "일반") -> List[str]:
+    def get_template_examples(
+        self, domain: str, intent_type: str = "일반"
+    ) -> List[str]:
         """템플릿 예시 반환 - LLM이 참고할 수 있는 실제 템플릿 예시 제공"""
 
         # 템플릿 사용 통계 업데이트
@@ -523,39 +525,39 @@ class FinancialSecurityKnowledgeBase:
 
     def get_template_hints(self, domain: str, intent_type: str = "일반") -> str:
         """템플릿 힌트 반환 - 구조적 가이드 제공"""
-        
+
         # 기본 구조 힌트 생성
         structure_hints = []
-        
+
         if intent_type == "기관_묻기":
             structure_hints = [
                 "구체적인 기관명을 명시하세요",
-                "소속 기관과 함께 제시하세요", 
-                "관련 법령에 따른 담당기관을 포함하세요"
+                "소속 기관과 함께 제시하세요",
+                "관련 법령에 따른 담당기관을 포함하세요",
             ]
         elif intent_type == "특징_묻기":
             structure_hints = [
                 "주요 특징을 체계적으로 나열하세요",
                 "기술적 특성과 동작 원리를 중심으로 설명하세요",
-                "다른 유형과 구별되는 특징을 강조하세요"
+                "다른 유형과 구별되는 특징을 강조하세요",
             ]
         elif intent_type == "지표_묻기":
             structure_hints = [
                 "탐지 지표를 구체적으로 나열하세요",
                 "네트워크, 시스템, 파일 관련 지표를 포함하세요",
-                "모니터링과 분석 방법을 설명하세요"
+                "모니터링과 분석 방법을 설명하세요",
             ]
         elif intent_type == "방안_묻기":
             structure_hints = [
                 "실무적이고 구체적인 대응방안을 제시하세요",
                 "예방, 탐지, 대응, 복구 단계를 포함하세요",
-                "기술적 방안과 관리적 방안을 모두 제시하세요"
+                "기술적 방안과 관리적 방안을 모두 제시하세요",
             ]
         else:
             structure_hints = [
                 "전문적이고 체계적인 내용으로 구성하세요",
                 "관련 법령과 규정을 참고하세요",
-                "실무적 관점에서 설명하세요"
+                "실무적 관점에서 설명하세요",
             ]
 
         return " ".join(structure_hints)
@@ -626,7 +628,9 @@ class FinancialSecurityKnowledgeBase:
         # 기본 템플릿 반환
         return self.get_template_examples(domain, intent_type)
 
-    def get_subjective_template(self, domain: str, intent_type: str = "일반") -> List[str]:
+    def get_subjective_template(
+        self, domain: str, intent_type: str = "일반"
+    ) -> List[str]:
         """주관식 답변 템플릿 반환 - 실제 템플릿 예시 제공"""
         return self.get_template_examples(domain, intent_type)
 

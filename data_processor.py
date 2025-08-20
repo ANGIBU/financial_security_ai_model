@@ -251,8 +251,8 @@ class SimpleDataProcessor:
             r"갈취 묻는 말",
             r"묻고 갈취",
             r"(.{2,8})\s*\1\s*\1\s*\1",  # 같은 짧은 문구가 4번 이상 반복
-            r"(.{1,3})\s*(\1\s*){6,}",   # 매우 짧은 단어가 7번 이상 반복
-            r"갈취.*갈취.*갈취",         # "갈취"가 3번 이상 나타남
+            r"(.{1,3})\s*(\1\s*){6,}",  # 매우 짧은 단어가 7번 이상 반복
+            r"갈취.*갈취.*갈취",  # "갈취"가 3번 이상 나타남
         ]
 
         for pattern in critical_patterns:
@@ -264,7 +264,7 @@ class SimpleDataProcessor:
         words = text.split()
         if len(words) >= 4:
             for i in range(len(words) - 3):
-                if words[i] == words[i+1] == words[i+2] == words[i+3]:
+                if words[i] == words[i + 1] == words[i + 2] == words[i + 3]:
                     # 같은 단어가 4번 연속으로 나오면 치명적 패턴
                     if len(words[i]) <= 5:  # 짧은 단어일 때 더 민감하게
                         self.processing_stats["critical_pattern_detected"] += 1
@@ -295,7 +295,7 @@ class SimpleDataProcessor:
         i = 0
         while i < len(words):
             current_word = words[i]
-            
+
             # 연속된 동일 단어 개수 확인
             count = 1
             while i + count < len(words) and words[i + count] == current_word:
@@ -388,7 +388,7 @@ class SimpleDataProcessor:
         # 5단계: 불완전한 단어 정리
         # "() 기반", "()는" 같은 패턴 제거
         text = re.sub(r"\(\s*\)\s*[가-힣]{1,3}", "", text)
-        
+
         # 6단계: 연속된 공백 정리
         text = re.sub(r"\s+", " ", text).strip()
 
@@ -469,7 +469,9 @@ class SimpleDataProcessor:
                 if len(parts) > 1:
                     for part in parts:
                         part = part.strip()
-                        if len(part) > 10 and not self.detect_critical_repetitive_patterns(part):
+                        if len(
+                            part
+                        ) > 10 and not self.detect_critical_repetitive_patterns(part):
                             improved_sentences.append(part)
                 else:
                     if not self.detect_critical_repetitive_patterns(sentence):
@@ -936,7 +938,11 @@ class SimpleDataProcessor:
             desc_count = sum(1 for word in descriptive_words if word in answer_lower)
 
             # 반복 패턴이 없고 적절한 키워드가 있어야 함
-            match_found = feature_count >= 1 and desc_count >= 2 and not self.detect_critical_repetitive_patterns(answer)
+            match_found = (
+                feature_count >= 1
+                and desc_count >= 2
+                and not self.detect_critical_repetitive_patterns(answer)
+            )
 
         # 지표 나열이 필요한 경우 (강화)
         elif required_type == "지표나열":
@@ -970,7 +976,11 @@ class SimpleDataProcessor:
             )
 
             # 반복 패턴이 없고 적절한 지표 키워드가 있어야 함
-            match_found = indicator_count >= 2 and specific_count >= 2 and not self.detect_critical_repetitive_patterns(answer)
+            match_found = (
+                indicator_count >= 2
+                and specific_count >= 2
+                and not self.detect_critical_repetitive_patterns(answer)
+            )
 
         # 방안 제시가 필요한 경우
         elif required_type == "방안제시":
@@ -993,7 +1003,11 @@ class SimpleDataProcessor:
             )
             action_count = sum(1 for word in action_words if word in answer_lower)
 
-            match_found = solution_count >= 2 and action_count >= 1 and not self.detect_critical_repetitive_patterns(answer)
+            match_found = (
+                solution_count >= 2
+                and action_count >= 1
+                and not self.detect_critical_repetitive_patterns(answer)
+            )
 
         # 절차 설명이 필요한 경우
         elif required_type == "절차설명":
@@ -1022,7 +1036,11 @@ class SimpleDataProcessor:
             )
             step_count = sum(1 for word in step_indicators if word in answer_lower)
 
-            match_found = proc_count >= 1 and (step_count >= 1 or "," in answer) and not self.detect_critical_repetitive_patterns(answer)
+            match_found = (
+                proc_count >= 1
+                and (step_count >= 1 or "," in answer)
+                and not self.detect_critical_repetitive_patterns(answer)
+            )
 
         # 조치 설명이 필요한 경우
         elif required_type == "조치설명":
@@ -1037,10 +1055,9 @@ class SimpleDataProcessor:
                 "강화",
                 "보완",
             ]
-            match_found = (
-                sum(1 for keyword in measure_keywords if keyword in answer_lower) >= 2
-                and not self.detect_critical_repetitive_patterns(answer)
-            )
+            match_found = sum(
+                1 for keyword in measure_keywords if keyword in answer_lower
+            ) >= 2 and not self.detect_critical_repetitive_patterns(answer)
 
         # 법령 설명이 필요한 경우
         elif required_type == "법령설명":
@@ -1054,18 +1071,16 @@ class SimpleDataProcessor:
                 "기준",
                 "근거",
             ]
-            match_found = (
-                sum(1 for keyword in law_keywords if keyword in answer_lower) >= 2
-                and not self.detect_critical_repetitive_patterns(answer)
-            )
+            match_found = sum(
+                1 for keyword in law_keywords if keyword in answer_lower
+            ) >= 2 and not self.detect_critical_repetitive_patterns(answer)
 
         # 정의 설명이 필요한 경우
         elif required_type == "정의설명":
             definition_keywords = ["정의", "개념", "의미", "뜻", "용어", "개념"]
-            match_found = (
-                sum(1 for keyword in definition_keywords if keyword in answer_lower) >= 1
-                and not self.detect_critical_repetitive_patterns(answer)
-            )
+            match_found = sum(
+                1 for keyword in definition_keywords if keyword in answer_lower
+            ) >= 1 and not self.detect_critical_repetitive_patterns(answer)
 
         # 기본적으로 통과
         else:
@@ -1081,10 +1096,9 @@ class SimpleDataProcessor:
                 "체계",
                 "시스템",
             ]
-            match_found = (
-                sum(1 for word in meaningful_words if word in answer_lower) >= 2
-                and not self.detect_critical_repetitive_patterns(answer)
-            )
+            match_found = sum(
+                1 for word in meaningful_words if word in answer_lower
+            ) >= 2 and not self.detect_critical_repetitive_patterns(answer)
 
         # 통계 업데이트
         self.processing_stats["intent_match_accuracy"]["total"] += 1
@@ -1322,18 +1336,18 @@ class SimpleDataProcessor:
             if len(answer) > self.korean_requirements["max_length"]:
                 sentences = answer.split(". ")
                 valid_sentences = []
-                
+
                 for sentence in sentences:
                     if not self.detect_critical_repetitive_patterns(sentence):
                         valid_sentences.append(sentence)
                     if len(valid_sentences) >= 3:
                         break
-                
+
                 if valid_sentences:
                     answer = ". ".join(valid_sentences[:3])
                 else:
                     return "답변 정규화 중 유효한 문장을 찾을 수 없습니다."
-                    
+
                 if len(answer) > self.korean_requirements["max_length"]:
                     answer = answer[: self.korean_requirements["max_length"]]
 

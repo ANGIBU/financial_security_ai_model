@@ -236,7 +236,10 @@ def validate_config():
         errors.append("intent_confidence_threshold는 0과 1 사이여야 합니다")
 
     # 반복 패턴 설정 검증
-    if "repetition_thresholds" in REPETITION_MONITORING and "word_repeat_limit" in REPETITION_MONITORING["repetition_thresholds"]:
+    if (
+        "repetition_thresholds" in REPETITION_MONITORING
+        and "word_repeat_limit" in REPETITION_MONITORING["repetition_thresholds"]
+    ):
         if REPETITION_MONITORING["repetition_thresholds"]["word_repeat_limit"] < 2:
             errors.append("word_repeat_limit는 2 이상이어야 합니다")
 
@@ -278,13 +281,17 @@ def adjust_repetition_sensitivity(level: str = "medium"):
         for key, value in sensitivity_levels[level].items():
             if key != "pattern_detection_sensitivity":
                 REPETITION_MONITORING["repetition_thresholds"][key] = value
-        
+
         # 패턴 감지 민감도 업데이트
-        REPETITION_MONITORING["pattern_detection_sensitivity"] = sensitivity_levels[level]["pattern_detection_sensitivity"]
+        REPETITION_MONITORING["pattern_detection_sensitivity"] = sensitivity_levels[
+            level
+        ]["pattern_detection_sensitivity"]
 
 
 # === 생성 설정 동적 조정 함수 ===
-def adjust_generation_for_repetition_risk(question_type: str, risk_level: str = "medium"):
+def adjust_generation_for_repetition_risk(
+    question_type: str, risk_level: str = "medium"
+):
     """반복 위험에 따른 생성 설정 조정"""
     risk_adjustments = {
         "low": {
@@ -315,7 +322,7 @@ def initialize_system():
     """시스템 초기화"""
     setup_environment()
     ensure_directories()
-    
+
     # REPETITION_MONITORING 초기 설정 확인
     if "repetition_thresholds" not in REPETITION_MONITORING:
         REPETITION_MONITORING["repetition_thresholds"] = {
@@ -323,7 +330,7 @@ def initialize_system():
             "phrase_repeat_limit": 3,
             "sentence_repeat_limit": 2,
         }
-    
+
     validate_config()
 
     # 반복 패턴 모니터링 기본 설정
@@ -334,8 +341,12 @@ def initialize_system():
         print(f"기본 모델: {DEFAULT_MODEL_NAME}")
         print(f"디바이스: {get_device()}")
         print(f"오프라인 모드: {OFFLINE_MODE}")
-        print(f"반복 패턴 모니터링: {OPTIMIZATION_CONFIG['repetition_detection_enabled']}")
-        print(f"반복 감지 민감도: {REPETITION_MONITORING['pattern_detection_sensitivity']}")
+        print(
+            f"반복 패턴 모니터링: {OPTIMIZATION_CONFIG['repetition_detection_enabled']}"
+        )
+        print(
+            f"반복 감지 민감도: {REPETITION_MONITORING['pattern_detection_sensitivity']}"
+        )
 
 
 # 자동 초기화 (모듈 import 시 실행)

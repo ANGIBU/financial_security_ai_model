@@ -349,7 +349,13 @@ class SimpleModelHandler:
         words = text.split()
         if len(words) >= 5:
             for i in range(len(words) - 4):
-                if words[i] == words[i+1] == words[i+2] == words[i+3] == words[i+4]:
+                if (
+                    words[i]
+                    == words[i + 1]
+                    == words[i + 2]
+                    == words[i + 3]
+                    == words[i + 4]
+                ):
                     return True
 
         return False
@@ -610,7 +616,7 @@ class SimpleModelHandler:
         # 의도별 특화 지시 및 템플릿 예시
         intent_instruction = ""
         template_examples = ""
-        
+
         if intent_analysis:
             primary_intent = intent_analysis.get("primary_intent", "일반")
             answer_type = intent_analysis.get("answer_type_required", "설명형")
@@ -625,12 +631,12 @@ class SimpleModelHandler:
                 examples = domain_hints["template_examples"]
                 if examples and isinstance(examples, list):
                     # 2-3개의 예시를 선택하여 제공
-                    selected_examples = examples[:min(3, len(examples))]
-                    
+                    selected_examples = examples[: min(3, len(examples))]
+
                     template_examples = "\n\n참고할 답변 예시 (이와 유사한 수준과 구조로 작성하되, 내용은 질문에 맞게 변형하세요):\n"
                     for i, example in enumerate(selected_examples, 1):
                         template_examples += f"예시 {i}: {example}\n"
-                    
+
                     template_examples += "\n위 예시들을 참고하여 질문의 내용에 맞는 구체적이고 전문적인 답변을 새롭게 작성하세요."
 
             # 답변 유형별 추가 지침
@@ -648,7 +654,10 @@ class SimpleModelHandler:
         # 힌트 정보 추가
         hint_context = ""
         if domain_hints:
-            if "institution_hints" in domain_hints and domain_hints["institution_hints"]:
+            if (
+                "institution_hints" in domain_hints
+                and domain_hints["institution_hints"]
+            ):
                 hint_context += f"\n기관 정보: {domain_hints['institution_hints']}"
             if "improvement_type" in domain_hints:
                 improvement_type = domain_hints["improvement_type"]
@@ -767,12 +776,12 @@ class SimpleModelHandler:
 
         # 템플릿 예시를 domain_hints에 추가
         enhanced_domain_hints = domain_hints.copy() if domain_hints else {}
-        
+
         if question_type == "subjective" and intent_analysis:
             # knowledge_base에서 템플릿 예시 가져오기
             domain = self._detect_domain(question)
             primary_intent = intent_analysis.get("primary_intent", "일반")
-            
+
             # 의도 매핑
             intent_key = "일반"
             if "기관" in primary_intent:
@@ -787,9 +796,11 @@ class SimpleModelHandler:
                 intent_key = "절차_묻기"
             elif "조치" in primary_intent:
                 intent_key = "조치_묻기"
-            
+
             # knowledge_base에서 템플릿 예시 가져오기 (임시로 여기서 직접 처리)
-            template_examples = self._get_template_examples_from_knowledge(domain, intent_key)
+            template_examples = self._get_template_examples_from_knowledge(
+                domain, intent_key
+            )
             if template_examples:
                 enhanced_domain_hints["template_examples"] = template_examples
 
@@ -893,11 +904,13 @@ class SimpleModelHandler:
             )
             return fallback
 
-    def _get_template_examples_from_knowledge(self, domain: str, intent_key: str) -> List[str]:
+    def _get_template_examples_from_knowledge(
+        self, domain: str, intent_key: str
+    ) -> List[str]:
         """지식베이스에서 템플릿 예시 가져오기 (임시 구현)"""
         # 이 부분은 실제로는 knowledge_base 인스턴스를 주입받아야 하지만
         # 임시로 기본 템플릿 예시를 제공합니다
-        
+
         templates_mapping = {
             "사이버보안": {
                 "특징_묻기": [
@@ -922,10 +935,10 @@ class SimpleModelHandler:
                 ],
             },
         }
-        
+
         if domain in templates_mapping and intent_key in templates_mapping[domain]:
             return templates_mapping[domain][intent_key]
-        
+
         return []
 
     def _retry_generation_with_different_settings(
@@ -952,7 +965,7 @@ class SimpleModelHandler:
             retry_config = GenerationConfig(
                 max_new_tokens=200 if question_type == "subjective" else 10,
                 temperature=0.4,  # 더 낮은 temperature
-                top_p=0.7,       # 더 낮은 top_p
+                top_p=0.7,  # 더 낮은 top_p
                 do_sample=True,
                 repetition_penalty=1.5,  # 더 강한 반복 방지
                 no_repeat_ngram_size=4,
@@ -1040,7 +1053,11 @@ class SimpleModelHandler:
                 response += "."
 
         # 10단계: 마침표 확인
-        if response and not response.endswith((".", "다", "요", "함")) and response != "생성에 실패하였습니다.":
+        if (
+            response
+            and not response.endswith((".", "다", "요", "함"))
+            and response != "생성에 실패하였습니다."
+        ):
             response += "."
 
         # 11단계: 최종 반복 패턴 확인
@@ -1110,7 +1127,7 @@ class SimpleModelHandler:
 
             with torch.no_grad():
                 outputs = self.model.generate(
-                    **inputs, 
+                    **inputs,
                     generation_config=gen_config,
                     repetition_penalty=1.2,
                     no_repeat_ngram_size=3,
@@ -1169,7 +1186,7 @@ class SimpleModelHandler:
 
             with torch.no_grad():
                 outputs = self.model.generate(
-                    **inputs, 
+                    **inputs,
                     generation_config=gen_config,
                     repetition_penalty=1.3,
                     no_repeat_ngram_size=4,
@@ -1179,8 +1196,10 @@ class SimpleModelHandler:
                 outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
             ).strip()
 
-            processed_response = self._process_enhanced_subj_answer(response, question, None)
-            
+            processed_response = self._process_enhanced_subj_answer(
+                response, question, None
+            )
+
             # 반복 패턴이 있다면 실패 메시지로 대체
             if self.detect_repetitive_patterns(processed_response):
                 return "생성에 실패하였습니다."
@@ -1201,7 +1220,7 @@ class SimpleModelHandler:
         config_dict = GENERATION_CONFIG[question_type].copy()
         config_dict["pad_token_id"] = self.tokenizer.pad_token_id
         config_dict["eos_token_id"] = self.tokenizer.eos_token_id
-        
+
         # 반복 방지 설정 추가
         if question_type == "subjective":
             config_dict["repetition_penalty"] = 1.2
@@ -1563,7 +1582,7 @@ class SimpleModelHandler:
         patterns["avg_quality"] = (
             patterns["avg_quality"] * (patterns["count"] - 1) + quality_score
         ) / patterns["count"]
-        
+
         if self.detect_repetitive_patterns(answer):
             patterns["repetition_count"] += 1
 
@@ -1580,8 +1599,8 @@ class SimpleModelHandler:
 
             with torch.no_grad():
                 _ = self.model.generate(
-                    **inputs, 
-                    max_new_tokens=5, 
+                    **inputs,
+                    max_new_tokens=5,
                     do_sample=False,
                     repetition_penalty=1.1,
                 )
@@ -1604,11 +1623,16 @@ class SimpleModelHandler:
         # 반복 패턴 통계 추가
         repetition_stats = {
             "total_repetitive_answers": sum(
-                1 for record in self.learning_data["successful_answers"] + self.learning_data["failed_answers"]
+                1
+                for record in self.learning_data["successful_answers"]
+                + self.learning_data["failed_answers"]
                 if record.get("has_repetition", False)
             ),
             "repetition_rate_by_domain": {
-                domain: (patterns.get("repetition_count", 0) / max(patterns["count"], 1)) * 100
+                domain: (
+                    patterns.get("repetition_count", 0) / max(patterns["count"], 1)
+                )
+                * 100
                 for domain, patterns in self.learning_data["question_patterns"].items()
             },
         }

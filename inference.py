@@ -317,9 +317,9 @@ class FinancialAIInference:
             5,
             intent_analysis,
             domain_hints={
-                "domain": domain, 
+                "domain": domain,
                 "template_examples": template_examples,
-                "template_guidance": True
+                "template_guidance": True,
             },
         )
 
@@ -676,7 +676,9 @@ class FinancialAIInference:
                 intent_key = "일반"
 
             # 템플릿 예시 추가
-            template_examples = self.knowledge_base.get_template_examples(domain, intent_key)
+            template_examples = self.knowledge_base.get_template_examples(
+                domain, intent_key
+            )
             if template_examples:
                 improvement_hints["template_examples"] = template_examples
                 improvement_hints["intent_specific"] = True
@@ -1171,9 +1173,15 @@ class FinancialAIInference:
                 self.stats["answer_structure_improvements"] / total
             )
             * 100,
-            "template_examples_usage_rate": (self.stats["template_examples_used"] / max(self.stats["subj_count"], 1)) * 100,
+            "template_examples_usage_rate": (
+                self.stats["template_examples_used"] / max(self.stats["subj_count"], 1)
+            )
+            * 100,
             "llm_generation_rate": (self.stats["llm_generation_count"] / total) * 100,
-            "template_guided_answer_rate": (self.stats["template_guided_answers"] / max(self.stats["subj_count"], 1)) * 100,
+            "template_guided_answer_rate": (
+                self.stats["template_guided_answers"] / max(self.stats["subj_count"], 1)
+            )
+            * 100,
             "avg_processing_time": (
                 sum(self.stats["processing_times"])
                 / len(self.stats["processing_times"])
@@ -1260,7 +1268,9 @@ def main():
             print(f"LLM 사용률: {results['llm_usage_rate']:.1f}%")
             print(f"LLM 생성률: {results['llm_generation_rate']:.1f}%")
             print(f"템플릿 예시 활용률: {results['template_examples_usage_rate']:.1f}%")
-            print(f"템플릿 가이드 답변률: {results['template_guided_answer_rate']:.1f}%")
+            print(
+                f"템플릿 가이드 답변률: {results['template_guided_answer_rate']:.1f}%"
+            )
             print(f"텍스트 복구율: {results['text_recovery_rate']:.1f}%")
             print(f"문법 수정률: {results['grammar_fix_rate']:.1f}%")
             if results["choice_range_error_rate"] > 0:
