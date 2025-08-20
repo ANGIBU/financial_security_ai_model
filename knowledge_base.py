@@ -33,7 +33,7 @@ class FinancialSecurityKnowledgeBase:
         # JSON 설정 파일 로드
         self._load_json_configs()
 
-        # 템플릿 품질 평가 기준 (config.py에서 로드)
+        # 템플릿 품질 평가 기준
         self.template_quality_criteria = TEMPLATE_QUALITY_CRITERIA
 
         # 질문 분석 이력
@@ -58,7 +58,7 @@ class FinancialSecurityKnowledgeBase:
         self._load_analysis_history()
 
     def _load_json_configs(self):
-        """JSON 설정 파일들 로드"""
+        """JSON 설정 파일 로드"""
         try:
             # knowledge_data.json 로드
             with open(JSON_CONFIG_FILES["knowledge_data"], "r", encoding="utf-8") as f:
@@ -86,7 +86,7 @@ class FinancialSecurityKnowledgeBase:
             self._load_default_configs()
 
     def _load_default_configs(self):
-        """기본 설정 로드 (JSON 파일 로드 실패 시)"""
+        """기본 설정 로드"""
         print("기본 설정으로 대체합니다.")
 
         # 최소한의 기본 설정
@@ -447,7 +447,7 @@ class FinancialSecurityKnowledgeBase:
         self.analysis_history["question_patterns"].append(pattern)
 
     def get_mc_pattern_hints(self, question: str) -> str:
-        """객관식 패턴 힌트 반환 - 직접 답변 대신 힌트 정보 제공"""
+        """객관식 패턴 힌트 반환"""
         mc_pattern_info = self._analyze_mc_pattern(question)
 
         if (
@@ -482,7 +482,7 @@ class FinancialSecurityKnowledgeBase:
     def get_template_examples(
         self, domain: str, intent_type: str = "일반"
     ) -> List[str]:
-        """템플릿 예시 반환 - LLM이 참고할 수 있는 실제 템플릿 예시 제공"""
+        """템플릿 예시 반환"""
 
         # 템플릿 사용 통계 업데이트
         template_key = f"{domain}_{intent_type}"
@@ -506,7 +506,6 @@ class FinancialSecurityKnowledgeBase:
                 elif "일반" in domain_templates:
                     templates = domain_templates["일반"]
                 else:
-                    # dict의 첫 번째 값 사용
                     templates = list(domain_templates.values())[0]
             else:
                 templates = domain_templates
@@ -517,14 +516,14 @@ class FinancialSecurityKnowledgeBase:
             else:
                 return []
 
-        # 템플릿 예시 반환 (리스트 형태)
+        # 템플릿 예시 반환
         if isinstance(templates, list) and len(templates) > 0:
-            return templates[:3]  # 최대 3개 예시 반환
+            return templates[:3]
         else:
             return []
 
     def get_template_hints(self, domain: str, intent_type: str = "일반") -> str:
-        """템플릿 힌트 반환 - 구조적 가이드 제공"""
+        """템플릿 힌트 반환"""
 
         # 기본 구조 힌트 생성
         structure_hints = []
@@ -563,7 +562,7 @@ class FinancialSecurityKnowledgeBase:
         return " ".join(structure_hints)
 
     def get_institution_hints(self, institution_type: str) -> str:
-        """기관별 힌트 정보 반환 - 직접 답변 대신 힌트 정보 제공"""
+        """기관별 힌트 정보 반환"""
         if institution_type in self.institution_database:
             info = self.institution_database[institution_type]
 
@@ -604,13 +603,13 @@ class FinancialSecurityKnowledgeBase:
     def get_korean_subjective_template(
         self, domain: str, intent_type: str = "일반"
     ) -> List[str]:
-        """한국어 주관식 답변 템플릿 반환 - 실제 템플릿 예시 제공"""
+        """한국어 주관식 답변 템플릿 반환"""
         return self.get_template_examples(domain, intent_type)
 
     def get_high_quality_template(
         self, domain: str, intent_type: str, min_quality: float = 0.8
     ) -> List[str]:
-        """고품질 템플릿 반환 - 검증된 고품질 템플릿 예시 제공"""
+        """고품질 템플릿 반환"""
         template_key = f"{domain}_{intent_type}"
 
         # 효과성이 검증된 템플릿 우선 사용
@@ -622,7 +621,6 @@ class FinancialSecurityKnowledgeBase:
                 effectiveness["korean_ratio"] >= min_quality
                 and effectiveness["usage_count"] >= 5
             ):
-                # 검증된 고품질 템플릿 반환
                 return self.get_template_examples(domain, intent_type)
 
         # 기본 템플릿 반환
@@ -631,7 +629,7 @@ class FinancialSecurityKnowledgeBase:
     def get_subjective_template(
         self, domain: str, intent_type: str = "일반"
     ) -> List[str]:
-        """주관식 답변 템플릿 반환 - 실제 템플릿 예시 제공"""
+        """주관식 답변 템플릿 반환"""
         return self.get_template_examples(domain, intent_type)
 
     def _calculate_complexity(self, question: str) -> float:

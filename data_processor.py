@@ -33,7 +33,7 @@ class SimpleDataProcessor:
         # JSON 설정 파일에서 데이터 로드
         self._load_json_configs()
 
-        # 한국어 전용 검증 기준 (config.py에서 로드)
+        # 한국어 전용 검증 기준
         self.korean_requirements = KOREAN_REQUIREMENTS
 
         # 처리 통계
@@ -43,7 +43,7 @@ class SimpleDataProcessor:
         self._load_processing_history()
 
     def _load_json_configs(self):
-        """JSON 설정 파일들 로드"""
+        """JSON 설정 파일 로드"""
         try:
             # processing_config.json 로드
             with open(
@@ -88,15 +88,13 @@ class SimpleDataProcessor:
             self._load_default_configs()
 
     def _setup_korean_recovery_mappings(self):
-        """JSON에서 로드한 한국어 복구 매핑 설정"""
-        # 복구 매핑 통합
+        """한국어 복구 매핑 설정"""
         self.korean_recovery_mapping = {}
 
         # 깨진 유니코드 문자 제거
         for broken, replacement in self.korean_recovery_config[
             "broken_unicode_chars"
         ].items():
-            # 유니코드 이스케이프 시퀀스를 실제 문자로 변환
             try:
                 actual_char = broken.encode().decode("unicode_escape")
                 self.korean_recovery_mapping[actual_char] = replacement
@@ -136,7 +134,7 @@ class SimpleDataProcessor:
         self.korean_recovery_mapping.update(problematic_patterns)
 
     def _load_default_configs(self):
-        """기본 설정 로드 (JSON 파일 로드 실패 시)"""
+        """기본 설정 로드"""
         print("기본 설정으로 대체합니다.")
 
         # 최소한의 기본 설정
@@ -196,7 +194,7 @@ class SimpleDataProcessor:
             "순 어": "",
             "ᄒᆞᆫ": "",
             "작로": "으로",
-            "갈취 묻는 말": "",  # 문제가 되는 패턴 제거
+            "갈취 묻는 말": "",
             "묻고 갈취": "",
             "갈취": "",
         }
@@ -250,9 +248,9 @@ class SimpleDataProcessor:
         critical_patterns = [
             r"갈취 묻는 말",
             r"묻고 갈취",
-            r"(.{2,8})\s*\1\s*\1\s*\1",  # 같은 짧은 문구가 4번 이상 반복
-            r"(.{1,3})\s*(\1\s*){6,}",  # 매우 짧은 단어가 7번 이상 반복
-            r"갈취.*갈취.*갈취",  # "갈취"가 3번 이상 나타남
+            r"(.{2,8})\s*\1\s*\1\s*\1",
+            r"(.{1,3})\s*(\1\s*){6,}",
+            r"갈취.*갈취.*갈취",
         ]
 
         for pattern in critical_patterns:
@@ -260,13 +258,12 @@ class SimpleDataProcessor:
                 self.processing_stats["critical_pattern_detected"] += 1
                 return True
 
-        # 연속된 동일 단어 검사 (더 엄격)
+        # 연속된 동일 단어 검사
         words = text.split()
         if len(words) >= 4:
             for i in range(len(words) - 3):
                 if words[i] == words[i + 1] == words[i + 2] == words[i + 3]:
-                    # 같은 단어가 4번 연속으로 나오면 치명적 패턴
-                    if len(words[i]) <= 5:  # 짧은 단어일 때 더 민감하게
+                    if len(words[i]) <= 5:
                         self.processing_stats["critical_pattern_detected"] += 1
                         return True
 
@@ -279,7 +276,7 @@ class SimpleDataProcessor:
 
         original_text = text
 
-        # 1단계: 특정 문제 패턴 직접 제거
+        # 특정 문제 패턴 직접 제거
         problematic_removals = [
             "갈취 묻는 말",
             "묻고 갈취",
@@ -289,7 +286,7 @@ class SimpleDataProcessor:
         for pattern in problematic_removals:
             text = text.replace(pattern, "")
 
-        # 2단계: 연속된 동일 단어 정리 (더 엄격)
+        # 연속된 동일 단어 정리
         words = text.split()
         cleaned_words = []
         i = 0
@@ -313,15 +310,15 @@ class SimpleDataProcessor:
 
         text = " ".join(cleaned_words)
 
-        # 3단계: 반복되는 구문 패턴 제거 (더 강화)
+        # 반복되는 구문 패턴 제거
         text = re.sub(r"(.{2,15})\s*\1\s*\1+", r"\1", text)
         text = re.sub(r"(.{1,5})\s*(\1\s*){4,}", r"\1", text)
 
-        # 4단계: 빈 괄호나 이상한 패턴 제거
+        # 빈 괄호나 이상한 패턴 제거
         text = re.sub(r"\(\s*\)", "", text)
         text = re.sub(r"\s*\(\s*\)\s*", " ", text)
 
-        # 5단계: 불필요한 공백 정리
+        # 불필요한 공백 정리
         text = re.sub(r"\s+", " ", text).strip()
 
         # 통계 업데이트
@@ -331,29 +328,26 @@ class SimpleDataProcessor:
         return text
 
     def restore_korean_characters(self, text: str) -> str:
-        """JSON 설정 기반 깨진 한국어 문자 복구 (강화)"""
+        """깨진 한국어 문자 복구"""
         if not text:
             return ""
 
         original_text = text
 
-        # 1단계: 치명적인 반복 패턴 조기 제거
+        # 치명적인 반복 패턴 조기 제거
         if self.detect_critical_repetitive_patterns(text):
             text = self.remove_critical_repetitive_patterns(text)
 
-        # 2단계: 유니코드 정규화
+        # 유니코드 정규화
         text = unicodedata.normalize("NFC", text)
 
-        # 3단계: JSON에서 로드한 매핑을 사용하여 깨진 문자 복구
+        # JSON에서 로드한 매핑을 사용하여 깨진 문자 복구
         for broken, correct in self.korean_recovery_mapping.items():
             text = text.replace(broken, correct)
 
-        # 4단계: 추가 정리 패턴
-        # 빈 괄호 제거
+        # 추가 정리 패턴
         text = re.sub(r"\(\s*\)", "", text)
-        # 연속된 특수문자 정리
         text = re.sub(r"[.,!?]{3,}", ".", text)
-        # 불완전한 문장 부호 정리
         text = re.sub(r"\s+[.,!?]\s+", ". ", text)
 
         # 복구 성공 여부 확인
@@ -363,36 +357,35 @@ class SimpleDataProcessor:
         return text
 
     def enhance_korean_text_quality(self, text: str) -> str:
-        """JSON 설정 기반 한국어 텍스트 품질 향상 (강화)"""
+        """한국어 텍스트 품질 향상"""
         if not text:
             return ""
 
         original_text = text
 
-        # 1단계: 치명적인 반복 패턴 제거
+        # 치명적인 반복 패턴 제거
         if self.detect_critical_repetitive_patterns(text):
             text = self.remove_critical_repetitive_patterns(text)
 
-        # 2단계: 기본 복구
+        # 기본 복구
         text = self.restore_korean_characters(text)
 
-        # 3단계: 품질 패턴 적용 (JSON에서 로드한 패턴 사용)
+        # 품질 패턴 적용
         for pattern_config in self.korean_quality_patterns:
             pattern = pattern_config["pattern"]
             replacement = pattern_config["replacement"]
             text = re.sub(pattern, replacement, text)
 
-        # 4단계: 의미없는 문자 제거 (강화)
+        # 의미없는 문자 제거
         text = re.sub(r"[^\w\s가-힣.,!?()[\]\-:;/]", " ", text)
 
-        # 5단계: 불완전한 단어 정리
-        # "() 기반", "()는" 같은 패턴 제거
+        # 불완전한 단어 정리
         text = re.sub(r"\(\s*\)\s*[가-힣]{1,3}", "", text)
 
-        # 6단계: 연속된 공백 정리
+        # 연속된 공백 정리
         text = re.sub(r"\s+", " ", text).strip()
 
-        # 7단계: 최종 반복 패턴 확인
+        # 최종 반복 패턴 확인
         if self.detect_critical_repetitive_patterns(text):
             text = self.remove_critical_repetitive_patterns(text)
 
@@ -403,15 +396,15 @@ class SimpleDataProcessor:
         return text
 
     def fix_grammatical_structure(self, text: str) -> str:
-        """문법 구조 개선 (강화)"""
+        """문법 구조 개선"""
         if not text:
             return ""
 
-        # 1단계: 반복 패턴 제거
+        # 반복 패턴 제거
         if self.detect_critical_repetitive_patterns(text):
             text = self.remove_critical_repetitive_patterns(text)
 
-        # 2단계: 문장 개선 패턴들 (JSON 패턴으로 확장 가능)
+        # 문장 개선 패턴들
         grammar_fixes = [
             # 조사 개선
             (r"([가-힣])\s+은\s+", r"\1은 "),
@@ -437,7 +430,7 @@ class SimpleDataProcessor:
             (r"\s*\.\s*", ". "),
             (r"\s*,\s*", ", "),
             # 불완전한 문장 처리
-            (r"([가-힣])\s*$", r"\1."),  # 마침표 없는 문장 끝
+            (r"([가-힣])\s*$", r"\1."),
         ]
 
         for pattern, replacement in grammar_fixes:
@@ -446,25 +439,23 @@ class SimpleDataProcessor:
             else:
                 text = re.sub(pattern, replacement, text)
 
-        # 3단계: 문장 구조 검증 및 개선
+        # 문장 구조 검증 및 개선
         sentences = text.split(".")
         improved_sentences = []
 
         for sentence in sentences:
             sentence = sentence.strip()
-            if len(sentence) < 5:  # 너무 짧은 문장 제거
+            if len(sentence) < 5:
                 continue
 
             # 반복 패턴이 있는 문장 건너뛰기
             if self.detect_critical_repetitive_patterns(sentence):
                 continue
 
-            # 문장 시작 공백 제거
             sentence = sentence.lstrip()
 
             # 문장이 너무 길면 분할
             if len(sentence) > 150:
-                # 접속사나 콤마 기준으로 분할
                 parts = re.split(r"[,，]", sentence)
                 if len(parts) > 1:
                     for part in parts:
@@ -480,21 +471,20 @@ class SimpleDataProcessor:
                 if not self.detect_critical_repetitive_patterns(sentence):
                     improved_sentences.append(sentence)
 
-        # 4단계: 문장 재조립
+        # 문장 재조립
         if improved_sentences:
             result = ". ".join(improved_sentences)
         else:
-            # 모든 문장이 제거된 경우 기본 답변 제공
             result = "관련 법령과 규정에 따라 체계적인 관리를 수행해야 합니다"
 
-        # 5단계: 마지막 마침표 처리
+        # 마지막 마침표 처리
         if result and not result.endswith("."):
             result += "."
 
         return result
 
     def analyze_question_intent(self, question: str) -> Dict:
-        """질문 의도 분석 (강화)"""
+        """질문 의도 분석"""
         question_lower = question.lower()
 
         intent_analysis = {
@@ -504,7 +494,7 @@ class SimpleDataProcessor:
             "answer_type_required": "설명형",
             "secondary_intents": [],
             "context_hints": [],
-            "quality_risk": False,  # 품질 위험 여부 추가
+            "quality_risk": False,
         }
 
         # 각 의도 패턴별 점수 계산
@@ -556,12 +546,10 @@ class SimpleDataProcessor:
             elif "특징" in primary:
                 intent_analysis["answer_type_required"] = "특징설명"
                 intent_analysis["context_hints"].append("특징과 성질 나열")
-                # 특징 설명은 반복 위험이 높음
                 intent_analysis["quality_risk"] = True
             elif "지표" in primary:
                 intent_analysis["answer_type_required"] = "지표나열"
                 intent_analysis["context_hints"].append("탐지 지표와 징후")
-                # 지표 나열도 반복 위험이 있음
                 intent_analysis["quality_risk"] = True
             elif "방안" in primary:
                 intent_analysis["answer_type_required"] = "방안제시"
@@ -588,7 +576,7 @@ class SimpleDataProcessor:
         return intent_analysis
 
     def _add_context_analysis(self, question: str, intent_analysis: Dict):
-        """추가 문맥 분석 (강화)"""
+        """추가 문맥 분석"""
         question_lower = question.lower()
 
         # 반복 위험 키워드 확인
@@ -618,7 +606,7 @@ class SimpleDataProcessor:
             intent_analysis["context_hints"].append("단계별 설명 필요")
 
     def extract_choice_range(self, question: str) -> Tuple[str, int]:
-        """선택지 범위 추출 (강화)"""
+        """선택지 범위 추출"""
         question_type = self.analyze_question_type(question)
 
         if question_type != "multiple_choice":
@@ -630,7 +618,6 @@ class SimpleDataProcessor:
 
         for line in lines:
             line = line.strip()
-            # "숫자 + 공백 + 텍스트" 패턴 매칭
             match = re.match(r"^(\d+)\s+(.+)", line)
             if match:
                 num = int(match.group(1))
@@ -644,7 +631,7 @@ class SimpleDataProcessor:
             max_choice = max(choice_numbers)
             min_choice = min(choice_numbers)
 
-            # 연속성 검증 (1부터 시작하는 연속 선택지)
+            # 연속성 검증
             expected_count = max_choice - min_choice + 1
             if (
                 len(choice_numbers) == expected_count
@@ -655,7 +642,6 @@ class SimpleDataProcessor:
 
         # 전통적인 패턴으로 확인
         for i in range(5, 2, -1):
-            # "1 텍스트 2 텍스트 3 텍스트" 패턴
             pattern_parts = [f"{j}\\s+[가-힣\\w]+" for j in range(1, i + 1)]
             pattern = ".*".join(pattern_parts)
             if re.search(pattern, question, re.DOTALL):
@@ -682,7 +668,6 @@ class SimpleDataProcessor:
                 return "subjective"
 
         # 실제 데이터 패턴 기반 객관식 확인
-        # "숫자 + 공백 + 한글/영문" 패턴이 3개 이상 있는지 확인
         choice_pattern = r"\n(\d+)\s+[가-힣\w]"
         choice_matches = re.findall(choice_pattern, question)
 
@@ -787,44 +772,44 @@ class SimpleDataProcessor:
         return detected_domain
 
     def clean_korean_text(self, text: str) -> str:
-        """한국어 전용 텍스트 정리 (강화)"""
+        """한국어 전용 텍스트 정리"""
         if not text:
             return ""
 
-        # 1단계: 치명적인 반복 패턴 조기 감지 및 제거
+        # 치명적인 반복 패턴 조기 감지 및 제거
         if self.detect_critical_repetitive_patterns(text):
             text = self.remove_critical_repetitive_patterns(text)
-            if len(text) < 10:  # 너무 많이 제거된 경우
+            if len(text) < 10:
                 return "텍스트 정리 중 오류가 발생했습니다."
 
-        # 2단계: 깨진 문자 복구
+        # 깨진 문자 복구
         text = self.restore_korean_characters(text)
 
-        # 3단계: 텍스트 품질 향상
+        # 텍스트 품질 향상
         text = self.enhance_korean_text_quality(text)
 
-        # 4단계: 문법 구조 개선
+        # 문법 구조 개선
         text = self.fix_grammatical_structure(text)
 
-        # 5단계: 기본 정리
+        # 기본 정리
         text = re.sub(r"\s+", " ", text).strip()
 
-        # 6단계: 깨진 문자 및 인코딩 오류 처리 (강화)
+        # 깨진 문자 및 인코딩 오류 처리
         text = re.sub(r"[^\w\s가-힣.,!?()[\]\-]", " ", text)
 
-        # 7단계: 영어 문자 제거
+        # 영어 문자 제거
         text = re.sub(r"[a-zA-Z]+", "", text)
 
-        # 8단계: 중국어 제거
+        # 중국어 제거
         text = re.sub(r"[\u4e00-\u9fff]", "", text)
 
-        # 9단계: 특수 기호 제거
+        # 특수 기호 제거
         text = re.sub(r"[①②③④⑤➀➁➂➃➄]", "", text)
 
-        # 10단계: 반복 공백 제거
+        # 반복 공백 제거
         text = re.sub(r"\s+", " ", text).strip()
 
-        # 11단계: 최종 반복 패턴 확인
+        # 최종 반복 패턴 확인
         if self.detect_critical_repetitive_patterns(text):
             text = self.remove_critical_repetitive_patterns(text)
             if len(text) < 20:
@@ -869,7 +854,7 @@ class SimpleDataProcessor:
     def validate_answer_intent_match(
         self, answer: str, question: str, intent_analysis: Dict
     ) -> bool:
-        """답변과 질문 의도 일치성 검증 (강화)"""
+        """답변과 질문 의도 일치성 검증"""
         if not answer or not intent_analysis:
             return False
 
@@ -882,7 +867,6 @@ class SimpleDataProcessor:
 
         # 기관명이 필요한 경우
         if required_type == "기관명":
-            # 구체적인 기관명이 포함되어야 하고, 최소 2개의 키워드 필요
             institution_keywords = [
                 "위원회",
                 "감독원",
@@ -918,7 +902,7 @@ class SimpleDataProcessor:
 
             match_found = has_specific and keyword_count >= 2
 
-        # 특징 설명이 필요한 경우 (강화)
+        # 특징 설명이 필요한 경우
         elif required_type == "특징설명":
             feature_keywords = [
                 "특징",
@@ -937,14 +921,13 @@ class SimpleDataProcessor:
             )
             desc_count = sum(1 for word in descriptive_words if word in answer_lower)
 
-            # 반복 패턴이 없고 적절한 키워드가 있어야 함
             match_found = (
                 feature_count >= 1
                 and desc_count >= 2
                 and not self.detect_critical_repetitive_patterns(answer)
             )
 
-        # 지표 나열이 필요한 경우 (강화)
+        # 지표 나열이 필요한 경우
         elif required_type == "지표나열":
             indicator_keywords = [
                 "지표",
@@ -975,7 +958,6 @@ class SimpleDataProcessor:
                 1 for word in specific_indicators if word in answer_lower
             )
 
-            # 반복 패턴이 없고 적절한 지표 키워드가 있어야 함
             match_found = (
                 indicator_count >= 2
                 and specific_count >= 2
@@ -1110,7 +1092,7 @@ class SimpleDataProcessor:
     def validate_korean_answer(
         self, answer: str, question_type: str, max_choice: int = 5, question: str = ""
     ) -> bool:
-        """한국어 답변 유효성 검증 (강화)"""
+        """한국어 답변 유효성 검증"""
         if not answer:
             return False
 
@@ -1223,7 +1205,7 @@ class SimpleDataProcessor:
                 if 1 <= choice_num <= 5 and len(choice_content) > 0:
                     choices.append(choice_content)
 
-        # 순서 정렬 (번호 순서대로)
+        # 순서 정렬
         if len(choices) >= 3:
             return choices
 
@@ -1305,7 +1287,7 @@ class SimpleDataProcessor:
     def normalize_korean_answer(
         self, answer: str, question_type: str, max_choice: int = 5
     ) -> str:
-        """한국어 답변 정규화 (강화)"""
+        """한국어 답변 정규화"""
         if not answer:
             return ""
 
@@ -1321,7 +1303,7 @@ class SimpleDataProcessor:
             return ""
 
         else:
-            # 주관식 답변 한국어 정리 (강화)
+            # 주관식 답변 한국어 정리
             answer = self.clean_korean_text(answer)
 
             # 반복 패턴 최종 확인
@@ -1364,7 +1346,7 @@ class SimpleDataProcessor:
         return self.normalize_korean_answer(answer, question_type, max_choice)
 
     def get_processing_stats(self) -> Dict:
-        """처리 통계 반환 (강화)"""
+        """처리 통계 반환"""
         total = max(self.processing_stats["total_processed"], 1)
         intent_total = max(
             self.processing_stats["intent_analysis_accuracy"]["total"], 1
