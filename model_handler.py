@@ -488,26 +488,14 @@ class SimpleModelHandler:
 
         # 7단계: 최종 검증 - 반복 패턴이 다시 생겼는지 확인
         if self.detect_repetitive_patterns(answer):
-            # 반복 패턴이 다시 생긴 경우 기본 답변으로 대체
-            if intent_analysis and intent_analysis.get("primary_intent"):
-                return self._generate_safe_fallback_answer(intent_analysis["primary_intent"])
-            else:
-                return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+            # 반복 패턴이 다시 생긴 경우 실패 메시지로 대체
+            return "생성에 실패하였습니다."
 
         return answer
 
     def _generate_safe_fallback_answer(self, intent_type: str) -> str:
-        """안전한 폴백 답변 생성"""
-        fallback_templates = {
-            "기관_묻기": "관련 업무를 담당하는 전문 기관에서 해당 업무를 수행합니다.",
-            "특징_묻기": "주요 특징으로는 시스템 보안과 관련된 다양한 요소들이 있습니다.",
-            "지표_묻기": "주요 탐지 지표로는 시스템 모니터링과 보안 관련 요소들이 포함됩니다.",
-            "방안_묻기": "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다.",
-            "절차_묻기": "관련 절차에 따라 단계적으로 업무를 수행하고 적절한 관리를 실시해야 합니다.",
-            "조치_묻기": "적절한 보안조치와 관리조치를 통해 시스템의 안전성을 확보해야 합니다.",
-        }
-
-        return fallback_templates.get(intent_type, "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다.")
+        """안전한 폴백 답변 생성 - 모든 의도에 대해 통일된 실패 메시지"""
+        return "생성에 실패하였습니다."
 
     def _extract_choice_count(self, question: str) -> int:
         """질문에서 선택지 개수 추출"""
@@ -981,19 +969,13 @@ class SimpleModelHandler:
 
             # 여전히 반복 패턴이 있다면 폴백 답변 사용
             if self.detect_repetitive_patterns(response):
-                if intent_analysis and intent_analysis.get("primary_intent"):
-                    return self._generate_safe_fallback_answer(intent_analysis["primary_intent"])
-                else:
-                    return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+                return "생성에 실패하였습니다."
 
             return response
 
         except Exception:
             # 최종 폴백
-            if intent_analysis and intent_analysis.get("primary_intent"):
-                return self._generate_safe_fallback_answer(intent_analysis["primary_intent"])
-            else:
-                return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+            return "생성에 실패하였습니다."
 
     def _process_enhanced_subj_answer(
         self, response: str, question: str, intent_analysis: Dict = None
@@ -1007,10 +989,7 @@ class SimpleModelHandler:
             response = self.remove_repetitive_patterns(response)
             # 너무 많이 제거되어 내용이 부족한 경우
             if len(response) < 30:
-                if intent_analysis and intent_analysis.get("primary_intent"):
-                    return self._generate_safe_fallback_answer(intent_analysis["primary_intent"])
-                else:
-                    return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+                return "생성에 실패하였습니다."
 
         # 2단계: 한국어 텍스트 복구
         response = self.recover_korean_text(response)
@@ -1051,12 +1030,7 @@ class SimpleModelHandler:
         # 8단계: 최종 검증 및 보완
         if korean_ratio < 0.7 or len(response) < 30:
             # 기본 응답으로 대체
-            if intent_analysis and intent_analysis.get("primary_intent"):
-                response = self._generate_safe_fallback_answer(
-                    intent_analysis["primary_intent"]
-                )
-            else:
-                response = "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+            response = "생성에 실패하였습니다."
 
         # 9단계: 길이 조절
         if len(response) > 350:
@@ -1066,16 +1040,13 @@ class SimpleModelHandler:
                 response += "."
 
         # 10단계: 마침표 확인
-        if response and not response.endswith((".", "다", "요", "함")):
+        if response and not response.endswith((".", "다", "요", "함")) and response != "생성에 실패하였습니다.":
             response += "."
 
         # 11단계: 최종 반복 패턴 확인
         if self.detect_repetitive_patterns(response):
-            # 최종적으로도 반복 패턴이 있다면 안전한 답변으로 대체
-            if intent_analysis and intent_analysis.get("primary_intent"):
-                return self._generate_safe_fallback_answer(intent_analysis["primary_intent"])
-            else:
-                return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+            # 최종적으로도 반복 패턴이 있다면 실패 메시지로 대체
+            return "생성에 실패하였습니다."
 
         return response
 
@@ -1210,20 +1181,20 @@ class SimpleModelHandler:
 
             processed_response = self._process_enhanced_subj_answer(response, question, None)
             
-            # 반복 패턴이 있다면 안전한 답변으로 대체
+            # 반복 패턴이 있다면 실패 메시지로 대체
             if self.detect_repetitive_patterns(processed_response):
-                return f"관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+                return "생성에 실패하였습니다."
 
             return processed_response
 
         except Exception as e:
             if self.verbose:
                 print(f"폴백 주관식 답변 생성 오류: {e}")
-            return f"관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 지속적인 모니터링을 수행해야 합니다."
+            return "생성에 실패하였습니다."
 
     def _generate_basic_intent_answer(self, primary_intent: str) -> str:
         """기본 의도별 답변 생성"""
-        return self._generate_safe_fallback_answer(primary_intent)
+        return "생성에 실패하였습니다."
 
     def _get_generation_config(self, question_type: str) -> GenerationConfig:
         """생성 설정 (반복 방지 강화)"""
