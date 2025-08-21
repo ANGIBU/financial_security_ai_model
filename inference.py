@@ -908,12 +908,20 @@ class FinancialAIInference:
         start_time: float,
         bar_length: int = PROGRESS_CONFIG["bar_length"],
     ):
-        """진행률 게이지바 출력"""
-        progress = current / total
+        """진행률 게이지바 출력 (수정됨)"""
+        if total <= 0:
+            return
+            
+        progress = min(current / total, 1.0)  # 진행률을 1.0으로 제한
         filled_length = int(bar_length * progress)
+        filled_length = min(filled_length, bar_length)  # bar_length를 초과하지 않도록 제한
+        
         bar = "█" * filled_length + "░" * (bar_length - filled_length)
-
         percent = progress * 100
+        
+        # 100%를 초과하지 않도록 제한
+        percent = min(percent, 100.0)
+        
         print(
             f"\r문항 처리: ({current}/{total}) 진행도: {percent:.0f}% [{bar}]",
             end="",
@@ -1019,7 +1027,7 @@ class FinancialAIInference:
 
         output_file = output_file or DEFAULT_FILES["output_file"]
 
-        print(f"\n데이터 로드 완료: {len(test_df)}개 문항")
+        print(f"데이터 로드 완료: {len(test_df)}개 문항")
 
         answers = []
         total_questions = len(test_df)
@@ -1033,14 +1041,15 @@ class FinancialAIInference:
             answer = self.process_single_question(question, question_id)
             answers.append(answer)
 
-            # 진행도 표시
-            if (idx + 1) % PROGRESS_CONFIG["update_frequency"] == 0:
+            # 진행도 표시 (수정됨)
+            if (idx + 1) % PROGRESS_CONFIG["update_frequency"] == 0 or (idx + 1) == total_questions:
                 self.print_progress_bar(idx + 1, total_questions, inference_start_time)
 
             # 메모리 관리
             if (idx + 1) % MEMORY_CONFIG["gc_frequency"] == 0:
                 gc.collect()
 
+        # 마지막 진행률 표시 완료
         print()
 
         # 결과 저장
