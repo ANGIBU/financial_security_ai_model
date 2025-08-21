@@ -1191,7 +1191,8 @@ class FinancialAIInference:
         total_questions = len(test_df)
         inference_start_time = time.time()
 
-        for idx, row in test_df.iterrows():
+        # enumerate를 사용하여 0부터 시작하는 정확한 인덱스 사용
+        for question_idx, (original_idx, row) in enumerate(test_df.iterrows()):
             question = row["Question"]
             question_id = row["ID"]
 
@@ -1199,12 +1200,12 @@ class FinancialAIInference:
             answer = self.process_single_question(question, question_id)
             answers.append(answer)
 
-            # 진행도 표시
-            if (idx + 1) % PROGRESS_CONFIG["update_frequency"] == 0 or (idx + 1) == total_questions:
-                self.print_progress_bar(idx + 1, total_questions, inference_start_time)
+            # 진행도 표시 (question_idx + 1 사용)
+            if (question_idx + 1) % PROGRESS_CONFIG["update_frequency"] == 0 or (question_idx + 1) == total_questions:
+                self.print_progress_bar(question_idx + 1, total_questions, inference_start_time)
 
             # 메모리 관리
-            if (idx + 1) % MEMORY_CONFIG["gc_frequency"] == 0:
+            if (question_idx + 1) % MEMORY_CONFIG["gc_frequency"] == 0:
                 gc.collect()
 
         # 마지막 진행률 표시 완료
