@@ -86,8 +86,6 @@ def run_test(test_size: int = None, verbose: bool = True):
 def run_subjective_test():
     """주관식 테스트 실행"""
 
-    target_ids = ["test_004", "test_007"]
-
     # 파일 존재 확인
     test_file = DEFAULT_FILES["test_file"]
     submission_file = DEFAULT_FILES["submission_file"]
@@ -111,17 +109,49 @@ def run_subjective_test():
             submission_file, encoding=FILE_VALIDATION["encoding"]
         )
 
-        # 주관식 문항 필터링
-        subjective_test_df = test_df[test_df["ID"].isin(target_ids)].copy()
-        subjective_submission_df = submission_df[
-            submission_df["ID"].isin(target_ids)
-        ].copy()
+        print(f"전체 데이터 분석 중: {len(test_df)}개 문항")
 
-        if len(subjective_test_df) == 0:
-            print(f"오류: 지정된 주관식 문항을 찾을 수 없습니다")
-            return False
+        # 주관식 문항 동적으로 찾기
+        subjective_indices = []
+        subjective_questions = []
+        
+        for idx, row in test_df.iterrows():
+            question = row["Question"]
+            question_id = row["ID"]
+            
+            # 질문 유형 분석
+            question_type, max_choice = engine.data_processor.extract_choice_range(question)
+            
+            if question_type == "subjective":
+                subjective_indices.append(idx)
+                subjective_questions.append(question_id)
+            
+            # 처리 진행률 표시
+            if (idx + 1) % 50 == 0:
+                print(f"분석 진행: {idx + 1}/{len(test_df)} ({((idx + 1)/len(test_df)*100):.1f}%)")
 
-        print(f"주관식 테스트 문항: {len(subjective_test_df)}개")
+        if len(subjective_indices) == 0:
+            print(f"오류: 주관식 문항을 찾을 수 없습니다")
+            print("모든 문항이 객관식으로 분류되었습니다.")
+            
+            # 강제로 몇 개 문항을 주관식으로 처리 (테스트 목적)
+            print("테스트를 위해 처음 5개 문항을 주관식으로 처리합니다...")
+            subjective_indices = list(range(min(5, len(test_df))))
+            subjective_questions = test_df.iloc[subjective_indices]["ID"].tolist()
+
+        # 주관식 문항이 너무 많으면 일부만 선택
+        max_subjective_test = 10
+        if len(subjective_indices) > max_subjective_test:
+            print(f"주관식 문항이 {len(subjective_indices)}개로 많아서 처음 {max_subjective_test}개만 테스트합니다.")
+            subjective_indices = subjective_indices[:max_subjective_test]
+            subjective_questions = subjective_questions[:max_subjective_test]
+
+        print(f"주관식 문항 발견: {len(subjective_indices)}개")
+        print(f"테스트할 문항 ID: {', '.join(subjective_questions[:5])}{'...' if len(subjective_questions) > 5 else ''}")
+
+        # 주관식 데이터프레임 생성
+        subjective_test_df = test_df.iloc[subjective_indices].copy()
+        subjective_submission_df = submission_df.iloc[subjective_indices].copy()
 
         # 주관식 테스트 실행
         output_file = "./subjective_test_result.csv"
@@ -130,9 +160,7 @@ def run_subjective_test():
         )
 
         # 결과 출력
-        print(f"\n주관식 테스트 완료")
-        print(f"처리 시간: {results['total_time']:.1f}초")
-        print(f"결과 파일: {output_file}")
+        print_subjective_results(results, output_file, len(subjective_indices), subjective_questions)
 
         return True
 
@@ -146,6 +174,66 @@ def run_subjective_test():
     finally:
         if engine:
             engine.cleanup()
+
+
+def print_subjective_results(results: dict, output_file: str, test_count: int, question_ids: list):
+    """주관식 테스트 결과 출력"""
+    
+    print(f"\n=== 주관식 테스트 완료 ({test_count}개 문항) ===")
+    print(f"처리 시간: {results['total_time']:.1f}초")
+    print(f"결과 파일: {output_file}")
+    
+    # 주관식 성능 지표
+    subj_count = results.get("subj_count", 0)
+    intent_success_rate = results.get("intent_match_success_rate", 0)
+    korean_compliance = results.get("korean_compliance_rate", 0)
+    avg_quality = results.get("avg_quality_score", 0)
+    llm_usage = results.get("llm_usage_rate", 0)
+    
+    print(f"\n=== 주관식 성능 분석 ===")
+    print(f"처리된 주관식 문항: {subj_count}개")
+    print(f"의도 일치 성공률: {intent_success_rate:.1f}%")
+    print(f"한국어 준수율: {korean_compliance:.1f}%")
+    print(f"평균 품질 점수: {avg_quality:.2f}/1.0")
+    print(f"LLM 활용률: {llm_usage:.1f}%")
+    
+    # 특화 기능 성능
+    institution_count = results.get("institution_questions_count", 0)
+    template_usage = results.get("template_usage_rate", 0)
+    text_recovery = results.get("text_recovery_rate", 0)
+    
+    print(f"\n=== 특화 기능 성능 ===")
+    print(f"기관 질문 처리: {institution_count}개")
+    print(f"템플릿 활용률: {template_usage:.1f}%")
+    print(f"텍스트 복구율: {text_recovery:.1f}%")
+    
+    # 품질 개선 통계
+    quality_improvements = results.get("quality_improvement_count", 0)
+    korean_enhancements = results.get("korean_enhancement_count", 0)
+    grammar_fixes = results.get("grammar_fix_rate", 0)
+    
+    print(f"\n=== 품질 개선 통계 ===")
+    print(f"품질 개선 횟수: {quality_improvements}회")
+    print(f"한국어 강화 횟수: {korean_enhancements}회")
+    print(f"문법 수정률: {grammar_fixes:.1f}%")
+    
+    # 도메인별 분석
+    domain_stats = results.get("domain_stats", {})
+    if domain_stats:
+        print(f"\n=== 도메인별 분포 ===")
+        for domain, count in domain_stats.items():
+            percentage = (count / test_count) * 100
+            print(f"{domain}: {count}개 ({percentage:.1f}%)")
+    
+    # 오류 분석
+    validation_errors = results.get("validation_error_rate", 0)
+    if validation_errors > 0:
+        print(f"\n=== 오류 분석 ===")
+        print(f"검증 실패율: {validation_errors:.1f}%")
+    
+    # 실제 처리된 문항 ID 출력
+    print(f"\n=== 처리된 문항 ID ===")
+    print(f"총 {len(question_ids)}개 문항: {', '.join(question_ids)}")
 
 
 def print_enhanced_results(results: dict, output_file: str, test_size: int):
@@ -348,7 +436,7 @@ def select_test_size():
     print(f"1. {test_options['mini']}문항 (미니 테스트)")
     print(f"2. {test_options['basic']}문항 (기본 테스트)")
     print(f"3. {test_options['detailed']}문항 (정밀 테스트)")
-    print(f"4. 주관식 테스트")
+    print(f"4. 주관식 테스트 (동적으로 주관식 문항 검색)")
     print()
 
     while True:
@@ -380,6 +468,7 @@ def main():
 
     if test_size == "subjective":
         print(f"\n주관식 테스트를 실행합니다...")
+        print("전체 데이터에서 주관식 문항을 자동으로 찾아서 테스트합니다.")
         success = run_subjective_test()
         if success:
             print(f"\n주관식 테스트 완료")
