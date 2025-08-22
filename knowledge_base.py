@@ -8,7 +8,7 @@
 - 대회 규칙 준수 검증
 - 질문 의도별 지식 제공
 """
-import re
+
 import json
 from typing import Dict, List
 from pathlib import Path
