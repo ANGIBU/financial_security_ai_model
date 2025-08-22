@@ -1,12 +1,11 @@
 # inference.py
 
 """
-금융보안 AI 추론 시스템 - 주관식 답변 생성 대폭 강화
-- 템플릿 기반 스마트 답변 생성
-- 자연스러운 한국어 문장 구성  
-- 반복 패턴 최소화
-- 의도 분석 기반 맞춤형 답변
-- LLM과 템플릿의 효과적 융합
+금융보안 AI 추론 시스템
+- 문제 분류 및 처리
+- 모델 추론 실행
+- 결과 생성 및 저장
+- 질문 의도 분석 및 답변 품질 검증
 """
 
 import os
@@ -37,7 +36,7 @@ from knowledge_base import FinancialSecurityKnowledgeBase
 
 
 class FinancialAIInference:
-    """금융보안 AI 추론 시스템 - 주관식 답변 생성 특화"""
+    """금융보안 AI 추론 시스템"""
 
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
@@ -54,37 +53,9 @@ class FinancialAIInference:
         # 성능 최적화 설정 로드
         self.optimization_config = OPTIMIZATION_CONFIG
 
-        # 주관식 답변 생성 특화 설정
-        self.subjective_enhancement = {
-            "template_priority": True,      # 템플릿 우선 활용
-            "natural_generation": True,     # 자연스러운 생성
-            "quality_assurance": True,      # 품질 보장
-            "intent_alignment": True,       # 의도 일치
-            "korean_optimization": True,    # 한국어 최적화
-        }
-
-        # 디버깅 카운터
-        self.debug_counters = {
-            "total_questions": 0,
-            "subjective_questions": 0,
-            "template_fusion_used": 0,       # 템플릿 융합 사용
-            "natural_generation_used": 0,    # 자연스러운 생성 사용
-            "quality_enhanced": 0,           # 품질 향상 적용
-            "fallback_used": 0,
-            "institution_questions": 0,
-            "quality_passed": 0,
-            "quality_failed": 0,
-            "korean_optimization_applied": 0, # 한국어 최적화 적용
-        }
-
     def process_single_question(self, question: str, question_id: str) -> str:
-        """단일 질문 처리 - 주관식 답변 생성 대폭 강화"""
+        """단일 질문 처리"""
         start_time = time.time()
-        self.debug_counters["total_questions"] += 1
-
-        if self.verbose:
-            print(f"\n=== 질문 처리 시작: {question_id} ===")
-            print(f"질문: {question[:100]}...")
 
         try:
             # 기본 분석
@@ -92,572 +63,264 @@ class FinancialAIInference:
             domain = self.data_processor.extract_domain(question)
             difficulty = self.data_processor.analyze_question_difficulty(question)
 
-            if self.verbose:
-                print(f"질문 유형: {question_type}, 선택지: {max_choice}, 도메인: {domain}, 난이도: {difficulty}")
-
             # 지식베이스 분석
             kb_analysis = self.knowledge_base.analyze_question(question)
 
-            if self.verbose:
-                print(f"지식베이스 분석: {kb_analysis.get('domain', 'N/A')}")
-
             # 객관식 처리
             if question_type == "multiple_choice":
-                answer = self._process_multiple_choice_enhanced(
+                answer = self._process_multiple_choice_with_enhanced_llm(
                     question, max_choice, domain, kb_analysis
                 )
-                if self.verbose:
-                    print(f"객관식 답변: {answer}")
                 return answer
 
-            # 주관식 처리 - 대폭 강화
+            # 주관식 처리
             else:
-                self.debug_counters["subjective_questions"] += 1
-                answer = self._process_subjective_with_advanced_strategy(
+                return self._process_subjective_with_enhanced_strategy(
                     question, question_id, domain, difficulty, kb_analysis, start_time
                 )
-                if self.verbose:
-                    print(f"주관식 답변 길이: {len(answer)}")
-                    print(f"주관식 답변: {answer[:200]}...")
-                return answer
 
         except Exception as e:
             if self.verbose:
                 print(f"오류 발생: {e}")
             # 폴백 답변
-            fallback = self._get_advanced_intent_based_fallback(
+            fallback = self._get_enhanced_intent_based_fallback(
                 question, question_type, max_choice if "max_choice" in locals() else 5
             )
-            self.debug_counters["fallback_used"] += 1
             return fallback
 
-    def _process_subjective_with_advanced_strategy(
+    def _process_subjective_with_enhanced_strategy(
         self, question: str, question_id: str, domain: str, difficulty: str, 
         kb_analysis: Dict, start_time: float
     ) -> str:
-        """주관식 처리 고급 전략 - 템플릿 융합 기반 자연스러운 답변 생성"""
+        """주관식 처리 강화 전략"""
         
-        if self.verbose:
-            print(f"\n--- 고급 주관식 처리 시작 ---")
-        
-        # 1단계: 심화 의도 분석
+        # 의도 분석
         intent_analysis = self.data_processor.analyze_question_intent(question)
-        
-        if self.verbose:
-            print(f"의도 분석: {intent_analysis.get('primary_intent', 'N/A')}")
-            print(f"의도 신뢰도: {intent_analysis.get('intent_confidence', 0):.2f}")
-            print(f"답변 유형: {intent_analysis.get('answer_type_required', 'N/A')}")
 
-        # 2단계: 템플릿 기반 구조 설계
-        enhanced_domain_hints = self._prepare_enhanced_domain_hints(
-            domain, intent_analysis, kb_analysis
-        )
-        
-        if self.verbose:
-            print(f"도메인 힌트 준비 완료: {len(enhanced_domain_hints)} 항목")
-
-        # 3단계: 스마트 답변 생성 시도
-        answer = self._generate_smart_subjective_answer(
-            question, intent_analysis, enhanced_domain_hints
-        )
-        
-        if self.verbose:
-            print(f"스마트 생성 답변 길이: {len(answer)}")
-            print(f"스마트 생성 답변: {answer[:150]}...")
-
-        # 4단계: 답변 품질 검증 및 향상
-        if self._validate_answer_quality_advanced(answer, question, intent_analysis):
-            if self.verbose:
-                print("답변 품질 검증 통과")
-            
-            self.debug_counters["quality_passed"] += 1
-            self.debug_counters["template_fusion_used"] += 1
-            
-            # 5단계: 최종 품질 향상 처리
-            final_answer = self._apply_final_quality_enhancement(
-                answer, question, intent_analysis, enhanced_domain_hints
+        # 1차 시도: 기관 관련 질문 특별 처리
+        if kb_analysis.get("institution_info", {}).get("is_institution_question", False):
+            answer = self._process_institution_question_with_enhanced_llm(
+                question, kb_analysis, intent_analysis
             )
             
-            self.debug_counters["quality_enhanced"] += 1
-            return final_answer
+            # 기관 질문 검증
+            if self._validate_institution_answer(answer, question, kb_analysis):
+                final_answer = self._enhanced_validate_and_improve_answer(
+                    answer, question, "subjective", 5, domain, intent_analysis, kb_analysis
+                )
+                return final_answer
 
-        # 재시도 1: 다른 템플릿 조합으로 시도
-        if self.verbose:
-            print("재시도 1: 대안 템플릿 조합")
-        
-        retry_answer = self._generate_alternative_template_answer(
-            question, intent_analysis, enhanced_domain_hints
+        # 2차 시도: 템플릿 기반 생성
+        answer = self._process_subjective_with_template_examples(
+            question, domain, intent_analysis, kb_analysis
         )
 
-        if self._validate_answer_quality_advanced(retry_answer, question, intent_analysis):
-            if self.verbose:
-                print("재시도 1 답변 검증 통과")
-            
-            self.debug_counters["quality_passed"] += 1
-            final_answer = self._apply_final_quality_enhancement(
-                retry_answer, question, intent_analysis, enhanced_domain_hints
+        # 답변 품질 검증
+        if self._is_acceptable_answer(answer, question, intent_analysis):
+            final_answer = self._enhanced_validate_and_improve_answer(
+                answer, question, "subjective", 5, domain, intent_analysis, kb_analysis
             )
             return final_answer
 
-        # 재시도 2: 자연스러운 생성 모드
-        if self.verbose:
-            print("재시도 2: 자연스러운 생성 모드")
-        
-        natural_answer = self._generate_natural_subjective_answer(
-            question, intent_analysis, enhanced_domain_hints
+        # 3차 시도: 다른 설정으로 재시도
+        retry_answer = self._retry_subjective_generation(
+            question, domain, intent_analysis, kb_analysis
         )
 
-        if self._validate_answer_quality_advanced(natural_answer, question, intent_analysis):
-            if self.verbose:
-                print("재시도 2 답변 검증 통과")
-            
-            self.debug_counters["quality_passed"] += 1
-            self.debug_counters["natural_generation_used"] += 1
-            final_answer = self._apply_final_quality_enhancement(
-                natural_answer, question, intent_analysis, enhanced_domain_hints
+        if self._is_acceptable_answer(retry_answer, question, intent_analysis):
+            final_answer = self._enhanced_validate_and_improve_answer(
+                retry_answer, question, "subjective", 5, domain, intent_analysis, kb_analysis
             )
             return final_answer
 
-        # 최종 폴백: 고품질 템플릿 기반 답변
-        if self.verbose:
-            print("최종 폴백: 고품질 템플릿 기반 답변")
-        
-        fallback_answer = self._generate_high_quality_template_fallback(
-            question, intent_analysis, domain, enhanced_domain_hints
+        # 4차 시도: 의도 기반 폴백
+        fallback_answer = self._get_intent_based_fallback_answer(
+            question, intent_analysis, domain, kb_analysis
         )
 
         # 최종 처리
-        final_answer = self._apply_final_quality_enhancement(
-            fallback_answer, question, intent_analysis, enhanced_domain_hints
+        final_answer = self._enhanced_validate_and_improve_answer(
+            fallback_answer, question, "subjective", 5, domain, intent_analysis, kb_analysis
         )
-        
-        self.debug_counters["fallback_used"] += 1
-        if self.verbose:
-            print(f"최종 답변 생성 완료: {len(final_answer)}자")
         
         return final_answer
 
-    def _prepare_enhanced_domain_hints(
-        self, domain: str, intent_analysis: Dict, kb_analysis: Dict
-    ) -> Dict:
-        """향상된 도메인 힌트 준비"""
+    def _validate_institution_answer(
+        self, answer: str, question: str, kb_analysis: Dict
+    ) -> bool:
+        """기관 답변 검증"""
+        if not answer or len(answer) < 10:
+            return False
         
-        enhanced_hints = {
-            "domain": domain,
-            "intent_analysis": intent_analysis,
-            "kb_analysis": kb_analysis,
-        }
-
-        # 1. 템플릿 예시 수집 - 더 풍부하게
-        if intent_analysis:
-            primary_intent = intent_analysis.get("primary_intent", "일반")
-            intent_confidence = intent_analysis.get("intent_confidence", 0)
-
-            if intent_confidence >= 0.2:  # 임계값 대폭 완화
-                intent_key = self._map_intent_to_key(primary_intent)
-
-                # 다층 템플릿 수집
-                template_examples = self.knowledge_base.get_template_examples(domain, intent_key)
-                
-                if not template_examples and domain != "일반":
-                    # 유사 도메인에서 템플릿 수집
-                    similar_domains = self._get_similar_domains(domain)
-                    for similar_domain in similar_domains:
-                        template_examples = self.knowledge_base.get_template_examples(similar_domain, intent_key)
-                        if template_examples:
-                            break
-                
-                if not template_examples:
-                    # 같은 도메인의 다른 의도에서 수집
-                    alternative_intents = ["특징_묻기", "방안_묻기", "지표_묻기", "기관_묻기", "절차_묻기", "조치_묻기"]
-                    for alt_intent in alternative_intents:
-                        if alt_intent != intent_key:
-                            template_examples = self.knowledge_base.get_template_examples(domain, alt_intent)
-                            if template_examples:
-                                break
-                
-                if template_examples:
-                    enhanced_hints["template_examples"] = template_examples
-                    enhanced_hints["template_guidance"] = True
-                    
-                    if self.verbose:
-                        print(f"템플릿 예시 수집: {len(template_examples)}개 ({domain}/{intent_key})")
-
-        # 2. 기관 정보 추가
-        if kb_analysis.get("institution_info", {}).get("is_institution_question", False):
-            institution_type = kb_analysis["institution_info"].get("institution_type")
-            if institution_type:
-                institution_hints = self.knowledge_base.get_institution_hints(institution_type)
-                if institution_hints:
-                    enhanced_hints["institution_hints"] = institution_hints
-                    if self.verbose:
-                        print(f"기관 힌트 추가: {institution_type}")
-
-        # 3. 도메인별 전문 용어 추가
-        domain_guidance = self.knowledge_base.get_domain_specific_guidance(domain)
-        if domain_guidance:
-            enhanced_hints["domain_guidance"] = domain_guidance
-            enhanced_hints["key_concepts"] = domain_guidance.get("key_concepts", [])
-
-        # 4. 답변 품질 향상을 위한 추가 힌트
-        enhanced_hints["quality_enhancement"] = {
-            "korean_optimization": True,
-            "natural_flow": True,
-            "professional_tone": True,
-            "specific_details": True,
-        }
-
-        return enhanced_hints
-
-    def _get_similar_domains(self, domain: str) -> List[str]:
-        """유사 도메인 반환"""
-        domain_similarity = {
-            "사이버보안": ["정보보안", "위험관리"],
-            "정보보안": ["사이버보안", "위험관리"],
-            "개인정보보호": ["정보보안", "사이버보안"],
-            "전자금융": ["금융투자", "위험관리"],
-            "금융투자": ["전자금융", "위험관리"],
-            "위험관리": ["정보보안", "사이버보안", "금융투자"],
-        }
-        return domain_similarity.get(domain, ["일반"])
-
-    def _generate_smart_subjective_answer(
-        self, question: str, intent_analysis: Dict, enhanced_domain_hints: Dict
-    ) -> str:
-        """스마트 주관식 답변 생성 - 템플릿 융합 기반"""
+        # 기관 키워드 확인
+        institution_keywords = ["위원회", "감독원", "은행", "기관", "센터"]
+        has_institution = any(keyword in answer for keyword in institution_keywords)
         
-        if self.verbose:
-            print("스마트 주관식 답변 생성 시작")
-
-        # ModelHandler의 새로운 향상된 메서드 사용
-        answer = self.model_handler.generate_answer(
-            question,
-            "subjective",
-            5,
-            intent_analysis,
-            enhanced_domain_hints
-        )
-
-        if self.verbose:
-            print(f"ModelHandler 생성 답변: {answer[:100]}...")
-
-        return answer
-
-    def _generate_alternative_template_answer(
-        self, question: str, intent_analysis: Dict, enhanced_domain_hints: Dict
-    ) -> str:
-        """대안 템플릿 기반 답변 생성"""
+        # 질문 맥락과 일치 확인
+        if "전자금융" in question and "분쟁" in question:
+            return "전자금융분쟁조정위원회" in answer or "금융감독원" in answer
+        elif "개인정보" in question:
+            return "개인정보보호위원회" in answer or "개인정보침해신고센터" in answer
+        elif "한국은행" in question:
+            return "한국은행" in answer
         
-        # 대안 템플릿 힌트 준비
-        alternative_hints = enhanced_domain_hints.copy()
-        alternative_hints["alternative_mode"] = True
-        alternative_hints["creativity_boost"] = True
+        return has_institution
 
-        # 다른 도메인의 템플릿도 활용
-        domain = enhanced_domain_hints.get("domain", "일반")
-        similar_domains = self._get_similar_domains(domain)
-        
-        if intent_analysis:
-            primary_intent = intent_analysis.get("primary_intent", "일반")
-            intent_key = self._map_intent_to_key(primary_intent)
-            
-            for alt_domain in similar_domains:
-                alt_templates = self.knowledge_base.get_template_examples(alt_domain, intent_key)
-                if alt_templates:
-                    alternative_hints["alternative_templates"] = alt_templates[:2]
-                    break
-
-        return self.model_handler.generate_answer(
-            question,
-            "subjective",
-            5,
-            intent_analysis,
-            alternative_hints
-        )
-
-    def _generate_natural_subjective_answer(
-        self, question: str, intent_analysis: Dict, enhanced_domain_hints: Dict
-    ) -> str:
-        """자연스러운 주관식 답변 생성"""
-        
-        # 자연스러운 생성을 위한 힌트 준비
-        natural_hints = enhanced_domain_hints.copy()
-        natural_hints["natural_generation_mode"] = True
-        natural_hints["template_weight_reduced"] = True
-        natural_hints["creativity_enhanced"] = True
-
-        return self.model_handler.generate_answer(
-            question,
-            "subjective",
-            5,
-            intent_analysis,
-            natural_hints
-        )
-
-    def _generate_high_quality_template_fallback(
-        self, question: str, intent_analysis: Dict, domain: str, enhanced_domain_hints: Dict
-    ) -> str:
-        """고품질 템플릿 기반 폴백 답변"""
-        
-        if self.verbose:
-            print("고품질 템플릿 폴백 생성")
-
-        # 의도별 맞춤 고품질 답변
-        if intent_analysis:
-            primary_intent = intent_analysis.get("primary_intent", "일반")
-            answer_type = intent_analysis.get("answer_type_required", "설명형")
-
-            # 기관 관련 질문
-            if "기관" in primary_intent or answer_type == "기관명":
-                return self._generate_institution_specific_answer(question, domain)
-            
-            # 특징 관련 질문
-            elif "특징" in primary_intent or answer_type == "특징설명":
-                return self._generate_feature_specific_answer(question, domain)
-            
-            # 지표 관련 질문
-            elif "지표" in primary_intent or answer_type == "지표나열":
-                return self._generate_indicator_specific_answer(question, domain)
-            
-            # 방안 관련 질문
-            elif "방안" in primary_intent or answer_type == "방안제시":
-                return self._generate_solution_specific_answer(question, domain)
-
-        # 기본 고품질 답변
-        return self._generate_general_high_quality_answer(question, domain)
-
-    def _generate_institution_specific_answer(self, question: str, domain: str) -> str:
-        """기관 특화 답변 생성"""
-        if "전자금융" in question and ("분쟁" in question or "조정" in question):
-            return "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당하며, 금융감독원 내에 설치되어 이용자와 금융기관 간의 분쟁을 공정하고 신속하게 해결하는 역할을 수행합니다."
-        elif "개인정보" in question and ("침해" in question or "신고" in question):
-            return "개인정보보호위원회에서 개인정보 보호에 관한 업무를 총괄하며, 개인정보침해신고센터에서 개인정보 침해신고 접수 및 상담 업무를 담당하고 있습니다."
-        elif "한국은행" in question or "자료제출" in question:
-            return "한국은행에서 통화신용정책의 효율적 수행과 지급결제제도의 안정적 운영을 위해 금융기관 등에 대한 자료제출 요구 업무를 담당하고 있습니다."
-        else:
-            return f"{domain} 분야의 전문 기관에서 관련 법령에 따라 해당 업무를 담당하며, 체계적인 관리와 감독을 통해 안전하고 효율적인 서비스를 제공하고 있습니다."
-
-    def _generate_feature_specific_answer(self, question: str, domain: str) -> str:
-        """특징 특화 답변 생성"""
-        if "트로이" in question or "원격제어" in question:
-            return "트로이 목마 기반 원격제어 악성코드는 정상적인 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가지며, 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하여 은밀하고 지속적인 활동을 수행하는 특성을 보입니다."
-        elif "딥페이크" in question:
-            return "딥페이크 기술의 주요 특징은 인공지능과 머신러닝 기술을 활용하여 실제와 구별하기 어려운 가짜 영상이나 음성을 생성하는 것이며, 점차 정교해지고 있어 탐지가 어려워지는 특성을 가집니다."
-        else:
-            return f"{domain} 분야의 주요 특징은 전문적인 기술과 체계적인 관리 방법론을 바탕으로 안전성과 효율성을 동시에 추구하며, 지속적인 발전과 개선을 통해 변화하는 환경에 적응하는 특성을 가집니다."
-
-    def _generate_indicator_specific_answer(self, question: str, domain: str) -> str:
-        """지표 특화 답변 생성"""
-        if "트로이" in question or "원격제어" in question or "악성코드" in question:
-            return "주요 탐지 지표로는 네트워크 트래픽에서 비정상적인 외부 통신 패턴, 시스템에서 인가되지 않은 프로세스의 실행, 파일 시스템의 변조 흔적, 레지스트리 수정 및 시스템 성능 저하 등이 있으며, 이러한 지표들을 종합적으로 모니터링하여 조기 탐지할 수 있습니다."
-        else:
-            return f"{domain} 분야의 주요 탐지 지표는 시스템 모니터링을 통한 성능 지표, 로그 분석을 통한 이상 패턴, 사용자 행위 분석을 통한 비정상 활동 등을 포함하며, 실시간 모니터링과 정기적인 분석을 통해 잠재적 위험을 조기에 식별할 수 있습니다."
-
-    def _generate_solution_specific_answer(self, question: str, domain: str) -> str:
-        """방안 특화 답변 생성"""
-        if "딥페이크" in question:
-            return "딥페이크 기술 악용에 대비한 효과적인 대응방안으로는 딥페이크 탐지 기술 도입, 다단계 인증 체계 강화, 직원 대상 인식 개선 교육, 생체 인증 시스템 활용, 그리고 정책 및 절차 수립을 통한 종합적 보안 체계 구축이 필요합니다."
-        else:
-            return f"{domain} 분야의 효과적인 대응방안으로는 예방 중심의 사전 조치 강화, 실시간 모니터링 체계 구축, 신속한 대응 절차 수립, 지속적인 교육과 훈련, 그리고 정기적인 평가와 개선을 통한 종합적 관리 체계 운영이 필요합니다."
-
-    def _generate_general_high_quality_answer(self, question: str, domain: str) -> str:
-        """일반적인 고품질 답변 생성"""
-        return f"{domain} 분야에서는 관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고, 전문적인 기술과 절차를 바탕으로 안전하고 효율적인 운영을 수행하며, 지속적인 모니터링과 개선을 통해 높은 수준의 서비스 품질을 유지해야 합니다."
-
-    def _validate_answer_quality_advanced(
+    def _is_acceptable_answer(
         self, answer: str, question: str, intent_analysis: Dict = None
     ) -> bool:
-        """고급 답변 품질 검증"""
+        """답변 수용 가능성 검증"""
         if not answer:
             return False
         
-        # 1단계: 기본 품질 검증
-        if len(answer) < 20:  # 최소 길이
+        # 기본 길이 검증
+        if len(answer) < 15:
             return False
         
-        # 2단계: 치명적인 반복 패턴 확인
+        # 치명적인 반복 패턴만 확인
         if self.model_handler.detect_critical_repetitive_patterns(answer):
             return False
         
-        # 3단계: 한국어 품질 확인
-        korean_ratio = self._calculate_korean_ratio(answer)
-        if korean_ratio < 0.5:  # 한국어 비율 50% 이상
+        # 한국어 비율 검증
+        korean_ratio = self.data_processor.calculate_korean_ratio(answer)
+        if korean_ratio < 0.5:
             return False
         
-        # 4단계: 의미 있는 내용 확인
+        # 의미 있는 내용 확인
         meaningful_keywords = [
-            "법령", "규정", "조치", "관리", "보안", "방안", "절차", "기준",
-            "정책", "체계", "시스템", "위원회", "기관", "필요", "중요",
-            "수행", "실시", "구축", "운영", "개선", "강화", "업무", "담당",
-            "특징", "지표", "탐지", "대응", "모니터링", "분석", "평가"
+            "법령", "규정", "조치", "관리", "보안", "방안", "절차", "기준", 
+            "정책", "체계", "시스템", "통제", "특징", "지표", "탐지", "대응",
+            "기관", "위원회", "감독원"
         ]
         if not any(word in answer for word in meaningful_keywords):
             return False
         
-        # 5단계: 의도 일치성 확인 (완화된 기준)
+        # 의도별 특별 검증
         if intent_analysis:
-            intent_match = self.data_processor.validate_answer_intent_match(
-                answer, question, intent_analysis
-            )
-            if not intent_match:
-                # 길이와 한국어 비율이 충분하면 통과
-                if len(answer) >= 30 and korean_ratio >= 0.6:
-                    return True
-                return False
-        
-        # 6단계: 문장 완성도 확인
-        if not answer.endswith((".", "다", "요", "함", "니다", "습니다")):
-            return False
+            answer_type = intent_analysis.get("answer_type_required", "설명형")
+            if answer_type == "기관명":
+                institution_keywords = ["위원회", "감독원", "은행", "기관", "센터"]
+                if not any(keyword in answer for keyword in institution_keywords):
+                    return False
         
         return True
 
-    def _apply_final_quality_enhancement(
-        self,
-        answer: str,
-        question: str,
-        intent_analysis: Dict = None,
-        enhanced_domain_hints: Dict = None,
+    def _retry_subjective_generation(
+        self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict
     ) -> str:
-        """최종 품질 향상 적용"""
+        """주관식 재시도 생성"""
         
-        if not answer:
-            return answer
-
-        # 1단계: 한국어 품질 향상
-        enhanced_answer = self.model_handler.recover_korean_text(answer)
-        self.debug_counters["korean_optimization_applied"] += 1
-
-        # 2단계: 문법 및 구조 개선
-        enhanced_answer = self.data_processor.fix_grammatical_structure(enhanced_answer)
-
-        # 3단계: 의도 일치성 보완
+        # 다른 템플릿 예시 사용
+        alternative_hints = {"retry_mode": True, "domain": domain}
+        
+        # 추가 템플릿 예시 수집
         if intent_analysis:
-            enhanced_answer = self._ensure_intent_alignment_advanced(
-                enhanced_answer, question, intent_analysis
-            )
-
-        # 4단계: 전문성 향상
-        enhanced_answer = self._enhance_professionalism(
-            enhanced_answer, question, enhanced_domain_hints
-        )
-
-        # 5단계: 길이 최적화
-        enhanced_answer = self._optimize_answer_length_advanced(enhanced_answer)
-
-        # 6단계: 최종 정규화
-        enhanced_answer = self.data_processor.normalize_korean_answer(
-            enhanced_answer, "subjective", 5
-        )
-
-        return enhanced_answer
-
-    def _ensure_intent_alignment_advanced(
-        self, answer: str, question: str, intent_analysis: Dict
-    ) -> str:
-        """고급 의도 일치성 보장"""
-        if not intent_analysis or not answer:
-            return answer
-
-        answer_type = intent_analysis.get("answer_type_required", "설명형")
-
-        # 답변 유형별 고급 보완
-        if answer_type == "기관명":
-            institution_keywords = ["위원회", "감독원", "은행", "기관", "센터"]
-            if not any(keyword in answer for keyword in institution_keywords):
-                # 질문 분석을 통한 정확한 기관명 추가
-                if "전자금융" in question and ("분쟁" in question or "조정" in question):
-                    if not answer.startswith("전자금융분쟁조정위원회"):
-                        answer = f"전자금융분쟁조정위원회에서 {answer.lstrip('관련')}"
-                elif "개인정보" in question and ("침해" in question or "신고" in question):
-                    if not answer.startswith("개인정보보호위원회"):
-                        answer = f"개인정보보호위원회에서 {answer.lstrip('관련')}"
-                elif "한국은행" in question or "자료제출" in question:
-                    if not answer.startswith("한국은행"):
-                        answer = f"한국은행에서 {answer.lstrip('관련')}"
-
-        elif answer_type == "특징설명":
-            if not any(word in answer[:20] for word in ["특징", "특성", "성질"]):
-                if answer.startswith(("해당", "이", "그")):
-                    answer = answer.replace("해당", "주요 특징으로는", 1)
-                else:
-                    answer = f"주요 특징은 {answer}"
-
-        elif answer_type == "지표나열":
-            if not any(word in answer[:30] for word in ["지표", "탐지", "징후"]):
-                if answer.startswith(("주요", "핵심")):
-                    answer = answer.replace("주요", "주요 탐지 지표로는", 1)
-                else:
-                    answer = f"주요 탐지 지표는 {answer}"
-
-        elif answer_type == "방안제시":
-            if not any(word in answer[:30] for word in ["방안", "대책", "조치"]):
-                if answer.startswith(("효과적", "적절한", "필요한")):
-                    answer = f"효과적인 대응방안으로는 {answer}"
-                else:
-                    answer = f"주요 대응방안은 {answer}"
-
-        return answer
-
-    def _enhance_professionalism(
-        self, answer: str, question: str, enhanced_domain_hints: Dict = None
-    ) -> str:
-        """전문성 향상"""
-        if not answer:
-            return answer
-
-        # 도메인별 전문 용어 강화
-        domain = enhanced_domain_hints.get("domain", "일반") if enhanced_domain_hints else "일반"
+            primary_intent = intent_analysis.get("primary_intent", "일반")
+            intent_key = self._map_intent_to_key(primary_intent)
+            
+            # 다른 도메인의 템플릿도 참고
+            alternative_domains = ["사이버보안", "개인정보보호", "전자금융", "정보보안"]
+            for alt_domain in alternative_domains:
+                if alt_domain != domain:
+                    alt_templates = self.knowledge_base.get_template_examples(alt_domain, intent_key)
+                    if alt_templates:
+                        alternative_hints["alternative_templates"] = alt_templates[:2]
+                        break
         
-        # 법적 근거 강화
-        if "법령" not in answer and "규정" not in answer and len(answer) < 100:
-            if domain == "개인정보보호":
-                answer += " 개인정보보호법에 따라 체계적으로 관리됩니다."
-            elif domain == "전자금융":
-                answer += " 전자금융거래법에 따라 운영됩니다."
-            elif domain == "사이버보안":
-                answer += " 정보통신망법 등 관련 법령에 따라 관리됩니다."
-            else:
-                answer += " 관련 법령과 규정에 따라 체계적으로 관리됩니다."
+        # 기관 정보가 있으면 추가
+        if kb_analysis.get("institution_info", {}).get("is_institution_question", False):
+            institution_type = kb_analysis["institution_info"].get("institution_type")
+            if institution_type:
+                alternative_hints["institution_hints"] = (
+                    self.knowledge_base.get_institution_hints(institution_type)
+                )
+        
+        return self.model_handler.generate_answer(
+            question, "subjective", 5, intent_analysis, alternative_hints
+        )
 
-        return answer
+    def _get_intent_based_fallback_answer(
+        self, question: str, intent_analysis: Dict, domain: str, kb_analysis: Dict
+    ) -> str:
+        """의도 기반 폴백 답변"""
+        
+        if not intent_analysis:
+            return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
+        
+        primary_intent = intent_analysis.get("primary_intent", "일반")
+        answer_type = intent_analysis.get("answer_type_required", "설명형")
+        
+        # 의도별 맞춤 폴백
+        fallback_templates = {
+            "기관_묻기": self._get_institution_fallback(question, domain),
+            "특징_묻기": self._get_feature_fallback(question, domain),
+            "지표_묻기": self._get_indicator_fallback(question, domain),
+            "방안_묻기": self._get_solution_fallback(question, domain),
+            "절차_묻기": self._get_procedure_fallback(question, domain),
+            "조치_묻기": self._get_measure_fallback(question, domain),
+        }
+        
+        intent_key = self._map_intent_to_key(primary_intent)
+        if intent_key in fallback_templates:
+            return fallback_templates[intent_key]
+        
+        # 도메인별 기본 폴백
+        domain_fallbacks = {
+            "사이버보안": "사이버보안 위협에 대응하기 위해 다층 방어체계를 구축하고 실시간 모니터링을 수행해야 합니다.",
+            "개인정보보호": "개인정보보호법에 따라 정보주체의 권리를 보장하고 적절한 보호조치를 이행해야 합니다.",
+            "전자금융": "전자금융거래법에 따라 안전한 거래환경을 제공하고 이용자 보호를 위한 조치를 시행해야 합니다.",
+            "정보보안": "정보보안관리체계를 구축하고 보안정책에 따라 체계적인 관리를 수행해야 합니다.",
+            "금융투자": "자본시장법에 따라 투자자 보호와 시장 공정성 확보를 위한 조치를 시행해야 합니다.",
+            "위험관리": "위험관리 체계를 구축하고 체계적인 위험평가와 대응방안을 수립해야 합니다.",
+        }
+        
+        return domain_fallbacks.get(domain, "관련 법령과 규정에 따라 체계적인 관리가 필요합니다.")
 
-    def _optimize_answer_length_advanced(self, answer: str) -> str:
-        """고급 길이 최적화"""
-        if not answer:
-            return answer
+    def _get_institution_fallback(self, question: str, domain: str) -> str:
+        """기관 관련 폴백"""
+        if "전자금융" in question and "분쟁" in question:
+            return "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다."
+        elif "개인정보" in question:
+            return "개인정보보호위원회에서 개인정보 보호에 관한 업무를 총괄하고 있습니다."
+        elif "한국은행" in question:
+            return "한국은행에서 통화신용정책 수행과 지급결제제도 운영을 담당합니다."
+        else:
+            return "관련 전문 기관에서 해당 업무를 담당하고 있습니다."
 
-        # 너무 긴 답변 최적화
-        if len(answer) > 350:
-            sentences = answer.split(". ")
-            if len(sentences) > 3:
-                # 핵심 문장 3개로 압축
-                core_sentences = sentences[:3]
-                answer = ". ".join(core_sentences)
-                if not answer.endswith("."):
-                    answer += "."
+    def _get_feature_fallback(self, question: str, domain: str) -> str:
+        """특징 관련 폴백"""
+        if "트로이" in question or "악성코드" in question:
+            return "트로이 목마는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다."
+        elif domain == "사이버보안":
+            return "해당 보안 위협의 주요 특징을 체계적으로 분석하여 대응 방안을 수립해야 합니다."
+        else:
+            return "주요 특징을 체계적으로 분석하고 관련 법령에 따라 관리해야 합니다."
 
-        # 너무 짧은 답변 보강
-        elif len(answer) < 30:
-            if not answer.endswith("."):
-                answer += "."
-            # 간단한 보강
-            if "관리" in answer and len(answer) < 50:
-                answer += " 지속적인 모니터링과 개선이 필요합니다."
+    def _get_indicator_fallback(self, question: str, domain: str) -> str:
+        """지표 관련 폴백"""
+        if "트로이" in question or "악성코드" in question:
+            return "네트워크 트래픽 모니터링에서 비정상적인 외부 통신 패턴과 시스템 동작 분석에서 비인가 프로세스 실행이 주요 탐지 지표입니다."
+        elif domain == "사이버보안":
+            return "주요 탐지 지표를 통해 실시간 모니터링과 이상 징후 분석을 수행해야 합니다."
+        else:
+            return "관련 지표를 체계적으로 분석하고 모니터링하여 적절한 대응을 수행해야 합니다."
 
-        return answer
+    def _get_solution_fallback(self, question: str, domain: str) -> str:
+        """방안 관련 폴백"""
+        if "딥페이크" in question:
+            return "딥페이크 기술 악용에 대비하여 다층 방어체계 구축과 실시간 탐지 시스템 도입 등의 종합적 대응방안이 필요합니다."
+        elif domain == "사이버보안":
+            return "다층 방어체계를 구축하고 실시간 모니터링과 침입탐지시스템을 운영하는 등의 종합적 보안 강화 방안이 필요합니다."
+        else:
+            return "체계적인 관리 방안을 수립하고 관련 법령과 규정에 따라 지속적인 개선을 수행해야 합니다."
 
-    def _calculate_korean_ratio(self, text: str) -> float:
-        """한국어 비율 계산"""
-        if not text:
-            return 0.0
+    def _get_procedure_fallback(self, question: str, domain: str) -> str:
+        """절차 관련 폴백"""
+        return "관련 절차에 따라 단계별로 체계적인 수행과 지속적인 관리가 필요합니다."
 
-        korean_chars = len([c for c in text if '\uAC00' <= c <= '\uD7A3'])
-        total_chars = len([c for c in text if c.isalpha()])
-
-        if total_chars == 0:
-            return 0.0
-
-        return korean_chars / total_chars
+    def _get_measure_fallback(self, question: str, domain: str) -> str:
+        """조치 관련 폴백"""
+        return "적절한 보안 조치를 시행하고 관련 법령과 규정에 따라 지속적인 관리가 필요합니다."
 
     def _map_intent_to_key(self, primary_intent: str) -> str:
         """의도를 키로 매핑"""
@@ -676,10 +339,10 @@ class FinancialAIInference:
         else:
             return "일반"
 
-    def _process_multiple_choice_enhanced(
+    def _process_multiple_choice_with_enhanced_llm(
         self, question: str, max_choice: int, domain: str, kb_analysis: Dict
     ) -> str:
-        """향상된 객관식 처리"""
+        """객관식 처리"""
 
         # 지식베이스에서 힌트 정보 수집
         pattern_hints = None
@@ -703,40 +366,405 @@ class FinancialAIInference:
             fallback = self._enhanced_retry_mc_with_llm(question, max_choice, domain)
             return fallback
 
+    def _process_subjective_with_template_examples(
+        self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict
+    ) -> str:
+        """템플릿 예시를 활용한 주관식 처리"""
+
+        # 템플릿 예시 정보 수집
+        template_examples = None
+        if (
+            intent_analysis
+            and intent_analysis.get("intent_confidence", 0)
+            >= self.optimization_config["intent_confidence_threshold"]
+        ):
+
+            primary_intent = intent_analysis.get("primary_intent", "일반")
+
+            # 의도별 특화 템플릿 예시 수집
+            if self.optimization_config["template_preference"]:
+                intent_key = self._map_intent_to_key(primary_intent)
+
+                # 템플릿 예시 수집
+                template_examples = self.knowledge_base.get_template_examples(domain, intent_key)
+
+        # LLM 답변 생성
+        answer = self.model_handler.generate_answer(
+            question,
+            "subjective",
+            5,
+            intent_analysis,
+            domain_hints={
+                "domain": domain,
+                "template_examples": template_examples,
+                "template_guidance": True,
+            },
+        )
+
+        return answer
+
     def _enhanced_retry_mc_with_llm(self, question: str, max_choice: int, domain: str) -> str:
-        """향상된 객관식 재시도"""
-        try:
-            # 컨텍스트 기반 재시도
-            retry_answer = self.model_handler.generate_fallback_mc_answer(
+        """객관식 LLM 재시도"""
+        # 컨텍스트 기반 재시도
+        context_hints = self.model_handler._analyze_mc_context(question, domain)
+        retry_answer = self.model_handler.generate_answer(
+            question,
+            "multiple_choice",
+            max_choice,
+            intent_analysis=None,
+            domain_hints={
+                "domain": domain,
+                "context_hints": context_hints,
+                "retry_mode": True,
+            },
+        )
+
+        # 범위 벗어나면 컨텍스트 기반 재요청
+        if not (retry_answer and retry_answer.isdigit() and 1 <= int(retry_answer) <= max_choice):
+            retry_answer = self.model_handler.generate_contextual_mc_answer(
                 question, max_choice, domain
             )
 
-            if retry_answer and retry_answer.isdigit() and 1 <= int(retry_answer) <= max_choice:
-                return retry_answer
+        # 최종 실패시 유효한 답변 강제 생성
+        if not (retry_answer and retry_answer.isdigit() and 1 <= int(retry_answer) <= max_choice):
+            retry_answer = str((max_choice + 1) // 2)
 
-        except Exception as e:
-            if self.verbose:
-                print(f"객관식 재시도 오류: {e}")
+        return retry_answer
 
-        # 최종 폴백
-        return str((max_choice + 1) // 2)
+    def _process_institution_question_with_enhanced_llm(
+        self, question: str, kb_analysis: Dict, intent_analysis: Dict
+    ) -> str:
+        """기관 질문 처리"""
+        institution_info = kb_analysis.get("institution_info", {})
 
-    def _get_advanced_intent_based_fallback(
+        # 기관 정보를 힌트로 제공
+        institution_hints = None
+        if institution_info.get("is_institution_question", False):
+            institution_type = institution_info.get("institution_type")
+            if institution_type and institution_info.get("confidence", 0) > 0.5:
+                # 지식베이스에서 힌트 정보 가져오기
+                institution_hints = self.knowledge_base.get_institution_hints(institution_type)
+
+        # LLM 답변 생성
+        answer = self.model_handler.generate_answer(
+            question,
+            "subjective",
+            5,
+            intent_analysis,
+            domain_hints={"institution_hints": institution_hints},
+        )
+
+        # 기관 답변 검증 및 개선
+        answer = self._enhance_institution_answer(answer, question, institution_info)
+
+        return answer
+
+    def _enhance_institution_answer(self, answer: str, question: str, institution_info: Dict) -> str:
+        """기관 답변 개선"""
+        if not answer:
+            return answer
+
+        # 기관명이 포함되지 않은 경우 추가
+        institution_keywords = ["위원회", "감독원", "은행", "기관", "센터"]
+        has_institution = any(keyword in answer for keyword in institution_keywords)
+
+        if not has_institution:
+            # 질문 내용을 바탕으로 적절한 기관명 추가
+            if "전자금융" in question and "분쟁" in question:
+                answer = "전자금융분쟁조정위원회에서 " + answer
+            elif "개인정보" in question:
+                answer = "개인정보보호위원회에서 " + answer
+            elif "한국은행" in question or "자료제출" in question:
+                answer = "한국은행에서 " + answer
+            elif "금융투자" in question and "분쟁" in question:
+                answer = "금융분쟁조정위원회에서 " + answer
+
+        return answer
+
+    def _enhanced_validate_and_improve_answer(
+        self,
+        answer: str,
+        question: str,
+        question_type: str,
+        max_choice: int,
+        domain: str,
+        intent_analysis: Dict = None,
+        kb_analysis: Dict = None,
+    ) -> str:
+        """답변 검증 및 개선"""
+
+        if question_type == "multiple_choice":
+            return answer
+
+        # 주관식 품질 검증 및 개선
+        original_answer = answer
+
+        # 텍스트 복구 및 정리
+        recovered_answer = self.data_processor.clean_korean_text(answer)
+        if recovered_answer != answer:
+            answer = recovered_answer
+
+        # 기본 유효성 검증
+        is_valid = self.data_processor.validate_korean_answer(
+            answer, question_type, max_choice, question
+        )
+
+        if not is_valid:
+            # 검증 실패시 개선된 폴백 사용
+            if intent_analysis:
+                answer = self._get_intent_based_fallback_answer(
+                    question, intent_analysis, domain, kb_analysis
+                )
+            else:
+                answer = "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
+
+        # 한국어 비율 검증 및 개선
+        korean_ratio = self.data_processor.calculate_korean_ratio(answer)
+        if korean_ratio < 0.6:
+            if intent_analysis:
+                answer = self._get_intent_based_fallback_answer(
+                    question, intent_analysis, domain, kb_analysis
+                )
+            else:
+                answer = "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
+
+        # 의도 일치성 검증 및 개선
+        if intent_analysis:
+            intent_match = self.data_processor.validate_answer_intent_match(
+                answer, question, intent_analysis
+            )
+            if not intent_match:
+                # 의도 불일치시 맞춤형 재생성
+                answer = self._get_intent_based_fallback_answer(
+                    question, intent_analysis, domain, kb_analysis
+                )
+                # 재검증
+                intent_match_retry = self.data_processor.validate_answer_intent_match(
+                    answer, question, intent_analysis
+                )
+
+        # 답변 품질 평가 및 개선
+        quality_score = self._calculate_enhanced_quality_score(answer, question, intent_analysis)
+        if quality_score < 0.5:
+            if intent_analysis:
+                improved_answer = self._get_intent_based_fallback_answer(
+                    question, intent_analysis, domain, kb_analysis
+                )
+            else:
+                improved_answer = "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
+                
+            improved_quality = self._calculate_enhanced_quality_score(
+                improved_answer, question, intent_analysis
+            )
+
+            if improved_quality > quality_score:
+                answer = improved_answer
+
+        # 문법 및 구조 개선
+        grammar_improved_answer = self.data_processor.fix_grammatical_structure(answer)
+        if grammar_improved_answer != answer:
+            answer = grammar_improved_answer
+
+        # 답변 구조 최적화
+        structure_improved_answer = self._optimize_answer_structure(answer, intent_analysis)
+        if structure_improved_answer != answer:
+            answer = structure_improved_answer
+
+        # 길이 최적화
+        answer = self._optimize_answer_length(answer)
+
+        # 최종 정규화
+        answer = self.data_processor.normalize_korean_answer(answer, question_type, max_choice)
+
+        return answer
+
+    def _optimize_answer_structure(self, answer: str, intent_analysis: Dict = None) -> str:
+        """답변 구조 최적화"""
+        if not answer or len(answer) < 20:
+            return answer
+
+        # 의도별 구조 개선
+        if intent_analysis:
+            answer_type = intent_analysis.get("answer_type_required", "설명형")
+
+            # 기관명 답변 구조 개선
+            if answer_type == "기관명":
+                if not any(word in answer for word in ["위원회", "감독원", "은행", "기관"]):
+                    if "분쟁조정" in answer:
+                        answer = "전자금융분쟁조정위원회에서 " + answer
+                    elif "개인정보" in answer:
+                        answer = "개인정보보호위원회에서 " + answer
+
+            # 특징 설명 구조 개선
+            elif answer_type == "특징설명":
+                if not answer.startswith(("주요 특징", "특징", "특성")):
+                    answer = "주요 특징은 " + answer
+
+            # 지표 나열 구조 개선
+            elif answer_type == "지표나열":
+                if not any(word in answer[:50] for word in ["지표", "탐지", "징후"]):
+                    answer = "주요 탐지 지표는 " + answer
+
+            # 방안 제시 구조 개선
+            elif answer_type == "방안제시":
+                if not any(word in answer[:50] for word in ["방안", "대책", "조치"]):
+                    answer = "주요 대응 방안은 " + answer
+
+        # 문장 연결 개선
+        sentences = answer.split(". ")
+        if len(sentences) > 1:
+            improved_sentences = []
+            for i, sentence in enumerate(sentences):
+                sentence = sentence.strip()
+                if len(sentence) < 5:
+                    continue
+
+                # 접속어 추가
+                if i > 0 and len(sentence) > 10:
+                    if not any(
+                        sentence.startswith(word)
+                        for word in [
+                            "또한",
+                            "그리고",
+                            "이를",
+                            "따라서",
+                            "그러므로",
+                            "하지만",
+                            "그러나",
+                        ]
+                    ):
+                        if "방안" in sentence or "조치" in sentence:
+                            sentence = "또한 " + sentence
+                        elif "법령" in sentence or "규정" in sentence:
+                            sentence = "이를 위해 " + sentence
+
+                improved_sentences.append(sentence)
+
+            answer = ". ".join(improved_sentences)
+
+        # 마침표 정리
+        if answer and not answer.endswith("."):
+            answer += "."
+
+        return answer
+
+    def _get_enhanced_intent_based_fallback(
         self, question: str, question_type: str, max_choice: int
     ) -> str:
-        """고급 의도 기반 폴백 답변"""
-        
-        if question_type == "multiple_choice":
-            return str((max_choice + 1) // 2)
+        """의도 기반 폴백 답변"""
         
         # 질문 의도 분석
         intent_analysis = self.data_processor.analyze_question_intent(question)
         domain = self.data_processor.extract_domain(question)
         
-        # 고품질 폴백 생성
-        return self._generate_high_quality_template_fallback(
-            question, intent_analysis, domain, {"domain": domain}
-        )
+        if question_type == "multiple_choice":
+            return self._get_enhanced_safe_mc_answer_with_llm(question, max_choice, domain)
+        else:
+            return self._get_intent_based_fallback_answer(
+                question, intent_analysis, domain, {}
+            )
+
+    def _calculate_enhanced_quality_score(
+        self, answer: str, question: str, intent_analysis: Dict = None
+    ) -> float:
+        """품질 점수 계산"""
+        if not answer:
+            return 0.0
+
+        score = 0.0
+
+        # 반복 패턴 페널티
+        if self.model_handler.detect_critical_repetitive_patterns(answer):
+            return 0.1
+
+        # 한국어 비율
+        korean_ratio = self.data_processor.calculate_korean_ratio(answer)
+        score += korean_ratio * 0.2
+
+        # 텍스트 복구 품질
+        has_broken_chars = any(char in answer for char in ["ト", "リ", "ス", "ン", "윋", "젂", "엯"])
+        if not has_broken_chars:
+            score += 0.15
+
+        # 길이 적절성
+        length = len(answer)
+        if 30 <= length <= 500:
+            score += 0.2
+        elif 20 <= length < 30 or 500 < length <= 600:
+            score += 0.15
+        elif 15 <= length < 20:
+            score += 0.1
+
+        # 문장 구조
+        if answer.endswith((".", "다", "요", "함")):
+            score += 0.15
+
+        sentences = answer.split(".")
+        if len(sentences) >= 2:
+            score += 0.1
+
+        # 전문성
+        domain_keywords = self.model_handler._get_domain_keywords(question)
+        found_keywords = sum(1 for keyword in domain_keywords if keyword in answer)
+        if found_keywords > 0:
+            score += min(found_keywords / len(domain_keywords), 1.0) * 0.15
+
+        # 의도 일치성
+        if intent_analysis:
+            intent_match = self.data_processor.validate_answer_intent_match(
+                answer, question, intent_analysis
+            )
+            if intent_match:
+                score += 0.25
+            else:
+                score += 0.15
+        else:
+            score += 0.2
+
+        return min(score, 1.0)
+
+    def _optimize_answer_length(self, answer: str) -> str:
+        """답변 길이 최적화"""
+        if not answer:
+            return answer
+
+        # 너무 긴 답변 축약
+        if len(answer) > 500:
+            sentences = answer.split(". ")
+            if len(sentences) > 4:
+                answer = ". ".join(sentences[:4])
+                if not answer.endswith("."):
+                    answer += "."
+
+        # 너무 짧은 답변 보강
+        elif len(answer) < 30:
+            if not answer.endswith("."):
+                answer += "."
+            if "법령" not in answer and "규정" not in answer and len(answer) < 40:
+                answer += " 관련 법령과 규정을 준수하여 체계적으로 관리해야 합니다."
+
+        return answer
+
+    def _get_enhanced_safe_mc_answer_with_llm(
+        self, question: str, max_choice: int, domain: str = "일반"
+    ) -> str:
+        """안전한 객관식 답변 생성"""
+        if max_choice <= 0:
+            max_choice = 5
+
+        # LLM을 통한 안전한 답변 생성
+        fallback_answer = self.model_handler.generate_fallback_mc_answer(question, max_choice, domain)
+
+        # LLM 결과가 유효하지 않은 경우에만 최후 수단 사용
+        if not (
+            fallback_answer
+            and fallback_answer.isdigit()
+            and 1 <= int(fallback_answer) <= max_choice
+        ):
+            import random
+            fallback_answer = str(random.randint(1, max_choice))
+
+        return fallback_answer
 
     def _simple_save_csv(self, df: pd.DataFrame, filepath: str) -> bool:
         """CSV 저장"""
@@ -792,7 +820,6 @@ class FinancialAIInference:
         output_file = output_file or DEFAULT_FILES["output_file"]
 
         print(f"데이터 로드 완료: {len(test_df)}개 문항")
-        print("주관식 답변 생성 특화 모드로 실행합니다.")
 
         answers = []
         total_questions = len(test_df)
@@ -807,41 +834,9 @@ class FinancialAIInference:
             answer = self.process_single_question(question, question_id)
             answers.append(answer)
 
-            # 진행 상황 출력
-            if self.verbose or (question_idx + 1) % 10 == 0:
-                elapsed_time = time.time() - inference_start_time
-                avg_time_per_question = elapsed_time / (question_idx + 1)
-                remaining_questions = total_questions - (question_idx + 1)
-                estimated_remaining_time = avg_time_per_question * remaining_questions
-                
-                print(f"진행: {question_idx + 1}/{total_questions} "
-                      f"({((question_idx + 1)/total_questions*100):.1f}%) "
-                      f"- 예상 남은 시간: {estimated_remaining_time/60:.1f}분")
-
             # 메모리 관리
             if (question_idx + 1) % MEMORY_CONFIG["gc_frequency"] == 0:
                 gc.collect()
-
-        # 디버깅 정보 출력
-        if self.verbose:
-            print(f"\n=== 주관식 특화 처리 통계 ===")
-            print(f"총 질문 수: {self.debug_counters['total_questions']}")
-            print(f"주관식 질문 수: {self.debug_counters['subjective_questions']}")
-            print(f"템플릿 융합 활용: {self.debug_counters['template_fusion_used']}")
-            print(f"자연스러운 생성 활용: {self.debug_counters['natural_generation_used']}")
-            print(f"품질 향상 적용: {self.debug_counters['quality_enhanced']}")
-            print(f"한국어 최적화 적용: {self.debug_counters['korean_optimization_applied']}")
-            print(f"폴백 사용: {self.debug_counters['fallback_used']}")
-            print(f"품질 검증 통과: {self.debug_counters['quality_passed']}")
-            print(f"품질 검증 실패: {self.debug_counters['quality_failed']}")
-
-            # 성공률 계산
-            if self.debug_counters['subjective_questions'] > 0:
-                template_success_rate = self.debug_counters['template_fusion_used'] / self.debug_counters['subjective_questions']
-                quality_success_rate = self.debug_counters['quality_passed'] / self.debug_counters['subjective_questions']
-                print(f"\n=== 성공률 분석 ===")
-                print(f"템플릿 융합 성공률: {template_success_rate:.1%}")
-                print(f"품질 검증 성공률: {quality_success_rate:.1%}")
 
         # 결과 저장
         submission_df["Answer"] = answers
@@ -858,13 +853,6 @@ class FinancialAIInference:
         return {
             "success": True,
             "total_time": time.time() - self.start_time,
-            "debug_counters": self.debug_counters.copy(),
-            "enhancement_applied": {
-                "template_fusion": self.debug_counters["template_fusion_used"],
-                "natural_generation": self.debug_counters["natural_generation_used"],
-                "quality_enhancement": self.debug_counters["quality_enhanced"],
-                "korean_optimization": self.debug_counters["korean_optimization_applied"],
-            }
         }
 
     def cleanup(self):
@@ -892,28 +880,14 @@ def main():
     engine = None
     try:
         # AI 엔진 초기화
-        print("주관식 답변 생성 특화 AI 엔진 초기화 중...")
         engine = FinancialAIInference(verbose=True)
 
         # 추론 실행
         results = engine.execute_inference()
 
         if results["success"]:
-            print("\n주관식 특화 추론 완료")
+            print("\n추론 완료")
             print(f"총 처리시간: {results['total_time']:.1f}초")
-            
-            # 디버깅 정보 출력
-            debug_info = results.get("debug_counters", {})
-            enhancement_info = results.get("enhancement_applied", {})
-            
-            if debug_info:
-                print(f"\n=== 최종 통계 ===")
-                print(f"총 질문: {debug_info.get('total_questions', 0)}")
-                print(f"주관식: {debug_info.get('subjective_questions', 0)}")
-                print(f"템플릿 융합 활용: {enhancement_info.get('template_fusion', 0)}")
-                print(f"자연스러운 생성: {enhancement_info.get('natural_generation', 0)}")
-                print(f"품질 향상: {enhancement_info.get('quality_enhancement', 0)}")
-                print(f"한국어 최적화: {enhancement_info.get('korean_optimization', 0)}")
 
     except KeyboardInterrupt:
         print("\n추론 중단됨")
