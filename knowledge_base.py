@@ -8,12 +8,8 @@
 - 대회 규칙 준수 검증
 - 질문 의도별 지식 제공
 """
-
-import pickle
-import os
 import re
 import json
-from datetime import datetime
 from typing import Dict, List
 from pathlib import Path
 import random
@@ -26,38 +22,11 @@ class FinancialSecurityKnowledgeBase:
     """금융보안 지식베이스"""
 
     def __init__(self):
-        # pkl 저장 폴더 생성
-        self.pkl_dir = Path("./pkl")
-        self.pkl_dir.mkdir(exist_ok=True)
-
         # JSON 설정 파일 로드
         self._load_json_configs()
 
         # 템플릿 품질 평가 기준
         self.template_quality_criteria = TEMPLATE_QUALITY_CRITERIA
-
-        # 질문 분석 이력
-        self.analysis_history = {
-            "domain_frequency": {},
-            "complexity_distribution": {},
-            "question_patterns": [],
-            "compliance_check": {
-                "korean_only": 0,
-                "law_references": 0,
-                "technical_terms": 0,
-            },
-            "intent_analysis_history": {},
-            "template_usage_stats": {},
-            "template_effectiveness": {},
-            "mc_pattern_accuracy": {},
-            "institution_question_accuracy": {},
-            "hint_provision_stats": {},
-            "template_success_rate": {},
-            "fallback_usage_stats": {},
-        }
-
-        # 이전 분석 이력 로드
-        self._load_analysis_history()
 
     def _load_json_configs(self):
         """JSON 설정 파일 로드"""
@@ -147,36 +116,6 @@ class FinancialSecurityKnowledgeBase:
         self.institution_database = {}
         self.mc_answer_patterns = {}
 
-    def _load_analysis_history(self):
-        """이전 분석 이력 로드"""
-        history_file = self.pkl_dir / "analysis_history.pkl"
-
-        if history_file.exists():
-            try:
-                with open(history_file, "rb") as f:
-                    saved_history = pickle.load(f)
-                    self.analysis_history.update(saved_history)
-            except Exception:
-                pass
-
-    def _save_analysis_history(self):
-        """분석 이력 저장"""
-        history_file = self.pkl_dir / "analysis_history.pkl"
-
-        try:
-            save_data = {
-                **self.analysis_history,
-                "last_updated": datetime.now().isoformat(),
-            }
-
-            # 최근 1000개 패턴만 저장
-            save_data["question_patterns"] = save_data["question_patterns"][-1000:]
-
-            with open(history_file, "wb") as f:
-                pickle.dump(save_data, f)
-        except Exception:
-            pass
-
     def analyze_question(self, question: str) -> Dict:
         """질문 분석"""
         question_lower = question.lower()
@@ -243,9 +182,6 @@ class FinancialSecurityKnowledgeBase:
             "mc_pattern_info": mc_pattern_info,
         }
 
-        # 이력에 추가
-        self._add_to_analysis_history(question, analysis_result)
-
         return analysis_result
 
     def _analyze_mc_pattern(self, question: str) -> Dict:
@@ -281,7 +217,7 @@ class FinancialSecurityKnowledgeBase:
         return pattern_info
 
     def _check_institution_question(self, question: str) -> Dict:
-        """기관 관련 질문 확인 (강화됨)"""
+        """기관 관련 질문 확인"""
         question_lower = question.lower()
 
         institution_info = {
@@ -293,7 +229,7 @@ class FinancialSecurityKnowledgeBase:
             "hint_available": False,
         }
 
-        # 기관 질문 패턴 확인 (확장됨)
+        # 기관 질문 패턴 확인
         institution_patterns = [
             "기관.*기술하세요",
             "기관.*설명하세요",
@@ -333,7 +269,7 @@ class FinancialSecurityKnowledgeBase:
 
         if is_asking_institution:
             institution_info["is_institution_question"] = True
-            institution_info["confidence"] = min(pattern_matches / 1.5, 1.0)  # 완화
+            institution_info["confidence"] = min(pattern_matches / 1.5, 1.0)
             institution_info["question_pattern"] = matched_pattern
             institution_info["hint_available"] = True
 
@@ -354,7 +290,7 @@ class FinancialSecurityKnowledgeBase:
                         )
                         break
 
-            # 기존 로직으로 폴백 (강화됨)
+            # 기존 로직으로 폴백
             if not institution_info["institution_type"]:
                 if (
                     any(word in question_lower for word in ["전자금융", "전자적"])
@@ -419,83 +355,6 @@ class FinancialSecurityKnowledgeBase:
 
         return compliance
 
-    def _add_to_analysis_history(self, question: str, analysis: Dict):
-        """분석 이력에 추가"""
-        # 도메인 빈도 업데이트
-        for domain in analysis["domain"]:
-            self.analysis_history["domain_frequency"][domain] = (
-                self.analysis_history["domain_frequency"].get(domain, 0) + 1
-            )
-
-        # 복잡도 분포 업데이트
-        level = analysis["technical_level"]
-        self.analysis_history["complexity_distribution"][level] = (
-            self.analysis_history["complexity_distribution"].get(level, 0) + 1
-        )
-
-        # 준수성 확인 업데이트
-        if analysis["compliance"]["korean_content"]:
-            self.analysis_history["compliance_check"]["korean_only"] += 1
-
-        if any("법" in term for term in analysis["korean_technical_terms"]):
-            self.analysis_history["compliance_check"]["law_references"] += 1
-
-        if len(analysis["korean_technical_terms"]) > 0:
-            self.analysis_history["compliance_check"]["technical_terms"] += 1
-
-        # 기관 질문 이력 추가
-        if analysis["institution_info"]["is_institution_question"]:
-            institution_type = analysis["institution_info"]["institution_type"]
-            if institution_type:
-                if (
-                    institution_type
-                    not in self.analysis_history["institution_question_accuracy"]
-                ):
-                    self.analysis_history["institution_question_accuracy"][
-                        institution_type
-                    ] = {"total": 0, "high_confidence": 0}
-
-                self.analysis_history["institution_question_accuracy"][
-                    institution_type
-                ]["total"] += 1
-                if analysis["institution_info"]["confidence"] > 0.7:
-                    self.analysis_history["institution_question_accuracy"][
-                        institution_type
-                    ]["high_confidence"] += 1
-
-        # 객관식 패턴 정확도 추가
-        if analysis["mc_pattern_info"]["is_mc_question"]:
-            pattern_key = analysis["mc_pattern_info"]["pattern_key"]
-            if pattern_key:
-                if pattern_key not in self.analysis_history["mc_pattern_accuracy"]:
-                    self.analysis_history["mc_pattern_accuracy"][pattern_key] = {
-                        "total": 0,
-                        "high_confidence": 0,
-                    }
-
-                self.analysis_history["mc_pattern_accuracy"][pattern_key]["total"] += 1
-                if analysis["mc_pattern_info"]["pattern_confidence"] > 0.7:
-                    self.analysis_history["mc_pattern_accuracy"][pattern_key][
-                        "high_confidence"
-                    ] += 1
-
-        # 질문 패턴 추가
-        pattern = {
-            "question_length": len(question),
-            "domain": analysis["domain"][0] if analysis["domain"] else "일반",
-            "complexity": analysis["complexity"],
-            "korean_terms_count": len(analysis["korean_technical_terms"]),
-            "compliance_score": sum(analysis["compliance"].values())
-            / len(analysis["compliance"]),
-            "is_institution_question": analysis["institution_info"][
-                "is_institution_question"
-            ],
-            "is_mc_pattern": analysis["mc_pattern_info"]["is_mc_question"],
-            "timestamp": datetime.now().isoformat(),
-        }
-
-        self.analysis_history["question_patterns"].append(pattern)
-
     def get_mc_pattern_hints(self, question: str) -> str:
         """객관식 패턴 힌트 반환"""
         mc_pattern_info = self._analyze_mc_pattern(question)
@@ -507,16 +366,6 @@ class FinancialSecurityKnowledgeBase:
             pattern_key = mc_pattern_info["pattern_key"]
             if pattern_key in self.mc_answer_patterns:
                 pattern_data = self.mc_answer_patterns[pattern_key]
-
-                # 힌트 통계 업데이트
-                if (
-                    "mc_pattern_hints"
-                    not in self.analysis_history["hint_provision_stats"]
-                ):
-                    self.analysis_history["hint_provision_stats"][
-                        "mc_pattern_hints"
-                    ] = 0
-                self.analysis_history["hint_provision_stats"]["mc_pattern_hints"] += 1
 
                 # 설명 정보를 힌트로 제공
                 hint_info = f"이 문제는 {pattern_data.get('explanation', '관련 내용')}에 대한 문제입니다."
@@ -532,18 +381,7 @@ class FinancialSecurityKnowledgeBase:
     def get_template_examples(
         self, domain: str, intent_type: str = "일반"
     ) -> List[str]:
-        """템플릿 예시 반환 (강화됨)"""
-
-        # 템플릿 사용 통계 업데이트
-        template_key = f"{domain}_{intent_type}"
-        if template_key not in self.analysis_history["template_usage_stats"]:
-            self.analysis_history["template_usage_stats"][template_key] = 0
-        self.analysis_history["template_usage_stats"][template_key] += 1
-
-        # 힌트 통계 업데이트
-        if "template_examples" not in self.analysis_history["hint_provision_stats"]:
-            self.analysis_history["hint_provision_stats"]["template_examples"] = 0
-        self.analysis_history["hint_provision_stats"]["template_examples"] += 1
+        """템플릿 예시 반환"""
 
         # 도메인과 의도에 맞는 템플릿 예시 반환
         templates = []
@@ -586,16 +424,6 @@ class FinancialSecurityKnowledgeBase:
         if not templates:
             templates = self._generate_fallback_templates(domain, intent_type)
 
-        # 템플릿 성공률 업데이트
-        success_key = f"{domain}_{intent_type}_success"
-        if success_key not in self.analysis_history["template_success_rate"]:
-            self.analysis_history["template_success_rate"][success_key] = {
-                "attempts": 0, "successes": 0
-            }
-        self.analysis_history["template_success_rate"][success_key]["attempts"] += 1
-        if templates:
-            self.analysis_history["template_success_rate"][success_key]["successes"] += 1
-
         # 템플릿 예시 반환 (더 많이)
         if isinstance(templates, list) and len(templates) > 0:
             # 랜덤 순서로 더 다양하게 제공
@@ -608,12 +436,6 @@ class FinancialSecurityKnowledgeBase:
     def _generate_fallback_templates(self, domain: str, intent_type: str) -> List[str]:
         """폴백 템플릿 생성"""
         
-        # 폴백 사용 통계
-        fallback_key = f"{domain}_{intent_type}_fallback"
-        if fallback_key not in self.analysis_history["fallback_usage_stats"]:
-            self.analysis_history["fallback_usage_stats"][fallback_key] = 0
-        self.analysis_history["fallback_usage_stats"][fallback_key] += 1
-
         fallback_templates = {
             "사이버보안": {
                 "특징_묻기": [
@@ -751,14 +573,9 @@ class FinancialSecurityKnowledgeBase:
         return " ".join(structure_hints)
 
     def get_institution_hints(self, institution_type: str) -> str:
-        """기관별 힌트 정보 반환 (강화됨)"""
+        """기관별 힌트 정보 반환"""
         if institution_type in self.institution_database:
             info = self.institution_database[institution_type]
-
-            # 힌트 통계 업데이트
-            if "institution_hints" not in self.analysis_history["hint_provision_stats"]:
-                self.analysis_history["hint_provision_stats"]["institution_hints"] = 0
-            self.analysis_history["hint_provision_stats"]["institution_hints"] += 1
 
             # 기관 정보를 힌트로 제공
             hint_parts = []
@@ -786,7 +603,7 @@ class FinancialSecurityKnowledgeBase:
 
             return " ".join(hint_parts)
 
-        # 기본 힌트 (강화됨)
+        # 기본 힌트
         default_hints = {
             "전자금융분쟁조정": "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다.",
             "개인정보보호": "개인정보보호위원회에서 개인정보 보호에 관한 업무를 총괄합니다.",
@@ -806,20 +623,6 @@ class FinancialSecurityKnowledgeBase:
         self, domain: str, intent_type: str, min_quality: float = 0.8
     ) -> List[str]:
         """고품질 템플릿 반환"""
-        template_key = f"{domain}_{intent_type}"
-
-        # 효과성이 검증된 템플릿 우선 사용
-        if template_key in self.analysis_history["template_effectiveness"]:
-            effectiveness = self.analysis_history["template_effectiveness"][
-                template_key
-            ]
-            if (
-                effectiveness["korean_ratio"] >= min_quality
-                and effectiveness["usage_count"] >= 5
-            ):
-                return self.get_template_examples(domain, intent_type)
-
-        # 기본 템플릿 반환
         return self.get_template_examples(domain, intent_type)
 
     def get_subjective_template(
@@ -1014,28 +817,8 @@ class FinancialSecurityKnowledgeBase:
         )
 
     def get_analysis_statistics(self) -> Dict:
-        """분석 통계 반환 (확장됨)"""
+        """분석 통계 반환"""
         return {
-            "domain_frequency": dict(self.analysis_history["domain_frequency"]),
-            "complexity_distribution": dict(
-                self.analysis_history["complexity_distribution"]
-            ),
-            "compliance_check": dict(self.analysis_history["compliance_check"]),
-            "intent_analysis_history": dict(
-                self.analysis_history["intent_analysis_history"]
-            ),
-            "template_usage_stats": dict(self.analysis_history["template_usage_stats"]),
-            "template_effectiveness": dict(
-                self.analysis_history["template_effectiveness"]
-            ),
-            "mc_pattern_accuracy": dict(self.analysis_history["mc_pattern_accuracy"]),
-            "institution_question_accuracy": dict(
-                self.analysis_history["institution_question_accuracy"]
-            ),
-            "hint_provision_stats": dict(self.analysis_history["hint_provision_stats"]),
-            "template_success_rate": dict(self.analysis_history["template_success_rate"]),
-            "fallback_usage_stats": dict(self.analysis_history["fallback_usage_stats"]),
-            "total_analyzed": len(self.analysis_history["question_patterns"]),
             "korean_terms_available": len(self.korean_financial_terms),
             "institutions_available": len(self.institution_database),
             "template_domains": len(self.korean_subjective_templates),
@@ -1083,4 +866,4 @@ class FinancialSecurityKnowledgeBase:
 
     def cleanup(self):
         """정리"""
-        self._save_analysis_history()
+        pass

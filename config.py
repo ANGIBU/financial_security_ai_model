@@ -73,10 +73,6 @@ OPTIMIZATION_CONFIG = {
     "domain_specific_optimization": True,
     "institution_question_priority": True,
     "mc_context_weighting": True,
-    "repetition_detection_enabled": True,
-    "critical_pattern_monitoring": True,
-    "early_repetition_cutoff": True,
-    "repetition_penalty_adaptive": True,
 }
 
 # === 한국어 처리 설정 ===
@@ -110,21 +106,6 @@ TIME_LIMITS = {
     "generation_timeout": 20,  # 생성 제한시간 (초)
 }
 
-# === 진행률 표시 설정 ===
-PROGRESS_CONFIG = {
-    "bar_length": 50,
-    "update_frequency": 1,  # 몇 문항마다 진행률 업데이트
-}
-
-# === 로깅 설정 ===
-LOGGING_CONFIG = {
-    "enable_stats_logging": True,
-    "enable_error_logging": True,
-    "log_processing_times": True,
-    "log_quality_scores": True,
-    "log_repetition_patterns": True,
-}
-
 # === 템플릿 품질 평가 기준 ===
 TEMPLATE_QUALITY_CRITERIA = {
     "length_range": (50, 400),
@@ -147,45 +128,11 @@ TEMPLATE_QUALITY_CRITERIA = {
     ],
 }
 
-# === 테스트 설정 ===
-TEST_CONFIG = {
-    "test_sizes": {"mini": 8, "basic": 50, "detailed": 100},
-    "default_test_size": 50,
-}
-
 # === 파일 검증 설정 ===
 FILE_VALIDATION = {
     "required_files": ["test.csv", "sample_submission.csv"],
     "encoding": "utf-8-sig",
     "max_file_size_mb": 100,
-}
-
-# === 통계 설정 ===
-STATS_CONFIG = {
-    "track_answer_distribution": True,
-    "track_domain_performance": True,
-    "track_intent_accuracy": True,
-    "track_template_effectiveness": True,
-    "calculate_reliability_score": True,
-    "track_repetition_patterns": True,
-    "monitor_quality_degradation": True,
-}
-
-# === 반복 패턴 모니터링 설정 ===
-REPETITION_MONITORING = {
-    "critical_patterns": [
-        "갈취 묻는 말",
-        "묻고 갈취",
-        "갈취",
-    ],
-    "repetition_thresholds": {
-        "word_repeat_limit": 4,
-        "phrase_repeat_limit": 3,
-        "sentence_repeat_limit": 2,
-    },
-    "pattern_detection_sensitivity": 0.8,
-    "early_termination_enabled": True,
-    "fallback_trigger_count": 3,
 }
 
 # === JSON 설정 파일 경로 ===
@@ -235,57 +182,10 @@ def validate_config():
     if not 0 <= OPTIMIZATION_CONFIG["intent_confidence_threshold"] <= 1:
         errors.append("intent_confidence_threshold는 0과 1 사이여야 합니다")
 
-    # 반복 패턴 설정 검증
-    if (
-        "repetition_thresholds" in REPETITION_MONITORING
-        and "word_repeat_limit" in REPETITION_MONITORING["repetition_thresholds"]
-    ):
-        if REPETITION_MONITORING["repetition_thresholds"]["word_repeat_limit"] < 2:
-            errors.append("word_repeat_limit는 2 이상이어야 합니다")
-
-    if not 0 <= REPETITION_MONITORING["pattern_detection_sensitivity"] <= 1:
-        errors.append("pattern_detection_sensitivity는 0과 1 사이여야 합니다")
-
     if errors:
         raise ValueError(f"설정 오류: {'; '.join(errors)}")
 
     return True
-
-
-# === 반복 패턴 감지 설정 조정 함수 ===
-def adjust_repetition_sensitivity(level: str = "medium"):
-    """반복 패턴 감지 민감도 조정"""
-    sensitivity_levels = {
-        "low": {
-            "word_repeat_limit": 6,
-            "phrase_repeat_limit": 4,
-            "sentence_repeat_limit": 3,
-            "pattern_detection_sensitivity": 0.6,
-        },
-        "medium": {
-            "word_repeat_limit": 4,
-            "phrase_repeat_limit": 3,
-            "sentence_repeat_limit": 2,
-            "pattern_detection_sensitivity": 0.8,
-        },
-        "high": {
-            "word_repeat_limit": 3,
-            "phrase_repeat_limit": 2,
-            "sentence_repeat_limit": 1,
-            "pattern_detection_sensitivity": 0.9,
-        },
-    }
-
-    if level in sensitivity_levels:
-        # repetition_thresholds 키 업데이트
-        for key, value in sensitivity_levels[level].items():
-            if key != "pattern_detection_sensitivity":
-                REPETITION_MONITORING["repetition_thresholds"][key] = value
-
-        # 패턴 감지 민감도 업데이트
-        REPETITION_MONITORING["pattern_detection_sensitivity"] = sensitivity_levels[level][
-            "pattern_detection_sensitivity"
-        ]
 
 
 # === 생성 설정 동적 조정 함수 ===
@@ -320,27 +220,13 @@ def initialize_system():
     """시스템 초기화"""
     setup_environment()
     ensure_directories()
-
-    # REPETITION_MONITORING 초기 설정 확인
-    if "repetition_thresholds" not in REPETITION_MONITORING:
-        REPETITION_MONITORING["repetition_thresholds"] = {
-            "word_repeat_limit": 4,
-            "phrase_repeat_limit": 3,
-            "sentence_repeat_limit": 2,
-        }
-
     validate_config()
-
-    # 반복 패턴 모니터링 기본 설정
-    adjust_repetition_sensitivity("medium")
 
     if VERBOSE_MODE:
         print("시스템 설정 완료")
         print(f"기본 모델: {DEFAULT_MODEL_NAME}")
         print(f"디바이스: {get_device()}")
         print(f"오프라인 모드: {OFFLINE_MODE}")
-        print(f"반복 패턴 모니터링: {OPTIMIZATION_CONFIG['repetition_detection_enabled']}")
-        print(f"반복 감지 민감도: {REPETITION_MONITORING['pattern_detection_sensitivity']}")
 
 
 # 자동 초기화 (모듈 import 시 실행)

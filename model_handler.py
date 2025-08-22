@@ -5,7 +5,6 @@ LLM 모델 핸들러
 - 모델 로딩 및 관리
 - 답변 생성
 - 프롬프트 처리
-- 학습 데이터 저장
 - 질문 의도 기반 답변 생성
 """
 
@@ -14,7 +13,6 @@ import re
 import time
 import gc
 import random
-import pickle
 import os
 import json
 import unicodedata
@@ -32,7 +30,6 @@ from config import (
     MODEL_CONFIG,
     GENERATION_CONFIG,
     OPTIMIZATION_CONFIG,
-    PKL_DIR,
     JSON_CONFIG_FILES,
     MEMORY_CONFIG,
     get_device,
@@ -47,21 +44,11 @@ class SimpleModelHandler:
         self.verbose = verbose
         self.device = get_device()
 
-        # pkl 저장 폴더 생성
-        self.pkl_dir = PKL_DIR
-        self.pkl_dir.mkdir(exist_ok=True)
-
         # JSON 설정 파일에서 데이터 로드
         self._load_json_configs()
 
         # 성능 최적화 설정
         self.optimization_config = OPTIMIZATION_CONFIG
-
-        # 학습 데이터 저장
-        self.learning_data = self.learning_data_structure.copy()
-
-        # 이전 학습 데이터 로드
-        self._load_learning_data()
 
         if verbose:
             print(f"모델 로딩: {self.model_name}")
@@ -96,12 +83,6 @@ class SimpleModelHandler:
         if verbose:
             print("모델 로딩 완료")
 
-        # 학습 데이터 로드 현황
-        if len(self.learning_data["successful_answers"]) > 0 and verbose:
-            print(
-                f"이전 학습 데이터 로드: 성공 {len(self.learning_data['successful_answers'])}개, 실패 {len(self.learning_data['failed_answers'])}개"
-            )
-
     def _optimize_tokenizer_for_korean(self):
         """토크나이저 한국어 최적화"""
         if hasattr(self.tokenizer, "do_lower_case"):
@@ -130,11 +111,6 @@ class SimpleModelHandler:
             # 모델 관련 데이터 할당
             self.mc_context_patterns = model_config["mc_context_patterns"]
             self.intent_specific_prompts = model_config["intent_specific_prompts"]
-            self.answer_distributions = model_config[
-                "answer_distribution_default"
-            ].copy()
-            self.mc_answer_counts = model_config["mc_answer_counts_default"].copy()
-            self.learning_data_structure = model_config["learning_data_structure"]
 
             # 한국어 복구 설정 로드
             self.korean_recovery_config = processing_config["korean_text_recovery"]
@@ -213,30 +189,6 @@ class SimpleModelHandler:
             "조치_묻기": ["필요한 보안조치와 대응조치를 설명하세요."],
         }
 
-        self.answer_distributions = {
-            3: {"1": 0, "2": 0, "3": 0},
-            4: {"1": 0, "2": 0, "3": 0, "4": 0},
-            5: {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0},
-        }
-
-        self.mc_answer_counts = {3: 0, 4: 0, 5: 0}
-
-        self.learning_data_structure = {
-            "successful_answers": [],
-            "failed_answers": [],
-            "question_patterns": {},
-            "answer_quality_scores": [],
-            "mc_context_patterns": {},
-            "choice_range_errors": [],
-            "intent_based_answers": {},
-            "domain_specific_learning": {},
-            "intent_prompt_effectiveness": {},
-            "high_quality_templates": {},
-            "mc_accuracy_by_domain": {},
-            "negative_vs_positive_patterns": {},
-            "choice_distribution_learning": {},
-        }
-
         # 기본 한국어 복구 매핑
         self.korean_recovery_mapping = {
             "어어지인": "",
@@ -263,73 +215,12 @@ class SimpleModelHandler:
             {"pattern": r"\s+", "replacement": " "},
         ]
 
-    def _load_learning_data(self):
-        """이전 학습 데이터 로드"""
-        learning_file = self.pkl_dir / "learning_data.pkl"
-
-        if learning_file.exists():
-            try:
-                with open(learning_file, "rb") as f:
-                    saved_data = pickle.load(f)
-                    self.learning_data.update(saved_data)
-                if self.verbose:
-                    print("학습 데이터 로드 완료")
-            except Exception as e:
-                if self.verbose:
-                    print(f"학습 데이터 로드 오류: {e}")
-
-    def _save_learning_data(self):
-        """학습 데이터 저장"""
-        learning_file = self.pkl_dir / "learning_data.pkl"
-
-        try:
-            # 저장할 데이터 정리
-            save_data = {
-                "successful_answers": self.learning_data["successful_answers"][
-                    -MEMORY_CONFIG["max_learning_records"]["successful_answers"] :
-                ],
-                "failed_answers": self.learning_data["failed_answers"][
-                    -MEMORY_CONFIG["max_learning_records"]["failed_answers"] :
-                ],
-                "question_patterns": self.learning_data["question_patterns"],
-                "answer_quality_scores": self.learning_data["answer_quality_scores"][
-                    -MEMORY_CONFIG["max_learning_records"]["quality_scores"] :
-                ],
-                "mc_context_patterns": self.learning_data["mc_context_patterns"],
-                "choice_range_errors": self.learning_data["choice_range_errors"][
-                    -MEMORY_CONFIG["max_learning_records"]["choice_range_errors"] :
-                ],
-                "intent_based_answers": self.learning_data["intent_based_answers"],
-                "domain_specific_learning": self.learning_data[
-                    "domain_specific_learning"
-                ],
-                "intent_prompt_effectiveness": self.learning_data[
-                    "intent_prompt_effectiveness"
-                ],
-                "high_quality_templates": self.learning_data["high_quality_templates"],
-                "mc_accuracy_by_domain": self.learning_data["mc_accuracy_by_domain"],
-                "negative_vs_positive_patterns": self.learning_data[
-                    "negative_vs_positive_patterns"
-                ],
-                "choice_distribution_learning": self.learning_data[
-                    "choice_distribution_learning"
-                ],
-                "last_updated": datetime.now().isoformat(),
-            }
-
-            with open(learning_file, "wb") as f:
-                pickle.dump(save_data, f)
-
-        except Exception as e:
-            if self.verbose:
-                print(f"학습 데이터 저장 오류: {e}")
-
     def detect_critical_repetitive_patterns(self, text: str) -> bool:
-        """치명적인 반복 패턴 감지 (완화됨)"""
+        """치명적인 반복 패턴 감지"""
         if not text or len(text) < 20:
             return False
 
-        # 치명적인 반복 패턴만 감지 (기준 완화)
+        # 치명적인 반복 패턴만 감지
         critical_patterns = [
             r"갈취 묻는 말",
             r"묻고 갈취", 
@@ -340,7 +231,7 @@ class SimpleModelHandler:
             if re.search(pattern, text):
                 return True
 
-        # 같은 단어가 연속으로 8번 이상 나오는 경우만 감지 (기준 완화)
+        # 같은 단어가 연속으로 8번 이상 나오는 경우만 감지
         words = text.split()
         if len(words) >= 8:
             for i in range(len(words) - 7):
@@ -351,13 +242,13 @@ class SimpleModelHandler:
                     else:
                         break
                 
-                if same_count >= 8:  # 8회 이상만 감지
+                if same_count >= 8:
                     return True
 
         return False
 
     def remove_repetitive_patterns(self, text: str) -> str:
-        """반복 패턴 제거 (온화한 처리)"""
+        """반복 패턴 제거"""
         if not text:
             return ""
 
@@ -370,7 +261,7 @@ class SimpleModelHandler:
         for pattern in problematic_removals:
             text = text.replace(pattern, "")
 
-        # 연속된 동일 단어를 3개까지 허용 (기존 2개에서 완화)
+        # 연속된 동일 단어를 3개까지 허용
         words = text.split()
         cleaned_words = []
         i = 0
@@ -380,7 +271,7 @@ class SimpleModelHandler:
             while i + count < len(words) and words[i + count] == current_word:
                 count += 1
 
-            # 최대 3개까지 허용 (완화)
+            # 최대 3개까지 허용
             if count >= 5:  # 5개 이상만 제한
                 cleaned_words.extend([current_word] * min(3, count))
             else:
@@ -390,7 +281,7 @@ class SimpleModelHandler:
 
         text = " ".join(cleaned_words)
 
-        # 반복되는 구문 패턴 제거 (기준 완화)
+        # 반복되는 구문 패턴 제거
         text = re.sub(r"(.{5,15})\s*\1\s*\1\s*\1+", r"\1", text)  # 4회 이상만 제거
 
         # 불필요한 공백 정리
@@ -399,7 +290,7 @@ class SimpleModelHandler:
         return text
 
     def recover_korean_text(self, text: str) -> str:
-        """한국어 텍스트 복구 (관대한 처리)"""
+        """한국어 텍스트 복구"""
         if not text:
             return ""
 
@@ -428,7 +319,7 @@ class SimpleModelHandler:
     def enhance_korean_answer_quality(
         self, answer: str, question: str = "", intent_analysis: Dict = None
     ) -> str:
-        """한국어 답변 품질 향상 (관대한 검증)"""
+        """한국어 답변 품질 향상"""
         if not answer:
             return ""
 
@@ -436,7 +327,7 @@ class SimpleModelHandler:
         if self.detect_critical_repetitive_patterns(answer):
             answer = self.remove_repetitive_patterns(answer)
             # 최소 길이 기준 완화
-            if len(answer) < 20:  # 기존 30에서 20으로 완화
+            if len(answer) < 20:
                 return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
 
         # 기본 복구
@@ -474,10 +365,10 @@ class SimpleModelHandler:
             else:
                 answer += "."
 
-        # 길이 조절 (기준 완화)
-        if len(answer) > 500:  # 기존 400에서 500으로 완화
+        # 길이 조절
+        if len(answer) > 500:
             sentences = answer.split(". ")
-            if len(sentences) > 4:  # 기존 3에서 4로 완화
+            if len(sentences) > 4:
                 answer = ". ".join(sentences[:4])
                 if not answer.endswith("."):
                     answer += "."
@@ -485,7 +376,7 @@ class SimpleModelHandler:
         # 최종 정리
         answer = re.sub(r"\s+", " ", answer).strip()
 
-        # 최종 검증 (완화)
+        # 최종 검증
         if self.detect_critical_repetitive_patterns(answer):
             return "관련 법령과 규정에 따라 체계적인 관리 방안을 수립해야 합니다."
 
@@ -594,10 +485,10 @@ class SimpleModelHandler:
         intent_analysis: Dict = None,
         domain_hints: Dict = None,
     ) -> str:
-        """한국어 프롬프트 생성 (강화됨)"""
+        """한국어 프롬프트 생성"""
         domain = self._detect_domain(question)
 
-        # 기본 한국어 전용 지시 (더 명확함)
+        # 기본 한국어 전용 지시
         korean_instruction = """
 반드시 다음 규칙을 엄격히 준수하여 답변하세요:
 1. 완전한 한국어로만 답변 작성
@@ -610,7 +501,7 @@ class SimpleModelHandler:
 8. 완전하고 명확한 문장으로 마무리
 """
 
-        # 의도별 특화 지시 및 템플릿 예시 (강화)
+        # 의도별 특화 지시 및 템플릿 예시
         intent_instruction = ""
         template_examples = ""
 
@@ -623,7 +514,7 @@ class SimpleModelHandler:
                     self.intent_specific_prompts[primary_intent]
                 )
 
-            # 템플릿 예시 추가 (더 적극적)
+            # 템플릿 예시 추가
             if domain_hints and "template_examples" in domain_hints:
                 examples = domain_hints["template_examples"]
                 if examples and isinstance(examples, list) and len(examples) > 0:
@@ -634,7 +525,7 @@ class SimpleModelHandler:
 
                     template_examples += "\n위 예시들을 참고하여 질문에 맞는 구체적이고 전문적인 답변을 작성하세요."
 
-            # 답변 유형별 추가 지침 (강화)
+            # 답변 유형별 추가 지침
             if answer_type == "기관명":
                 intent_instruction += "\n구체적인 기관명과 소속을 정확한 한국어로 명시하세요."
             elif answer_type == "특징설명":
@@ -664,7 +555,7 @@ class SimpleModelHandler:
                 question, self._extract_choice_count(question), domain, domain_hints
             )
         else:
-            # 주관식 프롬프트 (강화됨)
+            # 주관식 프롬프트
             prompt_templates = [
                 f"""다음은 {domain} 분야의 금융보안 전문 질문입니다.
 
@@ -744,7 +635,7 @@ class SimpleModelHandler:
         intent_analysis: Dict = None,
         domain_hints: Dict = None,
     ) -> str:
-        """답변 생성 (강화됨)"""
+        """답변 생성"""
 
         # 템플릿 예시를 domain_hints에 추가
         enhanced_domain_hints = domain_hints.copy() if domain_hints else {}
@@ -794,15 +685,15 @@ class SimpleModelHandler:
             if self.device == "cuda":
                 inputs = inputs.to(self.model.device)
 
-            # 생성 설정 (주관식에 더 관대함)
+            # 생성 설정
             gen_config = self._get_generation_config(question_type)
             
             # 주관식의 경우 더 관대한 설정
             if question_type == "subjective":
-                gen_config.repetition_penalty = 1.1  # 완화
-                gen_config.no_repeat_ngram_size = 2  # 완화
-                gen_config.temperature = 0.6  # 더 창의적
-                gen_config.top_p = 0.9  # 더 다양성
+                gen_config.repetition_penalty = 1.1
+                gen_config.no_repeat_ngram_size = 2
+                gen_config.temperature = 0.6
+                gen_config.top_p = 0.9
 
             # 모델 실행
             with torch.no_grad():
@@ -831,36 +722,10 @@ class SimpleModelHandler:
                 answer = self._process_enhanced_mc_answer(
                     response, question, max_choice
                 )
-                success = answer and answer.isdigit() and 1 <= int(answer) <= max_choice
-                self._add_learning_record(
-                    question,
-                    answer,
-                    question_type,
-                    success,
-                    max_choice,
-                    1.0 if success else 0.5,
-                    intent_analysis,
-                )
                 return answer
             else:
                 answer = self._process_enhanced_subj_answer(
                     response, question, intent_analysis
-                )
-                korean_ratio = self._calculate_korean_ratio(answer)
-                quality_score = self._calculate_answer_quality(
-                    answer, question, intent_analysis
-                )
-                # 성공 기준 완화
-                success = korean_ratio > 0.6 and quality_score > 0.4 and len(answer) > 15
-
-                self._add_learning_record(
-                    question,
-                    answer,
-                    question_type,
-                    success,
-                    max_choice,
-                    quality_score,
-                    intent_analysis,
                 )
                 return answer
 
@@ -877,15 +742,6 @@ class SimpleModelHandler:
                     question_type, question, max_choice, intent_analysis
                 )
             
-            self._add_learning_record(
-                question,
-                fallback,
-                question_type,
-                False,
-                max_choice,
-                0.3,
-                intent_analysis,
-            )
             return fallback
 
     def _get_template_examples_from_knowledge(
@@ -987,11 +843,11 @@ class SimpleModelHandler:
             # 더 보수적인 생성 설정
             retry_config = GenerationConfig(
                 max_new_tokens=250 if question_type == "subjective" else 10,
-                temperature=0.5,  # 완화
-                top_p=0.8,  # 완화
+                temperature=0.5,
+                top_p=0.8,
                 do_sample=True,
-                repetition_penalty=1.3,  # 완화
-                no_repeat_ngram_size=3,  # 완화
+                repetition_penalty=1.3,
+                no_repeat_ngram_size=3,
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=self.tokenizer.eos_token_id,
             )
@@ -1022,7 +878,7 @@ class SimpleModelHandler:
     def _process_enhanced_subj_answer(
         self, response: str, question: str, intent_analysis: Dict = None
     ) -> str:
-        """주관식 답변 처리 (관대한 처리)"""
+        """주관식 답변 처리"""
         if not response:
             if intent_analysis:
                 primary_intent = intent_analysis.get("primary_intent", "일반")
@@ -1032,7 +888,7 @@ class SimpleModelHandler:
         # 치명적인 반복 패턴만 조기 감지
         if self.detect_critical_repetitive_patterns(response):
             response = self.remove_repetitive_patterns(response)
-            if len(response) < 20:  # 기준 완화
+            if len(response) < 20:
                 if intent_analysis:
                     primary_intent = intent_analysis.get("primary_intent", "일반")
                     return self._generate_safe_fallback_answer(primary_intent)
@@ -1041,7 +897,7 @@ class SimpleModelHandler:
         # 한국어 텍스트 복구
         response = self.recover_korean_text(response)
 
-        # 품질 향상 (관대한 처리)
+        # 품질 향상
         response = self.enhance_korean_answer_quality(
             response, question, intent_analysis
         )
@@ -1054,7 +910,7 @@ class SimpleModelHandler:
         response = re.sub(r"질문[:：].*?\n", "", response)
         response = re.sub(r"다음.*?답변하세요[.:]\s*", "", response)
 
-        # 한국어 검증 (기준 완화)
+        # 한국어 검증
         korean_ratio = self._calculate_korean_ratio(response)
 
         # 의도별 답변 검증 및 개선
@@ -1073,18 +929,18 @@ class SimpleModelHandler:
                     elif "한국은행" in question:
                         response = "한국은행에서 " + response
 
-        # 최종 검증 및 보완 (기준 완화)
-        if korean_ratio < 0.5 or len(response) < 15:  # 기준 완화
+        # 최종 검증 및 보완
+        if korean_ratio < 0.5 or len(response) < 15:
             if intent_analysis:
                 primary_intent = intent_analysis.get("primary_intent", "일반")
                 response = self._generate_safe_fallback_answer(primary_intent)
             else:
                 response = "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
 
-        # 길이 조절 (더 관대함)
-        if len(response) > 450:  # 기존 350에서 450으로 완화
+        # 길이 조절
+        if len(response) > 450:
             sentences = response.split(". ")
-            response = ". ".join(sentences[:4])  # 기존 3에서 4로 완화
+            response = ". ".join(sentences[:4])
             if not response.endswith("."):
                 response += "."
 
@@ -1120,10 +976,6 @@ class SimpleModelHandler:
         numbers = re.findall(r"[1-9]", response)
         for num in numbers:
             if 1 <= int(num) <= max_choice:
-                # 답변 분포 업데이트
-                if max_choice in self.answer_distributions:
-                    self.answer_distributions[max_choice][num] += 1
-                    self.mc_answer_counts[max_choice] += 1
                 return num
 
         # 유효한 답변을 찾지 못한 경우 강제 생성
@@ -1188,19 +1040,6 @@ class SimpleModelHandler:
                 print(f"컨텍스트 기반 답변 생성 오류: {e}")
             return self._force_valid_mc_answer("", max_choice)
 
-    def generate_improved_answer(
-        self,
-        question: str,
-        question_type: str,
-        max_choice: int,
-        intent_analysis: Dict,
-        improvement_hints: Dict,
-    ) -> str:
-        """개선된 답변 생성"""
-        return self.generate_answer(
-            question, question_type, max_choice, intent_analysis, improvement_hints
-        )
-
     def generate_fallback_mc_answer(
         self, question: str, max_choice: int, domain: str
     ) -> str:
@@ -1251,22 +1090,18 @@ class SimpleModelHandler:
                 print(f"폴백 주관식 답변 생성 오류: {e}")
             return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
 
-    def _generate_basic_intent_answer(self, primary_intent: str) -> str:
-        """기본 의도별 답변 생성"""
-        return self._generate_safe_fallback_answer(primary_intent)
-
     def _get_generation_config(self, question_type: str) -> GenerationConfig:
-        """생성 설정 (주관식에 더 관대함)"""
+        """생성 설정"""
         config_dict = GENERATION_CONFIG[question_type].copy()
         config_dict["pad_token_id"] = self.tokenizer.pad_token_id
         config_dict["eos_token_id"] = self.tokenizer.eos_token_id
 
         # 주관식에 더 관대한 설정
         if question_type == "subjective":
-            config_dict["repetition_penalty"] = 1.1  # 완화
-            config_dict["no_repeat_ngram_size"] = 2  # 완화
-            config_dict["temperature"] = 0.6  # 더 창의적
-            config_dict["top_p"] = 0.9  # 더 다양성
+            config_dict["repetition_penalty"] = 1.1
+            config_dict["no_repeat_ngram_size"] = 2
+            config_dict["temperature"] = 0.6
+            config_dict["top_p"] = 0.9
         else:
             config_dict["repetition_penalty"] = 1.1
             config_dict["no_repeat_ngram_size"] = 2
@@ -1322,151 +1157,6 @@ class SimpleModelHandler:
 
         return korean_chars / total_chars
 
-    def _calculate_answer_quality(
-        self, answer: str, question: str, intent_analysis: Dict = None
-    ) -> float:
-        """답변 품질 점수 계산 (완화됨)"""
-        if not answer:
-            return 0.0
-
-        score = 0.0
-
-        # 치명적인 반복 패턴만 페널티
-        if self.detect_critical_repetitive_patterns(answer):
-            return 0.1
-
-        # 한국어 비율 (가중치 감소)
-        korean_ratio = self._calculate_korean_ratio(answer)
-        score += korean_ratio * 0.2  # 기존 0.3에서 감소
-
-        # 길이 적절성 (기준 완화)
-        length = len(answer)
-        if 30 <= length <= 500:  # 기준 완화
-            score += 0.2
-        elif 20 <= length < 30 or 500 < length <= 600:
-            score += 0.15
-        elif 15 <= length < 20:  # 최소 기준 완화
-            score += 0.1
-
-        # 문장 구조 (가중치 증가)
-        if answer.endswith((".", "다", "요", "함")):
-            score += 0.15  # 기존 0.1에서 증가
-
-        sentences = answer.split(".")
-        if len(sentences) >= 2:
-            score += 0.1  # 기존 0.05에서 증가
-
-        # 전문성 (가중치 증가)
-        domain_keywords = self._get_domain_keywords(question)
-        found_keywords = sum(1 for keyword in domain_keywords if keyword in answer)
-        if found_keywords > 0:
-            score += min(found_keywords / len(domain_keywords), 1.0) * 0.2  # 기존 0.15에서 증가
-
-        # 의도 일치성 (완화)
-        if intent_analysis:
-            answer_type = intent_analysis.get("answer_type_required", "설명형")
-            if self._check_intent_match(answer, answer_type):
-                score += 0.25
-            else:
-                score += 0.15  # 기존 0.1에서 증가
-        else:
-            score += 0.2  # 기존 0.15에서 증가
-
-        return min(score, 1.0)
-
-    def _check_intent_match(self, answer: str, answer_type: str) -> bool:
-        """의도 일치성 확인 (완화됨)"""
-        answer_lower = answer.lower()
-
-        if answer_type == "기관명":
-            institution_keywords = [
-                "위원회",
-                "감독원",
-                "은행",
-                "기관",
-                "센터",
-                "청",
-                "부",
-                "원",
-                "조정위원회",
-            ]
-            return any(keyword in answer_lower for keyword in institution_keywords)
-        elif answer_type == "특징설명":
-            feature_keywords = [
-                "특징",
-                "특성",
-                "속성",
-                "성질",
-                "기능",
-                "역할",
-                "원리",
-                "성격",
-                "위장",
-                "은밀",
-                "지속",
-                "제어",
-            ]
-            return any(keyword in answer_lower for keyword in feature_keywords)
-        elif answer_type == "지표나열":
-            indicator_keywords = [
-                "지표",
-                "신호",
-                "징후",
-                "패턴",
-                "행동",
-                "모니터링",
-                "탐지",
-                "발견",
-                "식별",
-                "네트워크",
-                "트래픽",
-                "프로세스",
-                "파일",
-                "시스템",
-            ]
-            return any(keyword in answer_lower for keyword in indicator_keywords)
-        elif answer_type == "방안제시":
-            solution_keywords = [
-                "방안",
-                "대책",
-                "조치",
-                "해결",
-                "대응",
-                "관리",
-                "처리",
-                "예방",
-                "개선",
-                "수립",
-                "구축",
-                "강화",
-            ]
-            return any(keyword in answer_lower for keyword in solution_keywords)
-        elif answer_type == "절차설명":
-            procedure_keywords = [
-                "절차",
-                "과정",
-                "단계",
-                "순서",
-                "프로세스",
-                "진행",
-                "수행",
-            ]
-            return any(keyword in answer_lower for keyword in procedure_keywords)
-        elif answer_type == "조치설명":
-            measure_keywords = [
-                "조치",
-                "대응",
-                "대책",
-                "방안",
-                "보안",
-                "예방",
-                "개선",
-                "강화",
-            ]
-            return any(keyword in answer_lower for keyword in measure_keywords)
-
-        return True  # 기본적으로 통과
-
     def _get_domain_keywords(self, question: str) -> List[str]:
         """도메인별 키워드 반환"""
         question_lower = question.lower()
@@ -1503,135 +1193,6 @@ class SimpleModelHandler:
                 return self._generate_safe_fallback_answer(primary_intent)
             return self.generate_fallback_subjective_answer(question)
 
-    def _add_learning_record(
-        self,
-        question: str,
-        answer: str,
-        question_type: str,
-        success: bool,
-        max_choice: int = 5,
-        quality_score: float = 0.0,
-        intent_analysis: Dict = None,
-    ):
-        """학습 기록 추가"""
-        if self.detect_critical_repetitive_patterns(answer):
-            success = False
-            quality_score = min(quality_score, 0.2)
-
-        record = {
-            "question": question[:200],
-            "answer": answer[:300],
-            "type": question_type,
-            "max_choice": max_choice,
-            "timestamp": datetime.now().isoformat(),
-            "quality_score": quality_score,
-            "has_repetition": self.detect_critical_repetitive_patterns(answer),
-        }
-
-        if success:
-            self.learning_data["successful_answers"].append(record)
-
-            # 의도별 성공 답변 저장
-            if intent_analysis and question_type == "subjective":
-                primary_intent = intent_analysis.get("primary_intent", "일반")
-                if primary_intent not in self.learning_data["intent_based_answers"]:
-                    self.learning_data["intent_based_answers"][primary_intent] = []
-
-                intent_record = {
-                    "question": question[:150],
-                    "answer": answer[:200],
-                    "quality": quality_score,
-                    "confidence": intent_analysis.get("intent_confidence", 0.0),
-                    "answer_type": intent_analysis.get(
-                        "answer_type_required", "설명형"
-                    ),
-                    "timestamp": datetime.now().isoformat(),
-                    "has_repetition": self.detect_critical_repetitive_patterns(answer),
-                }
-                self.learning_data["intent_based_answers"][primary_intent].append(
-                    intent_record
-                )
-
-                # 최근 50개만 유지
-                if len(self.learning_data["intent_based_answers"][primary_intent]) > 50:
-                    self.learning_data["intent_based_answers"][primary_intent] = (
-                        self.learning_data["intent_based_answers"][primary_intent][-50:]
-                    )
-
-                # 고품질 답변은 템플릿으로 저장 (기준 완화)
-                if quality_score > 0.7 and not self.detect_critical_repetitive_patterns(answer):  # 기존 0.85에서 완화
-                    if (
-                        primary_intent
-                        not in self.learning_data["high_quality_templates"]
-                    ):
-                        self.learning_data["high_quality_templates"][
-                            primary_intent
-                        ] = []
-
-                    template_record = {
-                        "answer_template": answer[:250],
-                        "quality": quality_score,
-                        "usage_count": 0,
-                        "timestamp": datetime.now().isoformat(),
-                        "has_repetition": False,
-                    }
-                    self.learning_data["high_quality_templates"][primary_intent].append(
-                        template_record
-                    )
-
-                    # 최근 20개만 유지
-                    if (
-                        len(
-                            self.learning_data["high_quality_templates"][primary_intent]
-                        )
-                        > 20
-                    ):
-                        self.learning_data["high_quality_templates"][primary_intent] = (
-                            sorted(
-                                self.learning_data["high_quality_templates"][
-                                    primary_intent
-                                ],
-                                key=lambda x: x["quality"],
-                                reverse=True,
-                            )[:20]
-                        )
-        else:
-            self.learning_data["failed_answers"].append(record)
-
-            # 선택지 범위 오류 기록
-            if question_type == "multiple_choice" and answer and answer.isdigit():
-                answer_num = int(answer)
-                if answer_num > max_choice:
-                    self.learning_data["choice_range_errors"].append(
-                        {
-                            "question": question[:100],
-                            "answer": answer,
-                            "max_choice": max_choice,
-                            "timestamp": datetime.now().isoformat(),
-                        }
-                    )
-
-        # 질문 패턴 학습
-        domain = self._detect_domain(question)
-        if domain not in self.learning_data["question_patterns"]:
-            self.learning_data["question_patterns"][domain] = {
-                "count": 0,
-                "avg_quality": 0.0,
-                "repetition_count": 0,
-            }
-
-        patterns = self.learning_data["question_patterns"][domain]
-        patterns["count"] += 1
-        patterns["avg_quality"] = (
-            patterns["avg_quality"] * (patterns["count"] - 1) + quality_score
-        ) / patterns["count"]
-
-        if self.detect_critical_repetitive_patterns(answer):
-            patterns["repetition_count"] += 1
-
-        # 품질 점수 기록
-        self.learning_data["answer_quality_scores"].append(quality_score)
-
     def _warmup(self):
         """모델 워밍업"""
         try:
@@ -1653,61 +1214,9 @@ class SimpleModelHandler:
             if self.verbose:
                 print(f"워밍업 실패: {e}")
 
-    def get_answer_stats(self) -> Dict:
-        """답변 통계"""
-        return {
-            "distributions": dict(self.answer_distributions),
-            "counts": dict(self.mc_answer_counts),
-            "mc_accuracy_by_domain": dict(self.learning_data["mc_accuracy_by_domain"]),
-        }
-
-    def get_learning_stats(self) -> Dict:
-        """학습 통계"""
-        # 반복 패턴 통계 추가
-        repetition_stats = {
-            "total_repetitive_answers": sum(
-                1
-                for record in self.learning_data["successful_answers"]
-                + self.learning_data["failed_answers"]
-                if record.get("has_repetition", False)
-            ),
-            "repetition_rate_by_domain": {
-                domain: (
-                    patterns.get("repetition_count", 0) / max(patterns["count"], 1)
-                )
-                * 100
-                for domain, patterns in self.learning_data["question_patterns"].items()
-            },
-        }
-
-        return {
-            "successful_count": len(self.learning_data["successful_answers"]),
-            "failed_count": len(self.learning_data["failed_answers"]),
-            "choice_range_errors": len(self.learning_data["choice_range_errors"]),
-            "question_patterns": dict(self.learning_data["question_patterns"]),
-            "intent_based_answers_count": {
-                k: len(v) for k, v in self.learning_data["intent_based_answers"].items()
-            },
-            "high_quality_templates_count": {
-                k: len(v)
-                for k, v in self.learning_data["high_quality_templates"].items()
-            },
-            "mc_accuracy_by_domain": dict(self.learning_data["mc_accuracy_by_domain"]),
-            "avg_quality": (
-                sum(self.learning_data["answer_quality_scores"])
-                / len(self.learning_data["answer_quality_scores"])
-                if self.learning_data["answer_quality_scores"]
-                else 0
-            ),
-            "repetition_stats": repetition_stats,
-        }
-
     def cleanup(self):
         """리소스 정리"""
         try:
-            # 학습 데이터 저장
-            self._save_learning_data()
-
             if hasattr(self, "model"):
                 del self.model
             if hasattr(self, "tokenizer"):
