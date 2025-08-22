@@ -1,42 +1,24 @@
 # knowledge_base.py
 
-"""
-금융보안 지식베이스
-- 도메인별 키워드 분류
-- 전문 용어 처리
-- 한국어 전용 답변 템플릿 예시 제공
-- 대회 규칙 준수 검증
-- 질문 의도별 지식 제공
-"""
-
 import re
 import json
 from typing import Dict, List
 from pathlib import Path
 import random
 
-# 설정 파일 import
 from config import JSON_CONFIG_FILES, TEMPLATE_QUALITY_CRITERIA
 
 
 class FinancialSecurityKnowledgeBase:
-    """금융보안 지식베이스"""
-
     def __init__(self):
-        # JSON 설정 파일 로드
         self._load_json_configs()
-
-        # 템플릿 품질 평가 기준
         self.template_quality_criteria = TEMPLATE_QUALITY_CRITERIA
 
     def _load_json_configs(self):
-        """JSON 설정 파일 로드"""
         try:
-            # knowledge_data.json 로드
             with open(JSON_CONFIG_FILES["knowledge_data"], "r", encoding="utf-8") as f:
                 knowledge_data = json.load(f)
 
-            # 지식베이스 데이터 할당
             self.korean_subjective_templates = knowledge_data[
                 "korean_subjective_templates"
             ]
@@ -58,10 +40,8 @@ class FinancialSecurityKnowledgeBase:
             self._load_default_configs()
 
     def _load_default_configs(self):
-        """기본 설정 로드"""
         print("기본 설정으로 대체합니다.")
 
-        # 확장된 기본 설정
         self.korean_subjective_templates = {
             "사이버보안": {
                 "특징_묻기": [
@@ -269,10 +249,8 @@ class FinancialSecurityKnowledgeBase:
         self.mc_answer_patterns = {}
 
     def analyze_question(self, question: str) -> Dict:
-        """질문 분석"""
         question_lower = question.lower()
 
-        # 도메인 찾기
         detected_domains = []
         domain_scores = {}
 
@@ -280,7 +258,6 @@ class FinancialSecurityKnowledgeBase:
             score = 0
             for keyword in keywords:
                 if keyword.lower() in question_lower:
-                    # 핵심 키워드 가중치 적용
                     if keyword in [
                         "트로이",
                         "RAT",
@@ -300,28 +277,21 @@ class FinancialSecurityKnowledgeBase:
                 domain_scores[domain] = score
 
         if domain_scores:
-            # 가장 높은 점수의 도메인 선택
             best_domain = max(domain_scores.items(), key=lambda x: x[1])[0]
             detected_domains = [best_domain]
         else:
             detected_domains = ["일반"]
 
-        # 복잡도 계산
         complexity = self._calculate_complexity(question)
 
-        # 한국어 전문 용어 포함 여부
         korean_terms = self._find_korean_technical_terms(question)
 
-        # 대회 규칙 준수 확인
         compliance_check = self._check_competition_compliance(question)
 
-        # 기관 관련 질문인지 확인
         institution_info = self._check_institution_question(question)
 
-        # 객관식 패턴 매칭
         mc_pattern_info = self._analyze_mc_pattern(question)
 
-        # 분석 결과 저장
         analysis_result = {
             "domain": detected_domains,
             "complexity": complexity,
@@ -337,7 +307,7 @@ class FinancialSecurityKnowledgeBase:
         return analysis_result
 
     def _analyze_mc_pattern(self, question: str) -> Dict:
-        """객관식 패턴 분석"""
+
         question_lower = question.lower()
 
         pattern_info = {
@@ -348,7 +318,6 @@ class FinancialSecurityKnowledgeBase:
             "hint_available": False,
         }
 
-        # 실제 데이터 패턴 매칭
         for pattern_key, pattern_data in self.mc_answer_patterns.items():
             keyword_matches = sum(
                 1
@@ -369,7 +338,7 @@ class FinancialSecurityKnowledgeBase:
         return pattern_info
 
     def _check_institution_question(self, question: str) -> Dict:
-        """기관 관련 질문 확인 - 개선된 매칭"""
+        """기관 관련 질문 확인"""
         question_lower = question.lower()
 
         institution_info = {
@@ -381,7 +350,6 @@ class FinancialSecurityKnowledgeBase:
             "hint_available": False,
         }
 
-        # 기관 질문 패턴 확인 - 확장된 패턴
         institution_patterns = [
             "기관.*기술하세요", "기관.*설명하세요", "어떤.*기관", "어느.*기관",
             "조정.*신청.*기관", "분쟁.*조정.*기관", "신청.*수.*있는.*기관",
@@ -390,7 +358,7 @@ class FinancialSecurityKnowledgeBase:
             "위원회.*무엇", "위원회.*어디", "위원회.*설명", "어떤.*위원회", "어느.*위원회",
             "분쟁.*어디", "신고.*어디", "상담.*어디", "문의.*어디", "접수.*어디",
             "기관", "위원회", "담당", "업무", "어디서", "누가", "무엇",
-            "조정", "신청", "처리", "수행", "관할", "소속"  # 추가 패턴
+            "조정", "신청", "처리", "수행", "관할", "소속"
         ]
 
         pattern_matches = 0
@@ -404,11 +372,10 @@ class FinancialSecurityKnowledgeBase:
 
         if is_asking_institution:
             institution_info["is_institution_question"] = True
-            institution_info["confidence"] = min(pattern_matches / 1.0, 1.0)  # 더 관대하게
+            institution_info["confidence"] = min(pattern_matches / 1.0, 1.0)
             institution_info["question_pattern"] = matched_pattern
             institution_info["hint_available"] = True
 
-            # 분야별 기관 확인 - 향상된 매칭
             institution_mapping = {
                 "전자금융분쟁조정": [
                     "전자금융", "전자적", "분쟁", "조정", "금융감독원", "이용자"
@@ -426,7 +393,7 @@ class FinancialSecurityKnowledgeBase:
 
             for inst_type, keywords in institution_mapping.items():
                 keyword_matches = sum(1 for keyword in keywords if keyword in question_lower)
-                if keyword_matches >= 1:  # 더 관대한 매칭
+                if keyword_matches >= 1:
                     institution_info["institution_type"] = inst_type
                     institution_info["confidence"] = min(keyword_matches / len(keywords), 1.0)
                     break
@@ -441,7 +408,6 @@ class FinancialSecurityKnowledgeBase:
             "no_external_dependency": True,
         }
 
-        # 한국어 비율 확인
         korean_chars = len(
             [c for c in question if ord(c) >= 0xAC00 and ord(c) <= 0xD7A3]
         )
@@ -451,7 +417,6 @@ class FinancialSecurityKnowledgeBase:
             korean_ratio = korean_chars / total_chars
             compliance["korean_content"] = korean_ratio > 0.7
 
-        # 도메인 적절성 확인
         found_domains = []
         for domain, keywords in self.domain_keywords.items():
             if any(keyword in question.lower() for keyword in keywords):
@@ -473,7 +438,6 @@ class FinancialSecurityKnowledgeBase:
             if pattern_key in self.mc_answer_patterns:
                 pattern_data = self.mc_answer_patterns[pattern_key]
 
-                # 설명 정보를 힌트로 제공
                 hint_info = f"이 문제는 {pattern_data.get('explanation', '관련 내용')}에 대한 문제입니다."
                 if "choices" in pattern_data:
                     hint_info += (
@@ -487,12 +451,10 @@ class FinancialSecurityKnowledgeBase:
     def get_template_examples(
         self, domain: str, intent_type: str = "일반"
     ) -> List[str]:
-        """템플릿 예시 반환 - 더 많은 예시 제공"""
+        """템플릿 예시 반환"""
 
-        # 도메인과 의도에 맞는 템플릿 예시 반환
         templates = []
         
-        # 1차: 정확한 도메인과 의도 매칭
         if domain in self.korean_subjective_templates:
             domain_templates = self.korean_subjective_templates[domain]
 
@@ -502,7 +464,6 @@ class FinancialSecurityKnowledgeBase:
                 elif "일반" in domain_templates:
                     templates = domain_templates["일반"]
                 else:
-                    # 해당 도메인의 다른 의도 템플릿 사용
                     for available_intent, available_templates in domain_templates.items():
                         if available_templates:
                             templates = available_templates
@@ -510,19 +471,17 @@ class FinancialSecurityKnowledgeBase:
             else:
                 templates = domain_templates
 
-        # 2차: 다른 도메인의 같은 의도 템플릿 사용 - 더 적극적으로
-        if not templates or len(templates) < 3:  # 3개 미만이면 보충
+        if not templates or len(templates) < 3:
             additional_templates = []
             for other_domain, other_templates in self.korean_subjective_templates.items():
                 if other_domain != domain and isinstance(other_templates, dict):
                     if intent_type in other_templates and other_templates[intent_type]:
-                        additional_templates.extend(other_templates[intent_type][:2])  # 각 도메인에서 2개씩
-                        if len(additional_templates) >= 4:  # 최대 4개 추가
+                        additional_templates.extend(other_templates[intent_type][:2])
+                        if len(additional_templates) >= 4:
                             break
             
             templates = (templates or []) + additional_templates
 
-        # 3차: 일반 템플릿 사용
         if not templates and "일반" in self.korean_subjective_templates:
             general_templates = self.korean_subjective_templates["일반"]
             if isinstance(general_templates, dict) and "일반" in general_templates:
@@ -530,21 +489,18 @@ class FinancialSecurityKnowledgeBase:
             elif isinstance(general_templates, list):
                 templates = general_templates
 
-        # 4차: 폴백 템플릿 생성
         if not templates:
             templates = self._generate_enhanced_fallback_templates(domain, intent_type)
 
-        # 템플릿 예시 반환 (더 많이)
         if isinstance(templates, list) and len(templates) > 0:
-            # 랜덤 순서로 더 다양하게 제공
             shuffled_templates = templates.copy()
             random.shuffle(shuffled_templates)
-            return shuffled_templates[:7]  # 최대 7개로 증가
+            return shuffled_templates[:7]
 
         return []
 
     def _generate_enhanced_fallback_templates(self, domain: str, intent_type: str) -> List[str]:
-        """향상된 폴백 템플릿 생성 - 더 많은 템플릿"""
+        """향상된 폴백 템플릿 생성"""
         
         fallback_templates = {
             "사이버보안": {
@@ -621,7 +577,6 @@ class FinancialSecurityKnowledgeBase:
             }
         }
 
-        # 일반 폴백 - 더 많은 템플릿
         general_fallbacks = {
             "특징_묻기": [
                 "주요 특징을 체계적으로 분석하여 관련 법령에 따라 관리해야 합니다.",
@@ -658,15 +613,12 @@ class FinancialSecurityKnowledgeBase:
             ]
         }
 
-        # 도메인별 템플릿 확인
         if domain in fallback_templates and intent_type in fallback_templates[domain]:
             return fallback_templates[domain][intent_type]
         
-        # 일반 폴백 템플릿 사용
         if intent_type in general_fallbacks:
             return general_fallbacks[intent_type]
         
-        # 최종 폴백 - 더 다양하게
         return [
             "관련 법령과 규정에 따라 체계적인 관리가 필요합니다.",
             "해당 분야의 전문적 지식을 바탕으로 적절한 대응을 수행해야 합니다.",
@@ -677,7 +629,6 @@ class FinancialSecurityKnowledgeBase:
     def get_template_hints(self, domain: str, intent_type: str = "일반") -> str:
         """템플릿 힌트 반환"""
 
-        # 기본 구조 힌트 생성
         structure_hints = []
 
         if intent_type == "기관_묻기":
@@ -714,9 +665,8 @@ class FinancialSecurityKnowledgeBase:
         return " ".join(structure_hints)
 
     def get_institution_hints(self, institution_type: str) -> str:
-        """기관별 힌트 정보 반환 - 향상된 힌트"""
+        """기관별 힌트 정보 반환"""
         
-        # 기본 힌트 맵핑 - 더 구체적으로
         default_hints = {
             "전자금융분쟁조정": "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 금융감독원 내에 설치되어 운영되며, 이용자와 전자금융업자 간의 분쟁을 공정하고 신속하게 해결하기 위한 업무를 수행합니다.",
             "개인정보보호": "개인정보보호위원회에서 개인정보 보호에 관한 업무를 총괄합니다. 개인정보 침해 신고는 개인정보보호위원회 산하 개인정보침해신고센터에서 담당하며, 개인정보 관련 분쟁조정은 개인정보 분쟁조정위원회에서 처리합니다.",
@@ -727,7 +677,6 @@ class FinancialSecurityKnowledgeBase:
         if institution_type in self.institution_database:
             info = self.institution_database[institution_type]
 
-            # 기관 정보를 힌트로 제공
             hint_parts = []
 
             if "기관명" in info:
@@ -766,16 +715,13 @@ class FinancialSecurityKnowledgeBase:
 
     def _calculate_complexity(self, question: str) -> float:
         """질문 복잡도 계산"""
-        # 길이 기반 복잡도
         length_factor = min(len(question) / 200, 1.0)
 
-        # 한국어 전문 용어 개수
         korean_term_count = sum(
             1 for term in self.korean_financial_terms.keys() if term in question
         )
         term_factor = min(korean_term_count / 3, 1.0)
 
-        # 도메인 개수
         domain_count = sum(
             1
             for keywords in self.domain_keywords.values()
@@ -950,7 +896,6 @@ class FinancialSecurityKnowledgeBase:
         )
 
     def get_analysis_statistics(self) -> Dict:
-        """분석 통계 반환"""
         return {
             "korean_terms_available": len(self.korean_financial_terms),
             "institutions_available": len(self.institution_database),
@@ -963,7 +908,6 @@ class FinancialSecurityKnowledgeBase:
         }
 
     def validate_competition_compliance(self, answer: str, domain: str) -> Dict:
-        """대회 규칙 준수 검증"""
         compliance = {
             "korean_only": True,
             "no_external_api": True,
@@ -971,7 +915,6 @@ class FinancialSecurityKnowledgeBase:
             "technical_accuracy": True,
         }
 
-        # 한국어 전용 확인
         import re
 
         english_chars = len(re.findall(r"[a-zA-Z]", answer))
@@ -981,13 +924,11 @@ class FinancialSecurityKnowledgeBase:
             english_ratio = english_chars / total_chars
             compliance["korean_only"] = english_ratio < 0.1
 
-        # 외부 의존성 확인
         external_indicators = ["http", "www", "api", "service", "cloud"]
         compliance["no_external_api"] = not any(
             indicator in answer.lower() for indicator in external_indicators
         )
 
-        # 도메인 적절성 확인
         if domain in self.domain_keywords:
             domain_keywords = self.domain_keywords[domain]
             found_keywords = sum(
@@ -998,5 +939,4 @@ class FinancialSecurityKnowledgeBase:
         return compliance
 
     def cleanup(self):
-        """정리"""
         pass
