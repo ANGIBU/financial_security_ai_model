@@ -241,5 +241,4 @@ if __name__ != "__main__":
             ensure_directories()
             print("기본 설정으로 시스템을 시작합니다.")
         except Exception as fallback_error:
-            print(f"기본 설정 로드도 실패: {fallback_error}")
-            print("수동으로 설정을 확인해주세요.")
+            print(f"기본 설정 로드 실패: {fallback_error}")
