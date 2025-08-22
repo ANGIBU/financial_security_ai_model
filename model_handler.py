@@ -216,39 +216,39 @@ class SimpleModelHandler:
         ]
 
     def detect_critical_repetitive_patterns(self, text: str) -> bool:
-        """치명적인 반복 패턴 감지"""
-        if not text or len(text) < 20:
+        """치명적인 반복 패턴 감지 - 기준 완화"""
+        if not text or len(text) < 30:
             return False
 
-        # 치명적인 반복 패턴만 감지
+        # 매우 치명적인 반복 패턴만 감지 (기준 대폭 완화)
         critical_patterns = [
             r"갈취 묻는 말",
             r"묻고 갈취", 
-            r"(.{1,3})\s*(\1\s*){8,}",  # 8회 이상 반복만 감지
+            r"(.{1,3})\s*(\1\s*){15,}",  # 15회 이상 반복만 감지 (기존 8회에서 완화)
         ]
 
         for pattern in critical_patterns:
             if re.search(pattern, text):
                 return True
 
-        # 같은 단어가 연속으로 8번 이상 나오는 경우만 감지
+        # 같은 단어가 연속으로 15번 이상 나오는 경우만 감지 (기존 8회에서 완화)
         words = text.split()
-        if len(words) >= 8:
-            for i in range(len(words) - 7):
+        if len(words) >= 15:
+            for i in range(len(words) - 14):
                 same_count = 1
-                for j in range(i + 1, min(i + 8, len(words))):
+                for j in range(i + 1, min(i + 15, len(words))):
                     if words[i] == words[j]:
                         same_count += 1
                     else:
                         break
                 
-                if same_count >= 8:
+                if same_count >= 15:
                     return True
 
         return False
 
     def remove_repetitive_patterns(self, text: str) -> str:
-        """반복 패턴 제거"""
+        """반복 패턴 제거 - 기준 완화"""
         if not text:
             return ""
 
@@ -261,7 +261,7 @@ class SimpleModelHandler:
         for pattern in problematic_removals:
             text = text.replace(pattern, "")
 
-        # 연속된 동일 단어를 3개까지 허용
+        # 연속된 동일 단어를 5개까지 허용 (기존 3개에서 완화)
         words = text.split()
         cleaned_words = []
         i = 0
@@ -271,9 +271,9 @@ class SimpleModelHandler:
             while i + count < len(words) and words[i + count] == current_word:
                 count += 1
 
-            # 최대 3개까지 허용
-            if count >= 5:  # 5개 이상만 제한
-                cleaned_words.extend([current_word] * min(3, count))
+            # 최대 5개까지 허용 (기존 3개에서 완화)
+            if count >= 10:  # 10개 이상만 제한 (기존 5개에서 완화)
+                cleaned_words.extend([current_word] * min(5, count))
             else:
                 cleaned_words.extend([current_word] * count)
 
@@ -281,8 +281,8 @@ class SimpleModelHandler:
 
         text = " ".join(cleaned_words)
 
-        # 반복되는 구문 패턴 제거
-        text = re.sub(r"(.{5,15})\s*\1\s*\1\s*\1+", r"\1", text)  # 4회 이상만 제거
+        # 반복되는 구문 패턴 제거 - 기준 완화
+        text = re.sub(r"(.{5,15})\s*\1\s*\1\s*\1\s*\1+", r"\1", text)  # 5회 이상만 제거 (기존 4회에서 완화)
 
         # 불필요한 공백 정리
         text = re.sub(r"\s+", " ", text).strip()
@@ -319,7 +319,7 @@ class SimpleModelHandler:
     def enhance_korean_answer_quality(
         self, answer: str, question: str = "", intent_analysis: Dict = None
     ) -> str:
-        """한국어 답변 품질 향상"""
+        """한국어 답변 품질 향상 - 기준 완화"""
         if not answer:
             return ""
 
@@ -327,7 +327,7 @@ class SimpleModelHandler:
         if self.detect_critical_repetitive_patterns(answer):
             answer = self.remove_repetitive_patterns(answer)
             # 최소 길이 기준 완화
-            if len(answer) < 20:
+            if len(answer) < 15:  # 기존 20에서 완화
                 return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
 
         # 기본 복구
@@ -451,7 +451,9 @@ class SimpleModelHandler:
             domain_info = self.mc_context_patterns["domain_specific_patterns"][domain]
 
             keyword_matches = sum(
-                1 for keyword in domain_info["keywords"] if keyword in question_lower
+                1
+                for keyword in domain_info["keywords"]
+                if keyword in question_lower
             )
 
             if keyword_matches > 0:
@@ -485,7 +487,7 @@ class SimpleModelHandler:
         intent_analysis: Dict = None,
         domain_hints: Dict = None,
     ) -> str:
-        """한국어 프롬프트 생성"""
+        """한국어 프롬프트 생성 - 템플릿 활용 강화"""
         domain = self._detect_domain(question)
 
         # 기본 한국어 전용 지시
@@ -514,16 +516,17 @@ class SimpleModelHandler:
                     self.intent_specific_prompts[primary_intent]
                 )
 
-            # 템플릿 예시 추가
+            # 템플릿 예시 추가 - 더 적극적으로 활용
             if domain_hints and "template_examples" in domain_hints:
                 examples = domain_hints["template_examples"]
                 if examples and isinstance(examples, list) and len(examples) > 0:
-                    # 모든 예시 활용
-                    template_examples = "\n\n참고 예시 (이와 유사한 수준과 구조로 작성하세요):\n"
-                    for i, example in enumerate(examples[:5], 1):  # 최대 5개
-                        template_examples += f"참고 {i}: {example}\n"
+                    template_examples = "\n\n=== 참고할 우수 답변 예시 ===\n"
+                    template_examples += "다음은 이와 유사한 질문에 대한 우수한 답변 예시들입니다. 이 예시들의 구조와 내용 수준을 참고하여 답변하세요:\n\n"
+                    
+                    for i, example in enumerate(examples[:3], 1):  # 최대 3개 (기존 5개에서 줄임)
+                        template_examples += f"예시 {i}: {example}\n\n"
 
-                    template_examples += "\n위 예시들을 참고하여 질문에 맞는 구체적이고 전문적인 답변을 작성하세요."
+                    template_examples += "위 예시들을 참고하여 질문에 맞는 구체적이고 전문적인 답변을 작성하세요. 예시와 유사한 길이와 구조로 작성해주세요.\n"
 
             # 답변 유형별 추가 지침
             if answer_type == "기관명":
@@ -555,9 +558,8 @@ class SimpleModelHandler:
                 question, self._extract_choice_count(question), domain, domain_hints
             )
         else:
-            # 주관식 프롬프트
-            prompt_templates = [
-                f"""다음은 {domain} 분야의 금융보안 전문 질문입니다.
+            # 주관식 프롬프트 - 템플릿 강조
+            prompt_template = f"""다음은 {domain} 분야의 금융보안 전문 질문입니다.
 
 질문: {question}
 
@@ -574,11 +576,11 @@ class SimpleModelHandler:
 - 완전한 문장으로 마무리
 - 실무적이고 구체적인 내용 포함
 - 전문적 수준의 상세한 설명
+- 위 예시들과 유사한 수준과 구조로 작성
 
-답변:""",
-            ]
+답변:"""
 
-            return prompt_templates[0]
+            return prompt_template
 
     def _create_enhanced_mc_prompt(
         self,
@@ -635,7 +637,7 @@ class SimpleModelHandler:
         intent_analysis: Dict = None,
         domain_hints: Dict = None,
     ) -> str:
-        """답변 생성"""
+        """답변 생성 - 템플릿 활용 강화"""
 
         # 템플릿 예시를 domain_hints에 추가
         enhanced_domain_hints = domain_hints.copy() if domain_hints else {}
@@ -666,6 +668,8 @@ class SimpleModelHandler:
             )
             if template_examples:
                 enhanced_domain_hints["template_examples"] = template_examples
+                if self.verbose:
+                    print(f"템플릿 예시 {len(template_examples)}개 활용: {domain}/{intent_key}")
 
         # 프롬프트 생성
         prompt = self._create_enhanced_korean_prompt(
@@ -685,15 +689,16 @@ class SimpleModelHandler:
             if self.device == "cuda":
                 inputs = inputs.to(self.model.device)
 
-            # 생성 설정
+            # 생성 설정 - 주관식에 대해 더 관대한 설정
             gen_config = self._get_generation_config(question_type)
             
-            # 주관식의 경우 더 관대한 설정
             if question_type == "subjective":
-                gen_config.repetition_penalty = 1.1
-                gen_config.no_repeat_ngram_size = 2
-                gen_config.temperature = 0.6
-                gen_config.top_p = 0.9
+                # 주관식의 경우 더 창의적이고 자유로운 생성 설정
+                gen_config.repetition_penalty = 1.1  # 완화 (기존 1.3)
+                gen_config.no_repeat_ngram_size = 2   # 완화 (기존 4)
+                gen_config.temperature = 0.7          # 증가 (기존 0.5)
+                gen_config.top_p = 0.9               # 증가 (기존 0.85)
+                gen_config.max_new_tokens = 400      # 증가 (기존 300)
 
             # 모델 실행
             with torch.no_grad():
@@ -711,8 +716,14 @@ class SimpleModelHandler:
                 clean_up_tokenization_spaces=True,
             ).strip()
 
-            # 치명적인 반복 패턴만 조기 감지
+            if self.verbose:
+                print(f"원시 LLM 응답 길이: {len(response)}")
+                print(f"원시 LLM 응답 미리보기: {response[:100]}...")
+
+            # 치명적인 반복 패턴만 조기 감지 (매우 관대한 기준)
             if self.detect_critical_repetitive_patterns(response):
+                if self.verbose:
+                    print("치명적인 반복 패턴 감지, 재시도 진행")
                 return self._retry_generation_with_different_settings(
                     prompt, question_type, max_choice, intent_analysis
                 )
@@ -727,6 +738,9 @@ class SimpleModelHandler:
                 answer = self._process_enhanced_subj_answer(
                     response, question, intent_analysis
                 )
+                if self.verbose:
+                    print(f"후처리된 주관식 답변 길이: {len(answer)}")
+                    print(f"후처리된 주관식 답변: {answer[:200]}...")
                 return answer
 
         except Exception as e:
@@ -747,78 +761,88 @@ class SimpleModelHandler:
     def _get_template_examples_from_knowledge(
         self, domain: str, intent_key: str
     ) -> List[str]:
-        """지식베이스에서 템플릿 예시 가져오기"""
+        """지식베이스에서 템플릿 예시 가져오기 - 더 풍부한 템플릿 제공"""
         templates_mapping = {
             "사이버보안": {
                 "특징_묻기": [
                     "트로이 목마 기반 원격제어 악성코드는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하며, 은밀성과 지속성을 특징으로 합니다.",
                     "해당 악성코드는 사용자를 속여 시스템에 침투하여 외부 공격자가 원격으로 제어하는 특성을 가지며, 시스템 깊숙이 숨어서 장기간 활동하면서 정보 수집과 원격 제어 기능을 수행합니다.",
                     "트로이 목마는 유용한 프로그램으로 가장하여 사용자가 직접 설치하도록 유도하고, 설치 후 악의적인 기능을 수행하는 특징을 가집니다. 원격 접근 기능을 통해 시스템을 외부에서 조작할 수 있습니다.",
+                    "원격접근 도구의 주요 특징은 은밀한 설치, 지속적인 연결 유지, 시스템 전반에 대한 제어권 획득, 사용자 모르게 정보 수집 등이며, 탐지를 회피하기 위한 다양한 기법을 사용합니다.",
+                    "악성 원격접근 도구는 정상 소프트웨어로 위장하여 배포되며, 설치 후 시스템 권한을 탈취하고 외부 서버와 은밀한 통신을 수행하는 특성을 가집니다."
                 ],
                 "지표_묻기": [
                     "네트워크 트래픽 모니터링에서 비정상적인 외부 통신 패턴, 시스템 동작 분석에서 비인가 프로세스 실행, 파일 생성 및 수정 패턴의 이상 징후, 입출력 장치에 대한 비정상적 접근 등이 주요 탐지 지표입니다.",
                     "원격 접속 흔적, 의심스러운 네트워크 연결, 시스템 파일 변조, 레지스트리 수정, 비정상적인 메모리 사용 패턴, 알려지지 않은 프로세스 실행 등을 통해 탐지할 수 있습니다.",
                     "시스템 성능 저하, 예상치 못한 네트워크 활동, 방화벽 로그의 이상 패턴, 파일 시스템 변경 사항, 사용자 계정의 비정상적 활동 등이 주요 탐지 지표로 활용됩니다.",
+                    "비정상적인 아웃바운드 연결, 시스템 리소스 과다 사용, 백그라운드 프로세스 증가, 보안 소프트웨어 비활성화 시도, 시스템 설정 변경 등의 징후를 종합적으로 분석해야 합니다.",
+                    "네트워크 연결 로그 분석, 프로세스 모니터링, 파일 무결성 검사, 레지스트리 변경 감시, 시스템 콜 추적 등을 통해 악성 활동을 탐지할 수 있습니다."
                 ],
                 "방안_묻기": [
                     "딥페이크 기술 악용에 대비하여 다층 방어체계 구축, 실시간 딥페이크 탐지 시스템 도입, 직원 교육 및 인식 개선, 생체인증 강화, 다중 인증 체계 구축 등의 종합적 대응방안이 필요합니다.",
                     "네트워크 분할을 통한 격리, 접근권한 최소화 원칙 적용, 행위 기반 탐지 시스템 구축, 사고 대응 절차 수립, 백업 및 복구 체계 마련 등의 보안 강화 방안을 수립해야 합니다.",
-                ],
+                    "엔드포인트 보안 강화, 네트워크 트래픽 모니터링, 사용자 인식 개선 교육, 보안 정책 수립 및 준수, 정기적인 보안 점검 등을 통해 종합적인 보안 관리체계를 구축해야 합니다.",
+                ]
             },
             "개인정보보호": {
                 "기관_묻기": [
                     "개인정보보호위원회가 개인정보 보호에 관한 업무를 총괄하며, 개인정보침해신고센터에서 신고 접수 및 상담 업무를 담당합니다.",
                     "개인정보보호위원회는 개인정보 보호 정책 수립과 감시 업무를 수행하는 중앙 행정기관이며, 개인정보 분쟁조정위원회에서 관련 분쟁의 조정 업무를 담당합니다.",
+                    "개인정보 침해 관련 신고 및 상담은 개인정보보호위원회 산하 개인정보침해신고센터에서 담당하고 있습니다.",
                 ],
+                "방안_묻기": [
+                    "개인정보 처리 시 수집 최소화 원칙 적용, 목적 외 이용 금지, 적절한 보호조치 수립, 정기적인 개인정보 영향평가 실시, 정보주체 권리 보장 체계 구축 등의 관리방안이 필요합니다.",
+                    "개인정보보호 관리체계 구축, 개인정보처리방침 수립 및 공개, 개인정보보호책임자 지정, 정기적인 교육 실시, 기술적·관리적·물리적 보호조치 이행 등을 체계적으로 수행해야 합니다.",
+                ]
             },
             "전자금융": {
                 "기관_묻기": [
                     "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 금융감독원 내에 설치되어 운영됩니다.",
                     "금융감독원 내 전자금융분쟁조정위원회가 이용자의 분쟁조정 신청을 접수하고 처리하는 업무를 수행합니다.",
                 ],
+                "방안_묻기": [
+                    "접근매체 보안 강화, 전자서명 및 인증체계 고도화, 거래내역 실시간 통지, 이상거래 탐지시스템 구축, 이용자 교육 강화 등의 종합적인 보안방안이 필요합니다.",
+                ]
             },
             "정보보안": {
                 "방안_묻기": [
                     "정보보안관리체계 구축을 위해 보안정책 수립, 위험분석, 보안대책 구현, 사후관리의 절차를 체계적으로 운영해야 합니다.",
                     "접근통제 정책을 수립하고 사용자별 권한을 관리하며 로그 모니터링과 정기적인 보안감사를 통해 보안수준을 유지해야 합니다.",
-                ],
+                ]
             },
             "금융투자": {
                 "방안_묻기": [
                     "투자자 보호를 위한 적합성 원칙 준수, 투자위험 고지 의무 이행, 투자자문 서비스 품질 개선, 불공정거래 방지 체계 구축, 내부통제 시스템 강화 등의 방안이 필요합니다.",
-                ],
+                ]
             },
             "위험관리": {
                 "방안_묻기": [
                     "위험관리 체계 구축을 위해 위험식별, 위험평가, 위험대응, 위험모니터링의 단계별 절차를 수립하고 운영해야 합니다.",
                     "내부통제시스템을 구축하고 정기적인 위험평가를 실시하여 잠재적 위험요소를 사전에 식별하고 대응방안을 마련해야 합니다.",
-                ],
-            },
+                ]
+            }
         }
 
+        # 1차: 정확한 도메인과 의도 매칭
         if domain in templates_mapping and intent_key in templates_mapping[domain]:
             return templates_mapping[domain][intent_key]
 
-        # 일반 템플릿
-        general_templates = {
-            "특징_묻기": [
-                "주요 특징을 체계적으로 분석하여 관리해야 합니다.",
-                "핵심적인 특성과 성질을 정확히 파악하여 대응해야 합니다.",
-            ],
-            "지표_묻기": [
-                "주요 탐지 지표를 통해 모니터링과 분석을 수행해야 합니다.",
-                "관련 징후와 패턴을 체계적으로 분석하여 식별해야 합니다.",
-            ],
-            "방안_묻기": [
-                "체계적인 대응 방안을 수립하고 실행해야 합니다.",
-                "효과적인 관리 방안을 마련하여 지속적으로 개선해야 합니다.",
-            ],
-            "기관_묻기": [
-                "관련 전문 기관에서 해당 업무를 담당하고 있습니다.",
-            ],
-        }
+        # 2차: 다른 도메인의 같은 의도 템플릿 사용
+        for other_domain, other_templates in templates_mapping.items():
+            if other_domain != domain and intent_key in other_templates:
+                return other_templates[intent_key][:2]  # 최대 2개만
 
-        return general_templates.get(intent_key, [])
+        # 3차: 해당 도메인의 다른 의도 템플릿 사용
+        if domain in templates_mapping:
+            for available_intent, available_templates in templates_mapping[domain].items():
+                if available_templates:
+                    return available_templates[:2]  # 최대 2개만
+
+        # 4차: 폴백 템플릿
+        return [
+            "관련 법령과 규정에 따라 체계적인 관리가 필요합니다.",
+            "해당 분야의 전문적 지식을 바탕으로 적절한 대응을 수행해야 합니다.",
+        ]
 
     def _retry_generation_with_different_settings(
         self,
@@ -827,7 +851,7 @@ class SimpleModelHandler:
         max_choice: int,
         intent_analysis: Dict = None,
     ) -> str:
-        """다른 설정으로 재시도"""
+        """다른 설정으로 재시도 - 더 관대한 설정"""
         try:
             inputs = self.tokenizer(
                 prompt,
@@ -840,14 +864,14 @@ class SimpleModelHandler:
             if self.device == "cuda":
                 inputs = inputs.to(self.model.device)
 
-            # 더 보수적인 생성 설정
+            # 더 관대하고 창의적인 생성 설정
             retry_config = GenerationConfig(
-                max_new_tokens=250 if question_type == "subjective" else 10,
-                temperature=0.5,
-                top_p=0.8,
+                max_new_tokens=350 if question_type == "subjective" else 10,
+                temperature=0.8,    # 더 창의적으로
+                top_p=0.95,        # 더 다양하게
                 do_sample=True,
-                repetition_penalty=1.3,
-                no_repeat_ngram_size=3,
+                repetition_penalty=1.05,  # 더 완화
+                no_repeat_ngram_size=2,   # 더 완화
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=self.tokenizer.eos_token_id,
             )
@@ -859,7 +883,7 @@ class SimpleModelHandler:
                 outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
             ).strip()
 
-            # 치명적인 반복 패턴만 확인
+            # 재시도에서는 더 관대한 기준 적용
             if self.detect_critical_repetitive_patterns(response):
                 # 의도 기반 폴백
                 if intent_analysis:
@@ -878,17 +902,17 @@ class SimpleModelHandler:
     def _process_enhanced_subj_answer(
         self, response: str, question: str, intent_analysis: Dict = None
     ) -> str:
-        """주관식 답변 처리"""
+        """주관식 답변 처리 - 기준 완화"""
         if not response:
             if intent_analysis:
                 primary_intent = intent_analysis.get("primary_intent", "일반")
                 return self._generate_safe_fallback_answer(primary_intent)
             return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
 
-        # 치명적인 반복 패턴만 조기 감지
+        # 치명적인 반복 패턴만 조기 감지 (매우 관대한 기준)
         if self.detect_critical_repetitive_patterns(response):
             response = self.remove_repetitive_patterns(response)
-            if len(response) < 20:
+            if len(response) < 15:  # 기존 20에서 완화
                 if intent_analysis:
                     primary_intent = intent_analysis.get("primary_intent", "일반")
                     return self._generate_safe_fallback_answer(primary_intent)
@@ -910,7 +934,7 @@ class SimpleModelHandler:
         response = re.sub(r"질문[:：].*?\n", "", response)
         response = re.sub(r"다음.*?답변하세요[.:]\s*", "", response)
 
-        # 한국어 검증
+        # 한국어 검증 - 기준 완화
         korean_ratio = self._calculate_korean_ratio(response)
 
         # 의도별 답변 검증 및 개선
@@ -929,8 +953,8 @@ class SimpleModelHandler:
                     elif "한국은행" in question:
                         response = "한국은행에서 " + response
 
-        # 최종 검증 및 보완
-        if korean_ratio < 0.5 or len(response) < 15:
+        # 최종 검증 및 보완 - 기준 대폭 완화
+        if korean_ratio < 0.3 or len(response) < 10:  # 기존 0.5, 15에서 대폭 완화
             if intent_analysis:
                 primary_intent = intent_analysis.get("primary_intent", "일반")
                 response = self._generate_safe_fallback_answer(primary_intent)
@@ -953,7 +977,7 @@ class SimpleModelHandler:
         ):
             response += "."
 
-        # 최종 치명적 반복 패턴만 확인
+        # 최종 치명적인 반복 패턴만 확인 (매우 관대한 기준)
         if self.detect_critical_repetitive_patterns(response):
             if intent_analysis:
                 primary_intent = intent_analysis.get("primary_intent", "일반")
@@ -1091,17 +1115,18 @@ class SimpleModelHandler:
             return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
 
     def _get_generation_config(self, question_type: str) -> GenerationConfig:
-        """생성 설정"""
+        """생성 설정 - 주관식에 더 관대한 설정"""
         config_dict = GENERATION_CONFIG[question_type].copy()
         config_dict["pad_token_id"] = self.tokenizer.pad_token_id
         config_dict["eos_token_id"] = self.tokenizer.eos_token_id
 
-        # 주관식에 더 관대한 설정
+        # 주관식에 더 관대하고 창의적인 설정
         if question_type == "subjective":
-            config_dict["repetition_penalty"] = 1.1
-            config_dict["no_repeat_ngram_size"] = 2
-            config_dict["temperature"] = 0.6
-            config_dict["top_p"] = 0.9
+            config_dict["repetition_penalty"] = 1.1  # 완화
+            config_dict["no_repeat_ngram_size"] = 2   # 완화
+            config_dict["temperature"] = 0.7         # 증가
+            config_dict["top_p"] = 0.9               # 증가
+            config_dict["max_new_tokens"] = 400      # 증가
         else:
             config_dict["repetition_penalty"] = 1.1
             config_dict["no_repeat_ngram_size"] = 2
