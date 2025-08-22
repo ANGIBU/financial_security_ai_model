@@ -29,6 +29,15 @@ class FinancialSecurityKnowledgeBase:
         # 템플릿 품질 평가 기준
         self.template_quality_criteria = TEMPLATE_QUALITY_CRITERIA
 
+        # 템플릿 사용 통계
+        self.template_usage_stats = {
+            "total_requests": 0,
+            "template_provided": 0,
+            "fallback_used": 0,
+            "domain_distribution": {},
+            "intent_distribution": {},
+        }
+
     def _load_json_configs(self):
         """JSON 설정 파일 로드"""
         try:
@@ -218,7 +227,7 @@ class FinancialSecurityKnowledgeBase:
         return pattern_info
 
     def _check_institution_question(self, question: str) -> Dict:
-        """기관 관련 질문 확인"""
+        """기관 관련 질문 확인 - 더 포괄적으로"""
         question_lower = question.lower()
 
         institution_info = {
@@ -230,7 +239,7 @@ class FinancialSecurityKnowledgeBase:
             "hint_available": False,
         }
 
-        # 기관 질문 패턴 확인
+        # 기관 질문 패턴 확인 - 더 포괄적으로
         institution_patterns = [
             "기관.*기술하세요",
             "기관.*설명하세요",
@@ -257,6 +266,13 @@ class FinancialSecurityKnowledgeBase:
             "상담.*어디",
             "문의.*어디",
             "접수.*어디",
+            "업무.*담당",
+            "책임.*기관",
+            "주관.*기관",
+            "관할.*기관",
+            "소속.*기관",
+            "설치.*기관",
+            "운영.*기관",
         ]
 
         pattern_matches = 0
@@ -270,11 +286,11 @@ class FinancialSecurityKnowledgeBase:
 
         if is_asking_institution:
             institution_info["is_institution_question"] = True
-            institution_info["confidence"] = min(pattern_matches / 1.5, 1.0)
+            institution_info["confidence"] = min(pattern_matches / 1.2, 1.0)  # 기존 1.5에서 완화
             institution_info["question_pattern"] = matched_pattern
             institution_info["hint_available"] = True
 
-            # 분야별 기관 확인
+            # 분야별 기관 확인 - 더 포괄적으로
             for institution_key, institution_data in self.institution_database.items():
                 if "관련질문패턴" in institution_data:
                     pattern_score = sum(
@@ -291,17 +307,17 @@ class FinancialSecurityKnowledgeBase:
                         )
                         break
 
-            # 기존 로직으로 폴백
+            # 기존 로직으로 폴백 - 더 포괄적으로
             if not institution_info["institution_type"]:
                 if (
                     any(word in question_lower for word in ["전자금융", "전자적"])
-                    and "분쟁" in question_lower
+                    and any(word in question_lower for word in ["분쟁", "조정", "신청"])
                 ):
                     institution_info["institution_type"] = "전자금융분쟁조정"
                     institution_info["relevant_institution"] = (
                         self.institution_database.get("전자금융분쟁조정", {})
                     )
-                elif any(word in question_lower for word in ["개인정보", "정보주체"]):
+                elif any(word in question_lower for word in ["개인정보", "정보주체", "침해", "신고"]):
                     institution_info["institution_type"] = "개인정보보호"
                     institution_info["relevant_institution"] = (
                         self.institution_database.get("개인정보보호", {})
@@ -319,7 +335,7 @@ class FinancialSecurityKnowledgeBase:
                     )
                 elif any(
                     word in question_lower
-                    for word in ["한국은행", "금융통화위원회", "자료제출"]
+                    for word in ["한국은행", "금융통화위원회", "자료제출", "통화신용"]
                 ):
                     institution_info["institution_type"] = "한국은행"
                     institution_info["relevant_institution"] = (
@@ -382,9 +398,20 @@ class FinancialSecurityKnowledgeBase:
     def get_template_examples(
         self, domain: str, intent_type: str = "일반"
     ) -> List[str]:
-        """템플릿 예시 반환"""
+        """템플릿 예시 반환 - 대폭 강화"""
 
-        # 도메인과 의도에 맞는 템플릿 예시 반환
+        self.template_usage_stats["total_requests"] += 1
+        
+        # 도메인과 의도 통계 업데이트
+        if domain not in self.template_usage_stats["domain_distribution"]:
+            self.template_usage_stats["domain_distribution"][domain] = 0
+        self.template_usage_stats["domain_distribution"][domain] += 1
+        
+        if intent_type not in self.template_usage_stats["intent_distribution"]:
+            self.template_usage_stats["intent_distribution"][intent_type] = 0
+        self.template_usage_stats["intent_distribution"][intent_type] += 1
+
+        # 템플릿 예시 반환
         templates = []
         
         # 1차: 정확한 도메인과 의도 매칭
@@ -397,23 +424,62 @@ class FinancialSecurityKnowledgeBase:
                 elif "일반" in domain_templates:
                     templates = domain_templates["일반"]
                 else:
-                    # 해당 도메인의 다른 의도 템플릿 사용
-                    for available_intent, available_templates in domain_templates.items():
-                        if available_templates:
-                            templates = available_templates
+                    # 해당 도메인의 다른 의도 템플릿 사용 - 우선순위 적용
+                    intent_priority = ["특징_묻기", "방안_묻기", "지표_묻기", "기관_묻기", "절차_묻기", "조치_묻기"]
+                    for priority_intent in intent_priority:
+                        if priority_intent in domain_templates and domain_templates[priority_intent]:
+                            templates = domain_templates[priority_intent]
                             break
             else:
                 templates = domain_templates
 
-        # 2차: 다른 도메인의 같은 의도 템플릿 사용
+        # 2차: 유사 도메인의 같은 의도 템플릿 사용
         if not templates:
+            # 도메인 유사성 매핑
+            domain_similarity = {
+                "사이버보안": ["정보보안", "위험관리"],
+                "정보보안": ["사이버보안", "위험관리"],
+                "개인정보보호": ["정보보안", "사이버보안"],
+                "전자금융": ["금융투자", "위험관리"],
+                "금융투자": ["전자금융", "위험관리"],
+                "위험관리": ["정보보안", "사이버보안", "금융투자"],
+            }
+            
+            similar_domains = domain_similarity.get(domain, [])
+            for similar_domain in similar_domains:
+                if similar_domain in self.korean_subjective_templates:
+                    similar_templates = self.korean_subjective_templates[similar_domain]
+                    if isinstance(similar_templates, dict) and intent_type in similar_templates:
+                        if similar_templates[intent_type]:
+                            templates = similar_templates[intent_type][:3]  # 최대 3개
+                            break
+
+        # 3차: 모든 도메인에서 해당 의도 템플릿 수집
+        if not templates:
+            all_intent_templates = []
             for other_domain, other_templates in self.korean_subjective_templates.items():
                 if other_domain != domain and isinstance(other_templates, dict):
                     if intent_type in other_templates and other_templates[intent_type]:
-                        templates = other_templates[intent_type][:2]  # 최대 2개만
-                        break
+                        all_intent_templates.extend(other_templates[intent_type][:2])  # 각 도메인에서 2개씩
+                        if len(all_intent_templates) >= 6:  # 최대 6개
+                            break
+            templates = all_intent_templates
 
-        # 3차: 일반 템플릿 사용
+        # 4차: 해당 도메인의 모든 템플릿 수집
+        if not templates and domain in self.korean_subjective_templates:
+            domain_templates = self.korean_subjective_templates[domain]
+            if isinstance(domain_templates, dict):
+                all_domain_templates = []
+                # 의도 우선순위에 따라 수집
+                intent_priority = ["특징_묻기", "방안_묻기", "지표_묻기", "기관_묻기", "절차_묻기", "조치_묻기"]
+                for priority_intent in intent_priority:
+                    if priority_intent in domain_templates and domain_templates[priority_intent]:
+                        all_domain_templates.extend(domain_templates[priority_intent][:2])
+                        if len(all_domain_templates) >= 4:
+                            break
+                templates = all_domain_templates
+
+        # 5차: 일반 템플릿 사용
         if not templates and "일반" in self.korean_subjective_templates:
             general_templates = self.korean_subjective_templates["일반"]
             if isinstance(general_templates, dict) and "일반" in general_templates:
@@ -421,118 +487,217 @@ class FinancialSecurityKnowledgeBase:
             elif isinstance(general_templates, list):
                 templates = general_templates
 
-        # 4차: 폴백 템플릿 생성
+        # 6차: 동적 폴백 템플릿 생성
         if not templates:
-            templates = self._generate_fallback_templates(domain, intent_type)
+            templates = self._generate_dynamic_fallback_templates(domain, intent_type)
 
-        # 템플릿 예시 반환 (더 많이)
+        # 템플릿 예시 반환 - 더 많이, 더 다양하게
         if isinstance(templates, list) and len(templates) > 0:
+            # 품질 필터링
+            high_quality_templates = self._filter_high_quality_templates(templates)
+            
+            if high_quality_templates:
+                templates = high_quality_templates
+            
             # 랜덤 순서로 더 다양하게 제공
             shuffled_templates = templates.copy()
             random.shuffle(shuffled_templates)
-            return shuffled_templates[:5]  # 최대 5개
+            
+            # 최대 7개 반환 (기존 5개에서 증가)
+            result_templates = shuffled_templates[:7]
+            
+            if result_templates:
+                self.template_usage_stats["template_provided"] += 1
+            
+            return result_templates
 
+        # 폴백 사용 통계
+        self.template_usage_stats["fallback_used"] += 1
         return []
 
-    def _generate_fallback_templates(self, domain: str, intent_type: str) -> List[str]:
-        """폴백 템플릿 생성"""
+    def _filter_high_quality_templates(self, templates: List[str]) -> List[str]:
+        """고품질 템플릿 필터링"""
+        if not templates:
+            return []
         
-        fallback_templates = {
+        high_quality = []
+        
+        for template in templates:
+            # 길이 기준
+            if len(template) < 30 or len(template) > 500:
+                continue
+            
+            # 한국어 비율 기준
+            korean_chars = len([c for c in template if ord(c) >= 0xAC00 and ord(c) <= 0xD7A3])
+            total_chars = len([c for c in template if c.isalpha()])
+            if total_chars > 0 and korean_chars / total_chars < 0.8:
+                continue
+            
+            # 금지 패턴 확인
+            forbidden_found = False
+            for pattern in self.template_quality_criteria["forbidden_patterns"]:
+                if re.search(pattern, template):
+                    forbidden_found = True
+                    break
+            
+            if forbidden_found:
+                continue
+            
+            # 의미있는 키워드 확인
+            structure_keywords = self.template_quality_criteria["structure_keywords"]
+            if any(keyword in template for keyword in structure_keywords):
+                high_quality.append(template)
+        
+        return high_quality if high_quality else templates  # 필터링 결과가 없으면 원본 반환
+
+    def _generate_dynamic_fallback_templates(self, domain: str, intent_type: str) -> List[str]:
+        """동적 폴백 템플릿 생성 - 더 풍부하게"""
+        
+        # 도메인별 기본 컨텍스트
+        domain_contexts = {
             "사이버보안": {
-                "특징_묻기": [
-                    "해당 보안 위협의 주요 특징은 은밀성과 지속성을 가지며 시스템에 악의적인 영향을 미칩니다.",
-                    "주요 특성으로는 사용자 인식 없이 침투하여 시스템 권한을 획득하고 외부와 통신하는 특징을 가집니다.",
-                ],
-                "지표_묻기": [
-                    "주요 탐지 지표로는 비정상적인 네트워크 활동과 시스템 리소스 사용 패턴 변화가 있습니다.",
-                    "탐지 지표는 프로세스 실행 패턴 이상과 파일 시스템 변경 사항을 모니터링하여 식별할 수 있습니다.",
-                ],
-                "방안_묻기": [
-                    "체계적인 보안 강화 방안으로 다층 방어체계 구축과 실시간 모니터링 시스템 운영이 필요합니다.",
-                    "효과적인 대응 방안은 침입탐지시스템 구축과 정기적인 보안교육 및 훈련을 포함합니다.",
-                ]
+                "기본": "사이버보안 위협에 대응하기 위해",
+                "키워드": ["보안", "위협", "탐지", "대응", "방어", "모니터링", "침입"],
+                "법령": ["정보통신망법", "개인정보보호법"]
             },
             "개인정보보호": {
-                "기관_묻기": [
-                    "개인정보 보호 관련 업무는 개인정보보호위원회에서 총괄하고 있습니다.",
-                    "개인정보 침해 신고는 개인정보보호위원회 산하 개인정보침해신고센터에서 담당합니다.",
-                ],
-                "방안_묻기": [
-                    "개인정보보호법에 따라 수집 최소화와 목적 외 이용 금지 원칙을 적용해야 합니다.",
-                    "개인정보 처리 시 정보주체의 동의를 받고 적절한 보호조치를 시행해야 합니다.",
-                ]
+                "기본": "개인정보보호법에 따라",
+                "키워드": ["개인정보", "정보주체", "보호조치", "동의", "처리"],
+                "법령": ["개인정보보호법", "정보통신망법"]
             },
             "전자금융": {
-                "기관_묻기": [
-                    "전자금융거래 분쟁조정은 금융감독원 내 전자금융분쟁조정위원회에서 담당합니다.",
-                    "전자금융 관련 업무는 금융감독원과 한국은행에서 관할하고 있습니다.",
-                ],
-                "방안_묻기": [
-                    "전자금융거래법에 따라 접근매체 보안 강화와 이용자 보호체계 구축이 필요합니다.",
-                    "전자금융 보안 강화를 위해 다중 인증과 이상거래 탐지시스템 운영이 필요합니다.",
-                ]
+                "기본": "전자금융거래법에 따라",
+                "키워드": ["전자금융", "접근매체", "인증", "보안", "거래"],
+                "법령": ["전자금융거래법", "전자서명법"]
             },
             "정보보안": {
-                "방안_묻기": [
-                    "정보보안관리체계 구축을 위해 보안정책 수립과 위험분석을 체계적으로 수행해야 합니다.",
-                    "정보보안 강화 방안으로 접근통제 정책 수립과 정기적인 보안감사가 필요합니다.",
-                ]
+                "기본": "정보보안관리체계를 구축하여",
+                "키워드": ["정보보안", "관리체계", "보안정책", "위험분석"],
+                "법령": ["정보통신망법", "전자정부법"]
             },
             "금융투자": {
-                "방안_묻기": [
-                    "자본시장법에 따라 투자자 보호와 적합성 원칙 준수를 위한 체계적 관리가 필요합니다.",
-                    "금융투자업 관리 방안으로 내부통제 시스템 강화와 투자자 교육 확대가 필요합니다.",
-                ]
+                "기본": "자본시장법에 따라",
+                "키워드": ["투자자보호", "적합성원칙", "내부통제", "금융투자업"],
+                "법령": ["자본시장법", "금융투자업규정"]
             },
             "위험관리": {
-                "방안_묻기": [
-                    "위험관리 체계 구축을 위해 위험식별과 위험평가를 단계별로 수행해야 합니다.",
-                    "효과적인 위험관리 방안으로 내부통제시스템 구축과 정기적인 위험평가가 필요합니다.",
-                ]
+                "기본": "위험관리 체계를 구축하여",
+                "키워드": ["위험관리", "위험평가", "내부통제", "위험대응"],
+                "법령": ["은행법", "보험업법", "자본시장법"]
             }
         }
 
-        # 일반 폴백
-        general_fallbacks = {
+        # 의도별 템플릿 구조
+        intent_structures = {
             "특징_묻기": [
-                "주요 특징을 체계적으로 분석하여 관련 법령에 따라 관리해야 합니다.",
-                "핵심적인 특성과 성질을 정확히 파악하여 적절한 대응방안을 마련해야 합니다.",
+                "{domain_context} 주요 특징은 {feature_desc}을 통해 {result}합니다.",
+                "해당 {subject}의 핵심적인 특징으로는 {feature_list}이 있으며, {implementation}을 통해 관리됩니다.",
+                "{subject}는 {characteristic}의 특성을 가지며, {operation}을 통해 {purpose}을 달성합니다."
             ],
             "지표_묻기": [
-                "주요 탐지 지표를 통해 체계적인 모니터링과 분석을 수행해야 합니다.",
-                "관련 징후와 패턴을 분석하여 적절한 대응조치를 시행해야 합니다.",
+                "주요 탐지 지표로는 {indicator_list}이 있으며, {monitoring_method}을 통해 식별할 수 있습니다.",
+                "{domain_context} {detection_methods}을 활용하여 {indicators}를 모니터링하고 분석해야 합니다.",
+                "탐지 지표는 {technical_indicators}와 {behavioral_indicators}로 구분되며, 종합적인 분석이 필요합니다."
             ],
             "방안_묻기": [
-                "체계적인 대응 방안을 수립하고 관련 법령에 따라 지속적으로 관리해야 합니다.",
-                "효과적인 관리 방안을 마련하여 정기적인 점검과 개선을 수행해야 합니다.",
+                "{domain_context} {solution_approach}를 통한 {comprehensive_measures}이 필요합니다.",
+                "효과적인 대응방안으로는 {prevention_measures}, {detection_measures}, {response_measures}를 포함한 체계적 접근이 필요합니다.",
+                "{implementation_strategy}을 수립하고 {operation_method}을 통해 지속적인 {improvement_activities}을 수행해야 합니다."
             ],
             "기관_묻기": [
-                "관련 전문 기관에서 해당 업무를 법령에 따라 담당하고 있습니다.",
-                "소관 기관에서 체계적인 관리와 감독 업무를 수행하고 있습니다.",
+                "{institution_name}에서 {responsibility_area} 업무를 담당하며, {legal_basis}에 따라 {specific_duties}을 수행합니다.",
+                "관련 업무는 {competent_authority}에서 {jurisdiction_scope}에 따라 {management_activities}을 담당하고 있습니다."
             ],
             "절차_묻기": [
-                "관련 절차에 따라 단계별로 체계적인 수행과 관리가 필요합니다.",
-                "법령에 정해진 절차를 준수하여 순차적으로 진행해야 합니다.",
+                "관련 절차는 {step1}, {step2}, {step3}, {step4}의 단계로 진행되며, 각 단계별 {requirements}을 충족해야 합니다.",
+                "{procedure_framework}에 따라 {sequential_steps}을 거쳐 {final_outcome}을 달성하는 체계적 프로세스입니다."
             ],
             "조치_묻기": [
-                "적절한 보안 조치를 시행하고 관련 법령에 따라 지속적으로 관리해야 합니다.",
-                "필요한 조치사항을 파악하여 체계적인 대응과 개선을 수행해야 합니다.",
+                "필요한 조치사항으로는 {technical_measures}, {administrative_measures}, {physical_measures}을 균형있게 적용해야 합니다.",
+                "{immediate_actions}과 {long_term_measures}을 구분하여 {priority_based_implementation}을 수행해야 합니다."
             ]
         }
 
-        # 도메인별 템플릿 확인
-        if domain in fallback_templates and intent_type in fallback_templates[domain]:
-            return fallback_templates[domain][intent_type]
+        # 컨텍스트 정보 가져오기
+        context = domain_contexts.get(domain, {
+            "기본": "관련 법령과 규정에 따라",
+            "키워드": ["관리", "조치", "절차", "기준"],
+            "법령": ["관련 법령"]
+        })
+
+        # 의도별 구조 가져오기
+        structures = intent_structures.get(intent_type, [
+            "{domain_context} 체계적인 관리가 필요합니다.",
+            "해당 분야의 전문적 지식을 바탕으로 적절한 대응을 수행해야 합니다."
+        ])
+
+        # 동적 템플릿 생성
+        dynamic_templates = []
         
-        # 일반 폴백 템플릿 사용
-        if intent_type in general_fallbacks:
-            return general_fallbacks[intent_type]
-        
-        # 최종 폴백
-        return [
-            "관련 법령과 규정에 따라 체계적인 관리가 필요합니다.",
-            "해당 분야의 전문적 지식을 바탕으로 적절한 대응을 수행해야 합니다.",
-        ]
+        for structure in structures:
+            # 플레이스홀더 치환
+            template = structure.format(
+                domain_context=context["기본"],
+                subject="해당 분야",
+                feature_desc="핵심적 특성과 기능",
+                feature_list="주요 특징과 성질",
+                characteristic="고유한 속성",
+                operation="체계적인 관리",
+                purpose="안전하고 효과적인 운영",
+                result="효과적으로 관리됩니다",
+                implementation="관련 법령과 절차",
+                indicator_list="시스템 모니터링, 행위 분석, 패턴 탐지",
+                monitoring_method="실시간 모니터링 체계",
+                detection_methods="다양한 탐지 기법",
+                indicators="이상 징후와 위험 신호",
+                technical_indicators="기술적 지표",
+                behavioral_indicators="행위 기반 지표",
+                solution_approach="다층 방어체계 구축",
+                comprehensive_measures="종합적 대응방안",
+                prevention_measures="예방조치",
+                detection_measures="탐지체계",
+                response_measures="대응절차",
+                implementation_strategy="실행 전략",
+                operation_method="운영 방법론",
+                improvement_activities="개선 활동",
+                institution_name="관련 전문기관",
+                responsibility_area="해당 분야",
+                legal_basis="관련 법령",
+                specific_duties="전문 업무",
+                competent_authority="소관 기관",
+                jurisdiction_scope="업무 범위",
+                management_activities="관리 업무",
+                step1="계획 수립",
+                step2="실행",
+                step3="점검",
+                step4="개선",
+                requirements="요구사항",
+                procedure_framework="절차 체계",
+                sequential_steps="단계별 과정",
+                final_outcome="목표 달성",
+                technical_measures="기술적 조치",
+                administrative_measures="관리적 조치",
+                physical_measures="물리적 조치",
+                immediate_actions="즉시 조치",
+                long_term_measures="장기적 대책",
+                priority_based_implementation="우선순위 기반 실행"
+            )
+            
+            dynamic_templates.append(template)
+
+        # 도메인별 추가 템플릿 생성
+        if domain == "사이버보안":
+            dynamic_templates.extend([
+                "사이버보안 위협에 대응하기 위해 다층 방어체계를 구축하고 실시간 모니터링을 통한 조기 탐지와 신속한 대응체계를 운영해야 합니다.",
+                "보안 관제 시스템을 구축하여 24시간 모니터링을 수행하고, 침입탐지시스템과 방화벽을 통한 종합적 보안 관리를 실시해야 합니다."
+            ])
+        elif domain == "개인정보보호":
+            dynamic_templates.extend([
+                "개인정보보호법에 따라 정보주체의 권리를 보장하고 수집 최소화 원칙을 적용하여 개인정보처리방침을 수립하고 이행해야 합니다.",
+                "개인정보 보호조치를 기술적·관리적·물리적 측면에서 체계적으로 구현하고 정기적인 점검과 개선을 통해 안전성을 확보해야 합니다."
+            ])
+
+        return dynamic_templates[:5]  # 최대 5개 반환
 
     def get_template_hints(self, domain: str, intent_type: str = "일반") -> str:
         """템플릿 힌트 반환"""
@@ -624,7 +789,8 @@ class FinancialSecurityKnowledgeBase:
         self, domain: str, intent_type: str, min_quality: float = 0.8
     ) -> List[str]:
         """고품질 템플릿 반환"""
-        return self.get_template_examples(domain, intent_type)
+        templates = self.get_template_examples(domain, intent_type)
+        return self._filter_high_quality_templates(templates)
 
     def get_subjective_template(
         self, domain: str, intent_type: str = "일반"
@@ -828,6 +994,7 @@ class FinancialSecurityKnowledgeBase:
                 len(templates) if isinstance(templates, dict) else 1
                 for templates in self.korean_subjective_templates.values()
             ),
+            "template_usage_stats": self.template_usage_stats.copy(),
         }
 
     def validate_competition_compliance(self, answer: str, domain: str) -> Dict:

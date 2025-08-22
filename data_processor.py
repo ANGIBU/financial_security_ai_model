@@ -24,14 +24,14 @@ class SimpleDataProcessor:
     """데이터 처리기"""
 
     def __init__(self):
-        # JSON 설정 파일에서 데이터 로드
+        # JSON 설정 파일 로드
         self._load_json_configs()
 
-        # 한국어 전용 검증 기준
+        # 한국어 전용 검증 기준 - 대폭 완화
         self.korean_requirements = KOREAN_REQUIREMENTS.copy()
-        self.korean_requirements["min_korean_ratio"] = 0.6  # 완화
-        self.korean_requirements["max_english_ratio"] = 0.2  # 완화
-        self.korean_requirements["min_length"] = 20  # 완화
+        self.korean_requirements["min_korean_ratio"] = 0.4  # 기존 0.6에서 대폭 완화
+        self.korean_requirements["max_english_ratio"] = 0.3  # 기존 0.2에서 완화
+        self.korean_requirements["min_length"] = 15  # 기존 20에서 완화
 
     def _load_json_configs(self):
         """JSON 설정 파일 로드"""
@@ -179,33 +179,40 @@ class SimpleDataProcessor:
         ]
 
     def detect_critical_repetitive_patterns(self, text: str) -> bool:
-        """치명적인 반복 패턴 감지"""
-        if not text or len(text) < 20:
+        """치명적인 반복 패턴 감지 - 기준 대폭 완화"""
+        if not text or len(text) < 30:  # 기존 20에서 완화
             return False
 
-        # 치명적인 반복 패턴만 감지
+        # 매우 치명적인 반복 패턴만 감지 (기준 대폭 완화)
         critical_patterns = [
             r"갈취 묻는 말",
             r"묻고 갈취",
-            r"(.{1,3})\s*(\1\s*){8,}",  # 8회 이상 반복만 감지
+            r"(.{1,3})\s*(\1\s*){20,}",  # 20회 이상 반복만 감지 (기존 8회에서 대폭 완화)
         ]
 
         for pattern in critical_patterns:
             if re.search(pattern, text):
                 return True
 
-        # 연속된 동일 단어 검사
+        # 연속된 동일 단어 검사 - 기준 대폭 완화
         words = text.split()
-        if len(words) >= 8:
-            for i in range(len(words) - 7):
-                if words[i] == words[i + 1] == words[i + 2] == words[i + 3] == words[i + 4] == words[i + 5] == words[i + 6] == words[i + 7]:
-                    if len(words[i]) <= 5:
+        if len(words) >= 20:  # 기존 8에서 대폭 완화
+            for i in range(len(words) - 19):
+                consecutive_count = 1
+                for j in range(i + 1, min(i + 20, len(words))):
+                    if words[i] == words[j]:
+                        consecutive_count += 1
+                    else:
+                        break
+                
+                if consecutive_count >= 20:  # 20번 연속만 감지
+                    if len(words[i]) <= 5:  # 짧은 단어만
                         return True
 
         return False
 
     def remove_critical_repetitive_patterns(self, text: str) -> str:
-        """치명적인 반복 패턴 제거"""
+        """치명적인 반복 패턴 제거 - 기준 완화"""
         if not text:
             return ""
 
@@ -218,7 +225,7 @@ class SimpleDataProcessor:
         for pattern in problematic_removals:
             text = text.replace(pattern, "")
 
-        # 연속된 동일 단어 정리
+        # 연속된 동일 단어 정리 - 더 관대하게
         words = text.split()
         cleaned_words = []
         i = 0
@@ -230,11 +237,15 @@ class SimpleDataProcessor:
             while i + count < len(words) and words[i + count] == current_word:
                 count += 1
 
-            # 매우 짧은 단어는 2개, 일반 단어는 최대 3개까지 허용
-            if len(current_word) <= 3:
-                cleaned_words.extend([current_word] * min(2, count))
-            elif count >= 6:  # 6개 이상만 제한
+            # 더 관대한 기준 적용
+            if len(current_word) <= 2:
+                # 매우 짧은 단어는 3개까지 허용
                 cleaned_words.extend([current_word] * min(3, count))
+            elif len(current_word) <= 5:
+                # 짧은 단어는 5개까지 허용
+                cleaned_words.extend([current_word] * min(5, count))
+            elif count >= 15:  # 15개 이상만 제한 (기존 6에서 대폭 완화)
+                cleaned_words.extend([current_word] * min(7, count))
             else:
                 cleaned_words.extend([current_word] * count)
 
@@ -242,9 +253,9 @@ class SimpleDataProcessor:
 
         text = " ".join(cleaned_words)
 
-        # 반복되는 구문 패턴 제거
-        text = re.sub(r"(.{3,15})\s*\1\s*\1\s*\1+", r"\1", text)  # 4회 이상만 제거
-        text = re.sub(r"(.{1,5})\s*(\1\s*){6,}", r"\1", text)  # 6회 이상만 제거
+        # 반복되는 구문 패턴 제거 - 기준 완화
+        text = re.sub(r"(.{3,15})\s*\1\s*\1\s*\1\s*\1\s*\1+", r"\1", text)  # 6회 이상만 제거 (기존 4회에서 완화)
+        text = re.sub(r"(.{1,5})\s*(\1\s*){10,}", r"\1", text)  # 10회 이상만 제거 (기존 6회에서 완화)
 
         # 빈 괄호나 이상한 패턴 제거
         text = re.sub(r"\(\s*\)", "", text)
@@ -279,7 +290,7 @@ class SimpleDataProcessor:
         return text
 
     def enhance_korean_text_quality(self, text: str) -> str:
-        """한국어 텍스트 품질 향상"""
+        """한국어 텍스트 품질 향상 - 기준 완화"""
         if not text:
             return ""
 
@@ -296,8 +307,8 @@ class SimpleDataProcessor:
             replacement = pattern_config["replacement"]
             text = re.sub(pattern, replacement, text)
 
-        # 의미없는 문자 제거
-        text = re.sub(r"[^\w\s가-힣.,!?()[\]\-:;/]", " ", text)
+        # 의미없는 문자 제거 - 더 관대하게
+        text = re.sub(r"[^\w\s가-힣.,!?()[\]\-:;/·]", " ", text)  # 더 많은 문자 허용
 
         # 불완전한 단어 정리
         text = re.sub(r"\(\s*\)\s*[가-힣]{1,3}", "", text)
@@ -312,7 +323,7 @@ class SimpleDataProcessor:
         return text
 
     def fix_grammatical_structure(self, text: str) -> str:
-        """문법 구조 개선"""
+        """문법 구조 개선 - 기준 완화"""
         if not text:
             return ""
 
@@ -320,7 +331,7 @@ class SimpleDataProcessor:
         if self.detect_critical_repetitive_patterns(text):
             text = self.remove_critical_repetitive_patterns(text)
 
-        # 문장 개선 패턴들
+        # 문장 개선 패턴들 - 더 관대하게
         grammar_fixes = [
             # 조사 개선
             (r"([가-힣])\s+은\s+", r"\1은 "),
@@ -355,13 +366,13 @@ class SimpleDataProcessor:
             else:
                 text = re.sub(pattern, replacement, text)
 
-        # 문장 구조 검증 및 개선
+        # 문장 구조 검증 및 개선 - 기준 완화
         sentences = text.split(".")
         improved_sentences = []
 
         for sentence in sentences:
             sentence = sentence.strip()
-            if len(sentence) < 5:
+            if len(sentence) < 3:  # 기존 5에서 완화
                 continue
 
             # 치명적인 반복 패턴이 있는 문장만 건너뛰기
@@ -370,13 +381,13 @@ class SimpleDataProcessor:
 
             sentence = sentence.lstrip()
 
-            # 문장이 너무 길면 분할
-            if len(sentence) > 200:
+            # 문장이 너무 길면 분할 - 기준 완화
+            if len(sentence) > 300:  # 기존 200에서 완화
                 parts = re.split(r"[,，]", sentence)
                 if len(parts) > 1:
                     for part in parts:
                         part = part.strip()
-                        if len(part) > 10 and not self.detect_critical_repetitive_patterns(part):
+                        if len(part) > 5 and not self.detect_critical_repetitive_patterns(part):
                             improved_sentences.append(part)
                 else:
                     if not self.detect_critical_repetitive_patterns(sentence):
@@ -398,7 +409,7 @@ class SimpleDataProcessor:
         return result
 
     def analyze_question_intent(self, question: str) -> Dict:
-        """질문 의도 분석"""
+        """질문 의도 분석 - 더 포괄적으로"""
         question_lower = question.lower()
 
         intent_analysis = {
@@ -434,6 +445,27 @@ class SimpleDataProcessor:
                     "patterns": matched_patterns,
                 }
 
+        # 추가적인 키워드 기반 의도 분석 - 더 포괄적으로
+        additional_keywords = {
+            "기관_묻기": ["기관", "위원회", "감독원", "담당", "어디", "어떤", "무엇", "조정", "신고", "접수"],
+            "특징_묻기": ["특징", "특성", "성격", "성질", "속성", "원리", "방식", "형태"],
+            "지표_묻기": ["지표", "징후", "신호", "패턴", "탐지", "모니터링", "관찰", "식별"],
+            "방안_묻기": ["방안", "대책", "대응", "해결", "개선", "강화", "조치", "관리"],
+            "절차_묻기": ["절차", "과정", "단계", "순서", "프로세스", "진행", "수행"],
+            "조치_묻기": ["조치", "조치사항", "대응", "예방", "보안", "보완"],
+        }
+
+        for intent_type, keywords in additional_keywords.items():
+            keyword_score = sum(1 for keyword in keywords if keyword in question_lower)
+            if keyword_score > 0:
+                if intent_type in intent_scores:
+                    intent_scores[intent_type]["score"] += keyword_score * 0.5
+                else:
+                    intent_scores[intent_type] = {
+                        "score": keyword_score * 0.5,
+                        "patterns": [],
+                    }
+
         # 가장 높은 점수의 의도 선택
         if intent_scores:
             sorted_intents = sorted(
@@ -442,7 +474,7 @@ class SimpleDataProcessor:
             best_intent = sorted_intents[0]
 
             intent_analysis["primary_intent"] = best_intent[0]
-            intent_analysis["intent_confidence"] = min(best_intent[1]["score"] / 2.5, 1.0)
+            intent_analysis["intent_confidence"] = min(best_intent[1]["score"] / 2.0, 1.0)  # 기존 2.5에서 완화
             intent_analysis["detected_patterns"] = best_intent[1]["patterns"]
 
             # 부차적 의도들도 기록
@@ -452,7 +484,7 @@ class SimpleDataProcessor:
                     for intent, data in sorted_intents[1:3]
                 ]
 
-            # 답변 유형 결정
+            # 답변 유형 결정 - 더 정확하게
             primary = best_intent[0]
             if "기관" in primary:
                 intent_analysis["answer_type_required"] = "기관명"
@@ -661,14 +693,14 @@ class SimpleDataProcessor:
         return detected_domain
 
     def clean_korean_text(self, text: str) -> str:
-        """한국어 전용 텍스트 정리"""
+        """한국어 전용 텍스트 정리 - 기준 완화"""
         if not text:
             return ""
 
         # 치명적인 반복 패턴만 조기 감지 및 제거
         if self.detect_critical_repetitive_patterns(text):
             text = self.remove_critical_repetitive_patterns(text)
-            if len(text) < 10:
+            if len(text) < 5:  # 기존 10에서 완화
                 return "텍스트 정리 중 내용이 부족합니다."
 
         # 깨진 문자 복구
@@ -683,13 +715,13 @@ class SimpleDataProcessor:
         # 기본 정리
         text = re.sub(r"\s+", " ", text).strip()
 
-        # 깨진 문자 및 인코딩 오류 처리
-        text = re.sub(r"[^\w\s가-힣.,!?()[\]\-]", " ", text)
+        # 깨진 문자 및 인코딩 오류 처리 - 더 관대하게
+        text = re.sub(r"[^\w\s가-힣.,!?()[\]\-·]", " ", text)
 
-        # 영어 문자 제거
+        # 영어 문자 제거 - 기준 완화
         english_chars = len(re.findall(r"[a-zA-Z]", text))
         total_chars = len(re.sub(r"[^\w가-힣]", "", text))
-        if total_chars > 0 and english_chars / total_chars > 0.3:  # 30% 이상일 때만 제거
+        if total_chars > 0 and english_chars / total_chars > 0.4:  # 40% 이상일 때만 제거 (기존 30%에서 완화)
             text = re.sub(r"[a-zA-Z]+", "", text)
 
         # 중국어 제거
@@ -704,7 +736,7 @@ class SimpleDataProcessor:
         # 최종 치명적인 반복 패턴만 확인
         if self.detect_critical_repetitive_patterns(text):
             text = self.remove_critical_repetitive_patterns(text)
-            if len(text) < 15:
+            if len(text) < 10:  # 기존 15에서 완화
                 return "텍스트 정리 후 내용이 부족합니다."
 
         return text
@@ -746,7 +778,7 @@ class SimpleDataProcessor:
     def validate_answer_intent_match(
         self, answer: str, question: str, intent_analysis: Dict
     ) -> bool:
-        """답변과 질문 의도 일치성 검증"""
+        """답변과 질문 의도 일치성 검증 - 기준 대폭 완화"""
         if not answer or not intent_analysis:
             return False
 
@@ -757,7 +789,7 @@ class SimpleDataProcessor:
         required_type = intent_analysis.get("answer_type_required", "설명형")
         answer_lower = answer.lower()
 
-        # 기관명이 필요한 경우
+        # 기관명이 필요한 경우 - 기준 완화
         if required_type == "기관명":
             institution_keywords = [
                 "위원회",
@@ -792,9 +824,13 @@ class SimpleDataProcessor:
                 1 for keyword in institution_keywords if keyword in answer_lower
             )
 
-            match_found = has_specific or keyword_count >= 1
+            # 기관 관련 키워드가 없어도 관련 업무 내용이 있으면 통과
+            related_keywords = ["전자금융", "개인정보", "분쟁", "조정", "신고", "상담", "업무", "담당"]
+            related_count = sum(1 for keyword in related_keywords if keyword in answer_lower)
 
-        # 특징 설명이 필요한 경우
+            match_found = has_specific or keyword_count >= 1 or related_count >= 2
+
+        # 특징 설명이 필요한 경우 - 기준 완화
         elif required_type == "특징설명":
             feature_keywords = [
                 "특징",
@@ -805,19 +841,22 @@ class SimpleDataProcessor:
                 "역할",
                 "원리",
                 "성격",
+                "방식",
+                "형태",
             ]
-            descriptive_words = ["위장", "은밀", "지속", "제어", "접근", "수행", "활동"]
+            descriptive_words = ["위장", "은밀", "지속", "제어", "접근", "수행", "활동", "동작", "실행"]
 
             feature_count = sum(
                 1 for keyword in feature_keywords if keyword in answer_lower
             )
             desc_count = sum(1 for word in descriptive_words if word in answer_lower)
 
+            # 기준 완화: 특징 키워드가 없어도 설명적 내용이 있으면 통과
             match_found = (
-                feature_count >= 1 or desc_count >= 1
+                feature_count >= 1 or desc_count >= 1 or len(answer) >= 30
             ) and not self.detect_critical_repetitive_patterns(answer)
 
-        # 지표 나열이 필요한 경우
+        # 지표 나열이 필요한 경우 - 기준 완화
         elif required_type == "지표나열":
             indicator_keywords = [
                 "지표",
@@ -830,6 +869,8 @@ class SimpleDataProcessor:
                 "탐지",
                 "발견",
                 "식별",
+                "분석",
+                "확인",
             ]
             specific_indicators = [
                 "네트워크",
@@ -839,6 +880,9 @@ class SimpleDataProcessor:
                 "시스템",
                 "로그",
                 "연결",
+                "접근",
+                "변경",
+                "사용",
             ]
 
             indicator_count = sum(
@@ -848,11 +892,12 @@ class SimpleDataProcessor:
                 1 for word in specific_indicators if word in answer_lower
             )
 
+            # 기준 완화: 지표 키워드가 없어도 관련 내용이 있으면 통과
             match_found = (
-                indicator_count >= 1 or specific_count >= 1
+                indicator_count >= 1 or specific_count >= 1 or len(answer) >= 25
             ) and not self.detect_critical_repetitive_patterns(answer)
 
-        # 방안 제시가 필요한 경우
+        # 방안 제시가 필요한 경우 - 기준 완화
         elif required_type == "방안제시":
             solution_keywords = [
                 "방안",
@@ -865,19 +910,22 @@ class SimpleDataProcessor:
                 "절차",
                 "개선",
                 "예방",
+                "보완",
+                "강화",
             ]
-            action_words = ["수립", "구축", "시행", "실시", "강화", "개선", "마련"]
+            action_words = ["수립", "구축", "시행", "실시", "강화", "개선", "마련", "도입", "운영"]
 
             solution_count = sum(
                 1 for keyword in solution_keywords if keyword in answer_lower
             )
             action_count = sum(1 for word in action_words if word in answer_lower)
 
+            # 기준 완화: 방안 키워드가 없어도 실행 가능한 내용이 있으면 통과
             match_found = (
-                solution_count >= 1 or action_count >= 1
+                solution_count >= 1 or action_count >= 1 or ("해야" in answer and len(answer) >= 20)
             ) and not self.detect_critical_repetitive_patterns(answer)
 
-        # 절차 설명이 필요한 경우
+        # 절차 설명이 필요한 경우 - 기준 완화
         elif required_type == "절차설명":
             procedure_keywords = [
                 "절차",
@@ -888,6 +936,7 @@ class SimpleDataProcessor:
                 "진행",
                 "수행",
                 "실행",
+                "처리",
             ]
             step_indicators = [
                 "첫째",
@@ -897,6 +946,7 @@ class SimpleDataProcessor:
                 "마지막",
                 "단계적",
                 "순차적",
+                "차례대로",
             ]
 
             proc_count = sum(
@@ -904,11 +954,12 @@ class SimpleDataProcessor:
             )
             step_count = sum(1 for word in step_indicators if word in answer_lower)
 
+            # 기준 완화: 절차 키워드가 없어도 순서나 과정이 있으면 통과
             match_found = (
-                proc_count >= 1 or step_count >= 1 or "," in answer
+                proc_count >= 1 or step_count >= 1 or "," in answer or "단계" in answer
             ) and not self.detect_critical_repetitive_patterns(answer)
 
-        # 조치 설명이 필요한 경우
+        # 조치 설명이 필요한 경우 - 기준 완화
         elif required_type == "조치설명":
             measure_keywords = [
                 "조치",
@@ -920,12 +971,19 @@ class SimpleDataProcessor:
                 "개선",
                 "강화",
                 "보완",
+                "관리",
             ]
-            match_found = sum(
+            
+            measure_count = sum(
                 1 for keyword in measure_keywords if keyword in answer_lower
-            ) >= 1 and not self.detect_critical_repetitive_patterns(answer)
+            )
+            
+            # 기준 완화: 조치 키워드가 없어도 관련 내용이 있으면 통과
+            match_found = (
+                measure_count >= 1 or ("필요" in answer and len(answer) >= 20)
+            ) and not self.detect_critical_repetitive_patterns(answer)
 
-        # 법령 설명이 필요한 경우
+        # 법령 설명이 필요한 경우 - 기준 완화
         elif required_type == "법령설명":
             law_keywords = [
                 "법",
@@ -936,19 +994,32 @@ class SimpleDataProcessor:
                 "규칙",
                 "기준",
                 "근거",
+                "요구사항",
             ]
-            match_found = sum(
+            
+            law_count = sum(
                 1 for keyword in law_keywords if keyword in answer_lower
-            ) >= 1 and not self.detect_critical_repetitive_patterns(answer)
+            )
+            
+            # 기준 완화: 법령 키워드가 없어도 규범적 내용이 있으면 통과
+            match_found = (
+                law_count >= 1 or ("따라" in answer and len(answer) >= 20)
+            ) and not self.detect_critical_repetitive_patterns(answer)
 
-        # 정의 설명이 필요한 경우
+        # 정의 설명이 필요한 경우 - 기준 완화
         elif required_type == "정의설명":
             definition_keywords = ["정의", "개념", "의미", "뜻", "용어", "개념"]
-            match_found = sum(
+            
+            def_count = sum(
                 1 for keyword in definition_keywords if keyword in answer_lower
-            ) >= 1 and not self.detect_critical_repetitive_patterns(answer)
+            )
+            
+            # 기준 완화: 정의 키워드가 없어도 설명적 내용이 있으면 통과
+            match_found = (
+                def_count >= 1 or len(answer) >= 25
+            ) and not self.detect_critical_repetitive_patterns(answer)
 
-        # 기본적으로 통과
+        # 기본적으로 통과 - 기준 대폭 완화
         else:
             # 최소한의 의미있는 내용이 있어야 함
             meaningful_words = [
@@ -961,17 +1032,28 @@ class SimpleDataProcessor:
                 "정책",
                 "체계",
                 "시스템",
+                "필요",
+                "중요",
+                "수행",
+                "실시",
+                "구축",
+                "운영",
             ]
-            match_found = sum(
+            meaningful_count = sum(
                 1 for word in meaningful_words if word in answer_lower
-            ) >= 1 and not self.detect_critical_repetitive_patterns(answer)
+            )
+            
+            # 기준 대폭 완화: 길이만 충족해도 통과
+            match_found = (
+                meaningful_count >= 1 or len(answer) >= 20
+            ) and not self.detect_critical_repetitive_patterns(answer)
 
         return match_found
 
     def validate_korean_answer(
         self, answer: str, question_type: str, max_choice: int = 5, question: str = ""
     ) -> bool:
-        """한국어 답변 유효성 검증"""
+        """한국어 답변 유효성 검증 - 기준 대폭 완화"""
         if not answer:
             return False
 
@@ -988,37 +1070,37 @@ class SimpleDataProcessor:
             return True
 
         else:
-            # 주관식: 한국어 전용 검증
+            # 주관식: 한국어 전용 검증 - 기준 대폭 완화
             clean_answer = self.clean_korean_text(answer)
 
             # 정리 후 치명적인 반복 패턴만 재확인
             if self.detect_critical_repetitive_patterns(clean_answer):
                 return False
 
-            # 길이 검증
+            # 길이 검증 - 기준 대폭 완화
             if not (
-                self.korean_requirements["min_length"]
+                10  # 기존 min_length에서 대폭 완화
                 <= len(clean_answer)
                 <= self.korean_requirements["max_length"]
             ):
                 return False
 
-            # 한국어 비율 검증
+            # 한국어 비율 검증 - 기준 대폭 완화
             korean_ratio = self.calculate_korean_ratio(clean_answer)
-            if korean_ratio < self.korean_requirements["min_korean_ratio"]:
+            if korean_ratio < 0.3:  # 기존 min_korean_ratio에서 대폭 완화
                 return False
 
-            # 영어 비율 검증
+            # 영어 비율 검증 - 기준 완화
             english_ratio = self.calculate_english_ratio(answer)
-            if english_ratio > self.korean_requirements["max_english_ratio"]:
+            if english_ratio > 0.4:  # 기존 max_english_ratio에서 완화
                 return False
 
-            # 최소 한국어 문자 수 검증
+            # 최소 한국어 문자 수 검증 - 기준 완화
             korean_chars = len(re.findall(r"[가-힣]", clean_answer))
-            if korean_chars < 15:
+            if korean_chars < 8:  # 기존 15에서 대폭 완화
                 return False
 
-            # 의미 있는 내용인지 확인
+            # 의미 있는 내용인지 확인 - 더 포괄적으로
             meaningful_keywords = [
                 "법",
                 "규정",
@@ -1038,18 +1120,42 @@ class SimpleDataProcessor:
                 "대응",
                 "기관",
                 "위원회",
+                "필요",
+                "중요",
+                "수행",
+                "실시",
+                "구축",
+                "운영",
+                "개선",
+                "강화",
+                "업무",
+                "담당",
+                "제공",
+                "서비스",
+                "보호",
+                "사용",
+                "적용",
+                "활용",
+                "확인",
+                "점검",
+                "분석",
+                "평가",
             ]
             if not any(word in clean_answer for word in meaningful_keywords):
                 return False
 
-            # 질문 의도 일치성 검증
+            # 질문 의도 일치성 검증 - 기준 대폭 완화
             if question:
                 intent_analysis = self.analyze_question_intent(question)
                 if not self.validate_answer_intent_match(
                     answer, question, intent_analysis
                 ):
-                    # 의도 불일치해도 다른 조건이 만족하면 통과하도록 완화
-                    if len(clean_answer) >= 30 and korean_ratio >= 0.7:
+                    # 의도 불일치해도 다른 조건이 만족하면 통과하도록 대폭 완화
+                    if len(clean_answer) >= 20 and korean_ratio >= 0.4:  # 기준 완화
+                        return True
+                    # 추가적으로 의미있는 키워드가 많으면 통과
+                    keyword_count = sum(1 for word in meaningful_keywords if word in clean_answer)
+                    if keyword_count >= 3:
                         return True
                     return False
 
@@ -1162,7 +1268,7 @@ class SimpleDataProcessor:
     def normalize_korean_answer(
         self, answer: str, question_type: str, max_choice: int = 5
     ) -> str:
-        """한국어 답변 정규화"""
+        """한국어 답변 정규화 - 기준 완화"""
         if not answer:
             return ""
 
@@ -1185,8 +1291,8 @@ class SimpleDataProcessor:
             if self.detect_critical_repetitive_patterns(answer):
                 return "답변 생성 중 반복 패턴이 감지되어 재생성이 필요합니다."
 
-            # 의미 없는 짧은 문장 제거
-            if len(answer) < 15:
+            # 의미 없는 짧은 문장 제거 - 기준 완화
+            if len(answer) < 10:  # 기존 15에서 완화
                 return "답변 길이가 부족하여 생성에 실패했습니다."
 
             # 길이 제한
