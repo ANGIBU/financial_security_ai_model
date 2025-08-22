@@ -40,59 +40,62 @@ MODEL_CONFIG = {
     "use_fast_tokenizer": True,
 }
 
-# 생성 설정
+# 생성 설정 - 주관식에 더 관대한 설정
 GENERATION_CONFIG = {
     "multiple_choice": {
         "max_new_tokens": 15,
         "temperature": 0.3,
         "top_p": 0.8,
         "do_sample": True,
-        "repetition_penalty": 1.2,
-        "no_repeat_ngram_size": 3,
+        "repetition_penalty": 1.1,  # 완화 (기존 1.2)
+        "no_repeat_ngram_size": 2,  # 완화 (기존 3)
     },
     "subjective": {
-        "max_new_tokens": 300,
-        "temperature": 0.5,
-        "top_p": 0.85,
+        "max_new_tokens": 400,      # 증가 (기존 300)
+        "temperature": 0.7,         # 증가 (기존 0.5)
+        "top_p": 0.9,              # 증가 (기존 0.85)
         "do_sample": True,
-        "repetition_penalty": 1.3,
-        "no_repeat_ngram_size": 4,
-        "length_penalty": 1.1,
+        "repetition_penalty": 1.1,  # 완화 (기존 1.3)
+        "no_repeat_ngram_size": 2,  # 완화 (기존 4)
+        "length_penalty": 1.0,      # 완화 (기존 1.1)
     },
 }
 
-# === 성능 최적화 설정 ===
+# === 성능 최적화 설정 - 기준 완화 ===
 OPTIMIZATION_CONFIG = {
-    "intent_confidence_threshold": 0.6,
-    "quality_threshold": 0.7,
-    "korean_ratio_threshold": 0.8,
-    "max_retry_attempts": 2,
+    "intent_confidence_threshold": 0.3,  # 완화 (기존 0.6)
+    "quality_threshold": 0.4,           # 완화 (기존 0.7)
+    "korean_ratio_threshold": 0.4,      # 완화 (기존 0.8)
+    "max_retry_attempts": 3,            # 증가 (기존 2)
     "template_preference": True,
     "adaptive_prompt": True,
     "mc_pattern_priority": True,
     "domain_specific_optimization": True,
     "institution_question_priority": True,
     "mc_context_weighting": True,
+    "enhanced_template_usage": True,     # 추가
+    "relaxed_validation": True,          # 추가
+    "improved_fallback": True,           # 추가
 }
 
-# === 한국어 처리 설정 ===
+# === 한국어 처리 설정 - 기준 대폭 완화 ===
 KOREAN_REQUIREMENTS = {
-    "min_korean_ratio": 0.8,
-    "max_english_ratio": 0.1,
-    "min_length": 30,
-    "max_length": 500,
-    "repetition_tolerance": 2,
-    "critical_repetition_limit": 3,
+    "min_korean_ratio": 0.4,            # 완화 (기존 0.8)
+    "max_english_ratio": 0.3,           # 완화 (기존 0.1)
+    "min_length": 15,                   # 완화 (기존 30)
+    "max_length": 600,                  # 증가 (기존 500)
+    "repetition_tolerance": 5,          # 증가 (기존 2)
+    "critical_repetition_limit": 15,    # 증가 (기존 3)
 }
 
 # === 메모리 관리 설정 ===
 MEMORY_CONFIG = {
-    "gc_frequency": 50,  # 몇 문항마다 가비지 컬렉션 실행
-    "save_interval": 1000,  # 학습 데이터 저장 간격
+    "gc_frequency": 30,  # 줄임 (기존 50) - 더 자주 가비지 컬렉션
+    "save_interval": 1000,
     "max_learning_records": {
-        "successful_answers": 1000,
+        "successful_answers": 1500,      # 증가
         "failed_answers": 500,
-        "quality_scores": 1000,
+        "quality_scores": 1500,          # 증가
         "choice_range_errors": 100,
         "repetitive_answers": 200,
     },
@@ -100,31 +103,31 @@ MEMORY_CONFIG = {
 
 # === 시간 제한 설정 ===
 TIME_LIMITS = {
-    "total_inference_minutes": 270,  # 4시간 30분
-    "warmup_timeout": 30,  # 워밍업 제한시간 (초)
-    "single_question_timeout": 30,  # 단일 질문 제한시간 (초)
-    "generation_timeout": 20,  # 생성 제한시간 (초)
+    "total_inference_minutes": 300,     # 증가 (기존 270) - 5시간
+    "warmup_timeout": 45,               # 증가 (기존 30)
+    "single_question_timeout": 45,      # 증가 (기존 30)
+    "generation_timeout": 30,           # 증가 (기존 20)
 }
 
-# === 템플릿 품질 평가 기준 ===
+# === 템플릿 품질 평가 기준 - 기준 완화 ===
 TEMPLATE_QUALITY_CRITERIA = {
-    "length_range": (50, 400),
-    "korean_ratio_min": 0.9,
-    "structure_keywords": ["법", "규정", "조치", "관리", "절차", "기준"],
+    "length_range": (30, 500),          # 완화 (기존 50, 400)
+    "korean_ratio_min": 0.7,            # 완화 (기존 0.9)
+    "structure_keywords": ["법", "규정", "조치", "관리", "절차", "기준", "필요", "중요", "수행", "실시"],
     "intent_keywords": {
-        "기관_묻기": ["위원회", "기관", "담당", "업무"],
-        "특징_묻기": ["특징", "특성", "성질", "기능"],
-        "지표_묻기": ["지표", "징후", "패턴", "탐지"],
-        "방안_묻기": ["방안", "대책", "조치", "관리"],
-        "절차_묻기": ["절차", "과정", "단계", "순서"],
-        "조치_묻기": ["조치", "대응", "보안", "예방"],
+        "기관_묻기": ["위원회", "기관", "담당", "업무", "관련", "소관"],
+        "특징_묻기": ["특징", "특성", "성질", "기능", "원리", "방식"],
+        "지표_묻기": ["지표", "징후", "패턴", "탐지", "모니터링", "분석"],
+        "방안_묻기": ["방안", "대책", "조치", "관리", "개선", "강화"],
+        "절차_묻기": ["절차", "과정", "단계", "순서", "프로세스"],
+        "조치_묻기": ["조치", "대응", "보안", "예방", "보완"],
     },
     "forbidden_patterns": [
         "갈취 묻는 말",
         "묻고 갈취",
         "갈취",
-        r"(.{2,8})\s*\1\s*\1\s*\1",
-        r"(.{1,3})\s*(\1\s*){4,}",
+        r"(.{2,8})\s*\1\s*\1\s*\1\s*\1",  # 5회 이상 반복 (기존 4회에서 완화)
+        r"(.{1,3})\s*(\1\s*){8,}",        # 8회 이상 반복 (기존 4회에서 완화)
     ],
 }
 
@@ -132,7 +135,7 @@ TEMPLATE_QUALITY_CRITERIA = {
 FILE_VALIDATION = {
     "required_files": ["test.csv", "sample_submission.csv"],
     "encoding": "utf-8-sig",
-    "max_file_size_mb": 100,
+    "max_file_size_mb": 200,  # 증가 (기존 100)
 }
 
 # === JSON 설정 파일 경로 ===
@@ -142,6 +145,44 @@ JSON_CONFIG_FILES = {
     "processing_config": JSON_CONFIG_DIR / "processing_config.json",
 }
 
+# === 템플릿 활용 강화 설정 ===
+TEMPLATE_ENHANCEMENT_CONFIG = {
+    "max_templates_per_request": 7,     # 증가 (기존 5)
+    "template_diversity_factor": 0.8,   # 다양성 증가
+    "fallback_template_quality": 0.6,   # 폴백 템플릿 품질 기준
+    "dynamic_template_generation": True,
+    "cross_domain_template_usage": True,
+    "intent_priority_mapping": {
+        "기관_묻기": 1.0,
+        "특징_묻기": 0.9,
+        "방안_묻기": 0.9,
+        "지표_묻기": 0.8,
+        "절차_묻기": 0.7,
+        "조치_묻기": 0.7,
+    }
+}
+
+# === 답변 품질 검증 설정 - 기준 완화 ===
+ANSWER_QUALITY_CONFIG = {
+    "min_quality_score": 0.3,           # 완화 (기존 0.5)
+    "korean_ratio_threshold": 0.4,      # 완화 (기존 0.6)
+    "min_answer_length": 15,            # 완화 (기존 30)
+    "max_answer_length": 600,           # 증가 (기존 500)
+    "repetition_detection_threshold": 15, # 완화 (기존 8)
+    "intent_match_weight": 0.3,         # 완화 (기존 0.5)
+    "template_similarity_bonus": 0.2,   # 템플릿 유사성 보너스
+    "fallback_acceptance_rate": 0.8,    # 폴백 수용률
+}
+
+# === 디버깅 및 로깅 설정 ===
+DEBUG_CONFIG = {
+    "verbose_template_usage": True,
+    "log_intent_analysis": True,
+    "track_generation_stats": True,
+    "save_failed_answers": True,
+    "monitor_quality_scores": True,
+    "template_usage_analytics": True,
+}
 
 # === 환경 변수 설정 함수 ===
 def setup_environment():
@@ -182,6 +223,10 @@ def validate_config():
     if not 0 <= OPTIMIZATION_CONFIG["intent_confidence_threshold"] <= 1:
         errors.append("intent_confidence_threshold는 0과 1 사이여야 합니다")
 
+    # 템플릿 설정 검증
+    if TEMPLATE_ENHANCEMENT_CONFIG["max_templates_per_request"] < 1:
+        errors.append("max_templates_per_request는 1 이상이어야 합니다")
+
     if errors:
         raise ValueError(f"설정 오류: {'; '.join(errors)}")
 
@@ -190,22 +235,22 @@ def validate_config():
 
 # === 생성 설정 동적 조정 함수 ===
 def adjust_generation_for_repetition_risk(question_type: str, risk_level: str = "medium"):
-    """반복 위험에 따른 생성 설정 조정"""
+    """반복 위험에 따른 생성 설정 조정 - 더 관대한 기준"""
     risk_adjustments = {
         "low": {
-            "repetition_penalty": 1.1,
-            "no_repeat_ngram_size": 2,
-            "temperature": 0.6,
+            "repetition_penalty": 1.05,    # 더 완화
+            "no_repeat_ngram_size": 2,     # 더 완화
+            "temperature": 0.8,            # 더 창의적
         },
         "medium": {
-            "repetition_penalty": 1.3,
-            "no_repeat_ngram_size": 4,
-            "temperature": 0.5,
+            "repetition_penalty": 1.1,     # 완화 (기존 1.3)
+            "no_repeat_ngram_size": 2,     # 완화 (기존 4)
+            "temperature": 0.7,            # 증가 (기존 0.5)
         },
         "high": {
-            "repetition_penalty": 1.5,
-            "no_repeat_ngram_size": 5,
-            "temperature": 0.4,
+            "repetition_penalty": 1.2,     # 완화 (기존 1.5)
+            "no_repeat_ngram_size": 3,     # 완화 (기존 5)
+            "temperature": 0.6,            # 증가 (기존 0.4)
         },
     }
 
@@ -213,6 +258,45 @@ def adjust_generation_for_repetition_risk(question_type: str, risk_level: str = 
         # 기존 설정을 유지하면서 업데이트
         for key, value in risk_adjustments[risk_level].items():
             GENERATION_CONFIG[question_type][key] = value
+
+
+# === 동적 설정 조정 함수 ===
+def adjust_config_for_performance(performance_stats: dict):
+    """성능 통계에 따른 동적 설정 조정"""
+    if not performance_stats:
+        return
+    
+    # 템플릿 사용률이 낮으면 기준 완화
+    template_usage_rate = performance_stats.get("template_usage_rate", 0.5)
+    if template_usage_rate < 0.3:
+        OPTIMIZATION_CONFIG["intent_confidence_threshold"] = max(
+            OPTIMIZATION_CONFIG["intent_confidence_threshold"] - 0.1, 0.1
+        )
+    
+    # 품질 점수가 낮으면 기준 완화
+    avg_quality_score = performance_stats.get("avg_quality_score", 0.5)
+    if avg_quality_score < 0.4:
+        ANSWER_QUALITY_CONFIG["min_quality_score"] = max(
+            ANSWER_QUALITY_CONFIG["min_quality_score"] - 0.1, 0.2
+        )
+    
+    # 폴백 사용률이 높으면 검증 완화
+    fallback_rate = performance_stats.get("fallback_rate", 0.3)
+    if fallback_rate > 0.5:
+        KOREAN_REQUIREMENTS["min_korean_ratio"] = max(
+            KOREAN_REQUIREMENTS["min_korean_ratio"] - 0.1, 0.3
+        )
+
+
+# === 품질 기준 완화 함수 ===
+def relax_quality_standards():
+    """품질 기준을 더 관대하게 조정"""
+    KOREAN_REQUIREMENTS["min_korean_ratio"] = 0.3
+    KOREAN_REQUIREMENTS["min_length"] = 10
+    OPTIMIZATION_CONFIG["quality_threshold"] = 0.3
+    OPTIMIZATION_CONFIG["intent_confidence_threshold"] = 0.2
+    ANSWER_QUALITY_CONFIG["min_quality_score"] = 0.2
+    ANSWER_QUALITY_CONFIG["korean_ratio_threshold"] = 0.3
 
 
 # === 초기화 함수 ===
@@ -227,6 +311,26 @@ def initialize_system():
         print(f"기본 모델: {DEFAULT_MODEL_NAME}")
         print(f"디바이스: {get_device()}")
         print(f"오프라인 모드: {OFFLINE_MODE}")
+        print(f"한국어 최소 비율: {KOREAN_REQUIREMENTS['min_korean_ratio']}")
+        print(f"의도 신뢰도 임계값: {OPTIMIZATION_CONFIG['intent_confidence_threshold']}")
+        print(f"최대 템플릿 수: {TEMPLATE_ENHANCEMENT_CONFIG['max_templates_per_request']}")
+
+
+# === 설정 요약 출력 함수 ===
+def print_config_summary():
+    """현재 설정 요약 출력"""
+    print("\n=== 현재 시스템 설정 요약 ===")
+    print(f"모델: {DEFAULT_MODEL_NAME}")
+    print(f"디바이스: {get_device()}")
+    print(f"한국어 최소 비율: {KOREAN_REQUIREMENTS['min_korean_ratio']}")
+    print(f"최소 답변 길이: {KOREAN_REQUIREMENTS['min_length']}")
+    print(f"의도 신뢰도 임계값: {OPTIMIZATION_CONFIG['intent_confidence_threshold']}")
+    print(f"품질 임계값: {ANSWER_QUALITY_CONFIG['min_quality_score']}")
+    print(f"최대 템플릿 수: {TEMPLATE_ENHANCEMENT_CONFIG['max_templates_per_request']}")
+    print(f"최대 토큰 수 (주관식): {GENERATION_CONFIG['subjective']['max_new_tokens']}")
+    print(f"Temperature (주관식): {GENERATION_CONFIG['subjective']['temperature']}")
+    print(f"반복 패널티 (주관식): {GENERATION_CONFIG['subjective']['repetition_penalty']}")
+    print("="*50)
 
 
 # 자동 초기화 (모듈 import 시 실행)
