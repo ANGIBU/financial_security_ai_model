@@ -89,25 +89,25 @@ class FinancialAIInference:
         if self.verbose:
             print(f"의도 분석 결과: {intent_analysis}")
 
-        # 1단계: 직접 템플릿 기반 생성
-        answer = self._generate_template_based_answer(
+        # 1단계: 템플릿 힌트와 함께 LLM 생성
+        answer = self._generate_with_template_hints(
             question, domain, intent_analysis, kb_analysis
         )
 
         if self._validate_template_answer(answer, question, intent_analysis):
             if self.verbose:
-                print(f"1단계 성공: 템플릿 기반 답변 생성")
+                print(f"1단계 성공: 템플릿 힌트 기반 답변 생성")
             return self._finalize_answer(answer, question, intent_analysis)
 
         # 2단계: 기관 질문 특별 처리
         if kb_analysis.get("institution_info", {}).get("is_institution_question", False):
-            answer = self._generate_institution_specific_answer(
+            answer = self._generate_with_institution_context(
                 question, kb_analysis, intent_analysis
             )
 
             if self._validate_template_answer(answer, question, intent_analysis):
                 if self.verbose:
-                    print(f"2단계 성공: 기관 특별 처리")
+                    print(f"2단계 성공: 기관 컨텍스트 처리")
                 return self._finalize_answer(answer, question, intent_analysis)
 
         # 3단계: LLM 기반 생성 (템플릿 힌트 포함)
@@ -121,19 +121,19 @@ class FinancialAIInference:
             return self._finalize_answer(answer, question, intent_analysis)
 
         # 4단계: 도메인 특화 답변 생성
-        answer = self._generate_domain_specific_answer(
+        answer = self._generate_with_domain_context(
             question, domain, intent_analysis, kb_analysis
         )
 
         if self.verbose:
-            print(f"최종 단계: 도메인 특화 답변")
+            print(f"최종 단계: 도메인 컨텍스트 답변")
 
         return self._finalize_answer(answer, question, intent_analysis)
 
-    def _generate_template_based_answer(
+    def _generate_with_template_hints(
         self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict
     ) -> str:
-        """템플릿 기반 답변 생성"""
+        """템플릿을 힌트로 활용한 LLM 생성"""
 
         if not intent_analysis:
             return ""
@@ -141,32 +141,52 @@ class FinancialAIInference:
         primary_intent = intent_analysis.get("primary_intent", "일반")
         confidence = intent_analysis.get("intent_confidence", 0)
 
-        # 신뢰도가 낮으면 템플릿 사용 안함
+        # 신뢰도가 낮으면 기본 생성
         if confidence < 0.3:
             return ""
 
         intent_key = self._map_intent_to_key(primary_intent)
         
-        # 특정 키워드에 따른 직접 답변 생성
-        if "트로이" in question and "원격제어" in question and "특징" in question:
-            return "트로이 목마 기반 원격제어 악성코드는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하며, 은밀성과 지속성을 특징으로 하여 장기간 시스템에 잠복하면서 악의적인 활동을 수행합니다."
-
-        if "트로이" in question and "탐지" in question and "지표" in question:
-            return "네트워크 트래픽 모니터링에서 비정상적인 외부 통신 패턴, 시스템 동작 분석에서 비인가 프로세스 실행, 파일 생성 및 수정 패턴의 이상 징후, 레지스트리 변경 사항, 시스템 성능 저하, 의심스러운 네트워크 연결 등이 주요 탐지 지표입니다."
-
-        if "전자금융" in question and "분쟁조정" in question and "기관" in question:
-            return "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 금융감독원 내에 설치되어 운영되며, 이용자와 전자금융업자 간의 분쟁을 공정하고 신속하게 해결하기 위한 업무를 수행합니다."
-
-        # 템플릿 예시 가져오기
+        # 템플릿을 참고 자료로 가져오기
         template_examples = self.knowledge_base.get_template_examples(domain, intent_key)
         
         if template_examples and len(template_examples) > 0:
-            # 가장 적절한 템플릿 선택
+            # 가장 적절한 템플릿을 참고 자료로 선택
             best_template = self._select_best_template(question, template_examples, intent_analysis)
             if best_template:
-                return self._adapt_template_to_question(best_template, question, intent_analysis)
+                # 템플릿을 힌트로 활용하여 LLM 생성
+                return self._generate_llm_with_template_reference(
+                    question, domain, intent_analysis, best_template
+                )
 
         return ""
+
+    def _generate_llm_with_template_reference(
+        self, question: str, domain: str, intent_analysis: Dict, template_reference: str
+    ) -> str:
+        """템플릿 참고 자료와 함께 LLM 생성"""
+        
+        # 도메인 힌트에 템플릿 참고 자료 포함
+        domain_hints = {
+            "domain": domain,
+            "template_reference": template_reference,
+            "reference_style": True,
+            "professional_tone": True
+        }
+
+        # 기관 정보가 있으면 추가
+        if "전자금융" in question and "분쟁조정" in question:
+            domain_hints["institution_context"] = "전자금융분쟁조정위원회 관련"
+        elif "개인정보" in question and "신고" in question:
+            domain_hints["institution_context"] = "개인정보보호위원회 관련"
+
+        return self.model_handler.generate_answer(
+            question,
+            "subjective",
+            5,
+            intent_analysis,
+            domain_hints=domain_hints
+        )
 
     def _select_best_template(self, question: str, templates: List[str], intent_analysis: Dict) -> str:
         """질문에 가장 적합한 템플릿 선택"""
@@ -214,47 +234,46 @@ class FinancialAIInference:
                 
         return best_template if best_score > 5 else None
 
-    def _adapt_template_to_question(self, template: str, question: str, intent_analysis: Dict) -> str:
-        """템플릿을 질문에 맞게 조정"""
-        adapted = template
-        
-        # 질문의 특정 키워드에 따라 템플릿 조정
-        if "RAT" in question and "트로이" not in adapted:
-            adapted = adapted.replace("원격제어 악성코드", "트로이 목마 기반 원격제어 악성코드(RAT)")
-        
-        if "특징과 주요 탐지 지표" in question:
-            # 특징과 지표 둘 다 포함된 질문인 경우
-            if "특징" in adapted and "지표" not in adapted:
-                adapted += " 주요 탐지 지표로는 네트워크 트래픽의 비정상적 패턴, 시스템 성능 변화, 의심스러운 프로세스 실행 등을 모니터링해야 합니다."
-        
-        return adapted
-
-    def _generate_institution_specific_answer(
+    def _generate_with_institution_context(
         self, question: str, kb_analysis: Dict, intent_analysis: Dict
     ) -> str:
-        """기관 관련 특화 답변 생성"""
+        """기관 컨텍스트와 함께 LLM 생성"""
         
         institution_info = kb_analysis.get("institution_info", {})
         institution_type = institution_info.get("institution_type")
         
-        # 기관별 특화 답변
+        # 기관별 컨텍스트 정보
+        institution_context = ""
         if "전자금융" in question:
-            return "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 금융감독원 내에 설치되어 운영되며, 전자금융거래법에 따라 이용자와 전자금융업자 간의 분쟁을 공정하고 신속하게 해결하기 위한 업무를 수행합니다."
+            institution_context = "전자금융분쟁조정위원회와 금융감독원 관련"
+        elif "개인정보" in question and "신고" in question:
+            institution_context = "개인정보보호위원회와 개인정보침해신고센터 관련"
+        elif "한국은행" in question:
+            institution_context = "한국은행과 금융통화위원회 관련"
         
-        if "개인정보" in question and "신고" in question:
-            return "개인정보보호위원회 산하 개인정보침해신고센터에서 개인정보 침해 신고 접수 및 상담 업무를 담당합니다. 개인정보보호위원회는 개인정보 보호에 관한 업무를 총괄하는 중앙행정기관입니다."
-        
-        if "한국은행" in question:
-            return "한국은행에서 금융통화위원회의 요청에 따라 통화신용정책의 수행 및 지급결제제도의 원활한 운영을 위해 금융회사 및 전자금융업자에게 자료제출을 요구할 수 있습니다."
-            
-        return ""
+        if not institution_context:
+            return ""
+
+        domain_hints = {
+            "domain": "기관",
+            "institution_context": institution_context,
+            "professional_response": True
+        }
+
+        return self.model_handler.generate_answer(
+            question,
+            "subjective",
+            5,
+            intent_analysis,
+            domain_hints=domain_hints
+        )
 
     def _generate_llm_with_strong_template_hint(
         self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict
     ) -> str:
-        """강력한 템플릿 힌트와 함께 LLM 생성"""
+        """강한 템플릿 힌트와 함께 LLM 생성"""
         
-        # 강력한 템플릿 힌트 제공
+        # 강한 템플릿 힌트 제공
         domain_hints = {
             "domain": domain,
             "use_specific_templates": True,
@@ -285,28 +304,36 @@ class FinancialAIInference:
             domain_hints=domain_hints
         )
 
-    def _generate_domain_specific_answer(
+    def _generate_with_domain_context(
         self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict
     ) -> str:
-        """도메인 특화 답변 생성"""
+        """도메인 컨텍스트와 함께 LLM 생성"""
         
-        # 도메인별 특화 답변 생성
-        if domain == "사이버보안":
-            if "트로이" in question and "특징" in question:
-                return "트로이 목마 기반 원격제어 악성코드는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하며, 은밀성과 지속성을 특징으로 합니다."
-            elif "탐지" in question and "지표" in question:
-                return "네트워크 트래픽 모니터링에서 비정상적인 외부 통신 패턴, 시스템 동작 분석에서 비인가 프로세스 실행, 파일 생성 및 수정 패턴의 이상 징후 등이 주요 탐지 지표입니다."
-                
-        elif domain == "전자금융":
-            if "분쟁조정" in question and "기관" in question:
-                return "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 금융감독원 내에 설치되어 운영됩니다."
-                
-        elif domain == "개인정보보호":
-            if "기관" in question:
-                return "개인정보보호위원회에서 개인정보 보호에 관한 업무를 총괄하며, 개인정보침해신고센터에서 신고 접수 및 상담 업무를 담당합니다."
+        # 도메인별 컨텍스트 정보
+        domain_context = {
+            "사이버보안": "사이버보안 위협 분석 및 대응",
+            "전자금융": "전자금융거래법과 관련 기관",
+            "개인정보보호": "개인정보보호법과 관련 기관",
+            "정보보안": "정보보안 관리체계",
+            "위험관리": "위험 관리 체계와 절차",
+            "금융투자": "자본시장법과 금융투자업"
+        }
 
-        # 기본 답변
-        return f"{domain} 분야의 관련 법령과 규정에 따라 체계적인 관리가 필요하며, 전문적인 지식을 바탕으로 적절한 대응을 수행해야 합니다."
+        context_info = domain_context.get(domain, "관련 법령과 규정")
+
+        domain_hints = {
+            "domain": domain,
+            "domain_context": context_info,
+            "professional_standard": True
+        }
+
+        return self.model_handler.generate_answer(
+            question,
+            "subjective",
+            5,
+            intent_analysis,
+            domain_hints=domain_hints
+        )
 
     def _validate_template_answer(
         self, answer: str, question: str, intent_analysis: Dict = None
@@ -589,9 +616,19 @@ class FinancialAIInference:
                 question, max_choice, domain
             )
         else:
-            # 주관식 폴백도 도메인 특화로 처리
-            return self._generate_domain_specific_answer(
-                question, domain, intent_analysis, {}
+            # 주관식 폴백도 LLM을 통해 생성
+            domain_hints = {
+                "domain": domain,
+                "fallback_mode": True,
+                "basic_professional": True
+            }
+            
+            return self.model_handler.generate_answer(
+                question,
+                "subjective",
+                5,
+                intent_analysis,
+                domain_hints=domain_hints
             )
 
     def _get_safe_mc_answer_with_llm(
