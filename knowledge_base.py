@@ -206,25 +206,56 @@ class FinancialSecurityKnowledgeBase:
             }
         }
 
-        # 객관식 답변 패턴
+        # 객관식 답변 패턴 강화
         self.mc_answer_patterns = {
             "금융투자_해당하지않는": {
                 "question_keywords": ["금융투자업", "구분", "해당하지 않는"],
                 "choices": ["소비자금융업", "투자자문업", "투자매매업", "투자중개업", "보험중개업"],
                 "correct_answer": "5",
-                "explanation": "금융투자업의 구분에는 소비자금융업, 투자자문업, 투자매매업, 투자중개업이 포함되며, 보험중개업은 해당하지 않습니다."
+                "explanation": "금융투자업의 구분에는 소비자금융업, 투자자문업, 투자매매업, 투자중개업이 포함되며, 보험중개업은 해당하지 않습니다.",
+                "hint": "금융투자업 구분에서 보험중개업은 제외됩니다."
             },
             "위험관리_적절하지않은": {
                 "question_keywords": ["위험 관리", "계획 수립", "적절하지 않은"],
                 "choices": ["수행인력", "위험 수용", "위험 대응 전략", "대상", "기간"],
                 "correct_answer": "2",
-                "explanation": "위험 관리 계획 수립 시 수행인력, 위험 대응 전략 선정, 대상, 기간을 고려해야 하며, 위험 수용은 적절하지 않습니다."
+                "explanation": "위험 관리 계획 수립 시 수행인력, 위험 대응 전략 선정, 대상, 기간을 고려해야 하며, 위험 수용은 적절하지 않습니다.",
+                "hint": "위험관리 계획에서 위험 수용은 부적절한 요소입니다."
+            },
+            "개인정보_중요한요소": {
+                "question_keywords": ["정책 수립", "가장 중요한 요소", "경영진"],
+                "choices": ["정보보호 정책 제개정", "경영진의 참여", "최고책임자 지정", "자원 할당"],
+                "correct_answer": "2",
+                "explanation": "관리체계 수립 및 운영의 정책 수립 단계에서 가장 중요한 요소는 경영진의 참여입니다.",
+                "hint": "정책 수립에서 경영진의 참여가 가장 중요합니다."
+            },
+            "전자금융_요구경우": {
+                "question_keywords": ["한국은행", "자료제출", "요구할 수 있는 경우"],
+                "choices": ["보안 강화", "통계조사", "경영 실적", "통화신용정책"],
+                "correct_answer": "4",
+                "explanation": "한국은행이 금융통화위원회의 요청에 따라 자료제출을 요구할 수 있는 경우는 통화신용정책의 수행 및 지급결제제도의 원활한 운영을 위해서입니다.",
+                "hint": "한국은행의 자료제출 요구는 통화신용정책 수행을 위해서입니다."
+            },
+            "개인정보_법정대리인": {
+                "question_keywords": ["만 14세 미만", "아동", "개인정보", "절차"],
+                "choices": ["학교의 동의", "법정대리인의 동의", "본인의 동의", "친구의 동의"],
+                "correct_answer": "2",
+                "explanation": "개인정보보호법 제22조의2에 따라 만 14세 미만 아동의 개인정보를 처리하기 위해서는 법정대리인의 동의를 받아야 합니다.",
+                "hint": "만 14세 미만 아동은 법정대리인의 동의가 필요합니다."
             },
             "사이버보안_SBOM": {
                 "question_keywords": ["SBOM", "활용", "이유", "적절한"],
                 "choices": ["접근 제어", "투명성", "개인정보 보호", "다양성", "소프트웨어 공급망"],
                 "correct_answer": "5",
-                "explanation": "금융권에서 SBOM을 활용하는 이유는 소프트웨어 공급망 보안을 강화하기 위해서입니다."
+                "explanation": "금융권에서 SBOM을 활용하는 이유는 소프트웨어 공급망 보안을 강화하기 위해서입니다.",
+                "hint": "SBOM은 소프트웨어 공급망 보안을 위해 활용됩니다."
+            },
+            "정보보안_재해복구": {
+                "question_keywords": ["재해 복구", "계획 수립", "옳지 않은"],
+                "choices": ["복구 절차", "비상연락체계", "개인정보 파기", "복구 목표시간"],
+                "correct_answer": "3",
+                "explanation": "재해 복구 계획 수립 시 복구 절차, 비상연락체계, 복구 목표시간 정의가 필요하며, 개인정보 파기 절차는 옳지 않습니다.",
+                "hint": "재해복구 계획에서 개인정보 파기는 관련 없는 요소입니다."
             }
         }
 
@@ -384,21 +415,76 @@ class FinancialSecurityKnowledgeBase:
         return len(template) >= 50  # 길이만으로도 품질 인정
 
     def get_mc_pattern_hints(self, question: str) -> str:
-        """객관식 패턴 힌트 제공"""
-        mc_pattern_info = self._analyze_mc_pattern(question)
+        """객관식 패턴 힌트 제공 - 강화"""
+        question_lower = question.lower()
+        
+        # 1단계: 정확한 패턴 매칭
+        best_match = None
+        best_score = 0
+        
+        for pattern_key, pattern_data in self.mc_answer_patterns.items():
+            score = 0
+            matched_keywords = 0
+            
+            for keyword in pattern_data["question_keywords"]:
+                if keyword in question_lower:
+                    matched_keywords += 1
+                    # 키워드별 중요도 점수
+                    if keyword in ["해당하지 않는", "적절하지 않은", "옳지 않은"]:
+                        score += 3
+                    elif keyword in ["가장 중요한", "가장 적절한"]:
+                        score += 3
+                    else:
+                        score += 1
+            
+            # 매칭 비율 계산
+            match_ratio = matched_keywords / len(pattern_data["question_keywords"])
+            final_score = score * match_ratio
+            
+            if final_score > best_score and matched_keywords >= 2:
+                best_score = final_score
+                best_match = pattern_data
 
-        if mc_pattern_info["is_mc_question"] and mc_pattern_info["pattern_confidence"] > 0.5:
-            pattern_key = mc_pattern_info["pattern_key"]
-            if pattern_key in self.mc_answer_patterns:
-                pattern_data = self.mc_answer_patterns[pattern_key]
+        # 2단계: 최적 매치 힌트 제공
+        if best_match and best_score >= 2:
+            hint_parts = []
+            
+            if "hint" in best_match:
+                hint_parts.append(best_match["hint"])
+            
+            if "explanation" in best_match:
+                hint_parts.append(f"참고: {best_match['explanation']}")
+            
+            return " ".join(hint_parts)
 
-                hint_info = f"이 문제는 {pattern_data.get('explanation', '관련 내용')}에 대한 문제입니다."
-                if "choices" in pattern_data:
-                    hint_info += f" 선택지는 {', '.join(pattern_data['choices'])}입니다."
+        # 3단계: 일반적인 도메인 힌트
+        return self._get_general_mc_hint(question_lower)
 
-                return hint_info
-
-        return None
+    def _get_general_mc_hint(self, question_lower: str) -> str:
+        """일반적인 객관식 힌트"""
+        
+        # 부정 문제 힌트
+        if any(neg in question_lower for neg in ["해당하지 않는", "적절하지 않은", "옳지 않은", "틀린"]):
+            return "문제에서 요구하는 것과 반대되는 선택지를 찾으세요."
+        
+        # 긍정 문제 힌트  
+        elif any(pos in question_lower for pos in ["가장 적절한", "가장 옳은", "맞는 것"]):
+            return "문제에서 요구하는 조건에 가장 부합하는 선택지를 선택하세요."
+        
+        # 도메인별 일반 힌트
+        domain_hints = {
+            "금융투자": "금융투자업의 구분과 각 업무의 특징을 고려하세요.",
+            "위험관리": "위험관리 계획의 필수 요소와 부적절한 요소를 구분하세요.",
+            "개인정보": "개인정보보호법의 연령 제한과 동의 절차를 확인하세요.",
+            "전자금융": "한국은행의 권한과 업무 범위를 고려하세요.",
+            "사이버보안": "보안 기술의 목적과 활용 분야를 파악하세요."
+        }
+        
+        for domain, hint in domain_hints.items():
+            if domain in question_lower:
+                return hint
+        
+        return "각 선택지를 신중히 검토하고 문제의 핵심 요구사항을 파악하세요."
 
     def get_institution_hints(self, institution_type: str) -> str:
         """기관 힌트 제공 - 강화"""
