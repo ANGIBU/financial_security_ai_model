@@ -40,6 +40,7 @@ class FinancialAIInference:
         self.optimization_config = OPTIMIZATION_CONFIG
 
     def process_single_question(self, question: str, question_id: str) -> str:
+        """단일 질문 처리"""
         start_time = time.time()
 
         try:
@@ -52,25 +53,25 @@ class FinancialAIInference:
             kb_analysis = self.knowledge_base.analyze_question(question)
 
             if question_type == "multiple_choice":
-                answer = self._process_multiple_choice_with_enhanced_llm(
+                answer = self._process_multiple_choice_with_llm(
                     question, max_choice, domain, kb_analysis
                 )
                 return answer
 
             else:
-                return self._process_subjective_with_improved_strategy(
+                return self._process_subjective_with_strategy(
                     question, question_id, domain, difficulty, kb_analysis, start_time
                 )
 
         except Exception as e:
             if self.verbose:
                 print(f"오류 발생: {e}")
-            fallback = self._get_enhanced_intent_based_fallback(
+            fallback = self._get_intent_based_fallback(
                 question, question_type, max_choice if "max_choice" in locals() else 5
             )
             return fallback
 
-    def _process_subjective_with_improved_strategy(
+    def _process_subjective_with_strategy(
         self,
         question: str,
         question_id: str,
@@ -79,15 +80,16 @@ class FinancialAIInference:
         kb_analysis: Dict,
         start_time: float,
     ) -> str:
+        """주관식 질문 처리 전략"""
 
         intent_analysis = self.data_processor.analyze_question_intent(question)
 
-        answer = self._process_subjective_with_enhanced_templates(
+        answer = self._process_subjective_with_templates(
             question, domain, intent_analysis, kb_analysis
         )
 
         if self._is_acceptable_answer_relaxed(answer, question, intent_analysis):
-            final_answer = self._enhanced_validate_and_improve_answer(
+            final_answer = self._validate_and_improve_answer(
                 answer, question, "subjective", 5, domain, intent_analysis, kb_analysis
             )
             return final_answer
@@ -95,12 +97,12 @@ class FinancialAIInference:
         if kb_analysis.get("institution_info", {}).get(
             "is_institution_question", False
         ):
-            answer = self._process_institution_question_with_enhanced_llm(
+            answer = self._process_institution_question_with_llm(
                 question, kb_analysis, intent_analysis
             )
 
             if self._validate_institution_answer_relaxed(answer, question, kb_analysis):
-                final_answer = self._enhanced_validate_and_improve_answer(
+                final_answer = self._validate_and_improve_answer(
                     answer,
                     question,
                     "subjective",
@@ -116,7 +118,7 @@ class FinancialAIInference:
         )
 
         if self._is_acceptable_answer_relaxed(retry_answer, question, intent_analysis):
-            final_answer = self._enhanced_validate_and_improve_answer(
+            final_answer = self._validate_and_improve_answer(
                 retry_answer,
                 question,
                 "subjective",
@@ -131,7 +133,7 @@ class FinancialAIInference:
             question, intent_analysis, domain, kb_analysis
         )
 
-        final_answer = self._enhanced_validate_and_improve_answer(
+        final_answer = self._validate_and_improve_answer(
             fallback_answer,
             question,
             "subjective",
@@ -143,9 +145,10 @@ class FinancialAIInference:
 
         return final_answer
 
-    def _process_subjective_with_enhanced_templates(
+    def _process_subjective_with_templates(
         self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict
     ) -> str:
+        """템플릿 기반 주관식 처리"""
 
         template_examples = None
         template_guidance = {}
@@ -216,6 +219,7 @@ class FinancialAIInference:
     def _retry_subjective_generation_improved(
         self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict
     ) -> str:
+        """개선된 주관식 재생성"""
 
         alternative_hints = {
             "retry_mode": True,
@@ -272,6 +276,7 @@ class FinancialAIInference:
     def _get_high_quality_intent_based_answer(
         self, question: str, intent_analysis: Dict, domain: str, kb_analysis: Dict
     ) -> str:
+        """고품질 의도 기반 답변"""
 
         if not intent_analysis:
             return self._get_domain_specific_quality_answer(question, domain)
@@ -280,14 +285,14 @@ class FinancialAIInference:
         answer_type = intent_analysis.get("answer_type_required", "설명형")
 
         high_quality_templates = {
-            "기관_묻기": self._get_enhanced_institution_answer(
+            "기관_묻기": self._get_institution_answer(
                 question, domain, kb_analysis
             ),
-            "특징_묻기": self._get_enhanced_feature_answer(question, domain),
-            "지표_묻기": self._get_enhanced_indicator_answer(question, domain),
-            "방안_묻기": self._get_enhanced_solution_answer(question, domain),
-            "절차_묻기": self._get_enhanced_procedure_answer(question, domain),
-            "조치_묻기": self._get_enhanced_measure_answer(question, domain),
+            "특징_묻기": self._get_feature_answer(question, domain),
+            "지표_묻기": self._get_indicator_answer(question, domain),
+            "방안_묻기": self._get_solution_answer(question, domain),
+            "절차_묻기": self._get_procedure_answer(question, domain),
+            "조치_묻기": self._get_measure_answer(question, domain),
         }
 
         intent_key = self._map_intent_to_key(primary_intent)
@@ -296,9 +301,10 @@ class FinancialAIInference:
 
         return self._get_domain_specific_quality_answer(question, domain)
 
-    def _get_enhanced_institution_answer(
+    def _get_institution_answer(
         self, question: str, domain: str, kb_analysis: Dict
     ) -> str:
+        """기관 관련 답변"""
 
         if "전자금융" in question and "분쟁" in question:
             return "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 금융감독원 내에 설치되어 운영되며, 이용자와 전자금융업자 간의 분쟁을 공정하고 신속하게 해결하기 위한 업무를 수행합니다."
@@ -313,7 +319,8 @@ class FinancialAIInference:
         else:
             return f"{domain} 분야의 관련 전문 기관에서 해당 업무를 법령에 따라 담당하고 있으며, 체계적인 관리와 감독 업무를 수행하고 있습니다."
 
-    def _get_enhanced_feature_answer(self, question: str, domain: str) -> str:
+    def _get_feature_answer(self, question: str, domain: str) -> str:
+        """특징 관련 답변"""
 
         if "트로이" in question or "원격제어" in question:
             return "트로이 목마 기반 원격제어 악성코드는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하며, 은밀성과 지속성을 특징으로 하여 장기간 시스템에 잠복하면서 악의적인 활동을 수행합니다."
@@ -324,7 +331,8 @@ class FinancialAIInference:
         else:
             return f"{domain} 분야의 주요 특징은 관련 법령과 규정에 따라 체계적이고 전문적인 관리를 통해 효과적인 보안과 안전성을 확보하는 것입니다."
 
-    def _get_enhanced_indicator_answer(self, question: str, domain: str) -> str:
+    def _get_indicator_answer(self, question: str, domain: str) -> str:
+        """지표 관련 답변"""
 
         if "트로이" in question or "원격제어" in question or "악성코드" in question:
             return "네트워크 트래픽 모니터링에서 비정상적인 외부 통신 패턴, 시스템 동작 분석에서 비인가 프로세스 실행, 파일 생성 및 수정 패턴의 이상 징후, 레지스트리 변경 사항, 시스템 성능 저하, 의심스러운 네트워크 연결 등이 주요 탐지 지표입니다."
@@ -333,7 +341,8 @@ class FinancialAIInference:
         else:
             return f"{domain} 분야의 주요 지표는 정기적인 모니터링과 분석을 통해 이상 징후를 조기에 발견하고 적절한 대응조치를 수행하는 것입니다."
 
-    def _get_enhanced_solution_answer(self, question: str, domain: str) -> str:
+    def _get_solution_answer(self, question: str, domain: str) -> str:
+        """방안 관련 답변"""
 
         if "딥페이크" in question:
             return "딥페이크 기술 악용에 대비하여 다층 방어체계 구축, 실시간 딥페이크 탐지 시스템 도입, 직원 교육 및 인식 개선, 생체인증 강화, 다중 인증 체계 구축, 사전 예방과 사후 대응을 아우르는 종합적 보안 대응방안이 필요합니다."
@@ -346,13 +355,16 @@ class FinancialAIInference:
         else:
             return f"{domain} 분야의 체계적인 관리 방안을 수립하고 관련 법령과 규정에 따라 지속적인 개선과 모니터링을 수행해야 합니다."
 
-    def _get_enhanced_procedure_answer(self, question: str, domain: str) -> str:
+    def _get_procedure_answer(self, question: str, domain: str) -> str:
+        """절차 관련 답변"""
         return f"{domain} 분야의 관련 절차에 따라 단계별로 체계적인 수행과 지속적인 관리가 필요하며, 법령에 정해진 절차를 준수하여 순차적으로 진행해야 합니다."
 
-    def _get_enhanced_measure_answer(self, question: str, domain: str) -> str:
+    def _get_measure_answer(self, question: str, domain: str) -> str:
+        """조치 관련 답변"""
         return f"적절한 보안 조치를 시행하고 {domain} 분야의 관련 법령과 규정에 따라 지속적인 관리와 개선을 수행해야 하며, 예방조치와 사후조치를 균형있게 적용해야 합니다."
 
     def _get_domain_specific_quality_answer(self, question: str, domain: str) -> str:
+        """도메인별 품질 답변"""
 
         domain_answers = {
             "사이버보안": "사이버보안 위협에 대응하기 위해 다층 방어체계를 구축하고 실시간 모니터링과 침입탐지시스템을 운영하며, 정기적인 보안교육과 취약점 점검을 통해 종합적인 보안 관리체계를 유지해야 합니다.",
@@ -371,6 +383,7 @@ class FinancialAIInference:
     def _is_acceptable_answer_relaxed(
         self, answer: str, question: str, intent_analysis: Dict = None
     ) -> bool:
+        """완화된 답변 허용 기준"""
         if not answer:
             return False
 
@@ -405,8 +418,8 @@ class FinancialAIInference:
             "위원회",
             "감독원",
             "업무",
-            "수행",
             "담당",
+            "수행",
             "필요",
             "해야",
             "구축",
@@ -441,6 +454,7 @@ class FinancialAIInference:
     def _validate_institution_answer_relaxed(
         self, answer: str, question: str, kb_analysis: Dict
     ) -> bool:
+        """완화된 기관 답변 검증"""
         if not answer or len(answer) < 10:
             return False
 
@@ -469,185 +483,8 @@ class FinancialAIInference:
 
         return has_institution
 
-    def _validate_institution_answer(
-        self, answer: str, question: str, kb_analysis: Dict
-    ) -> bool:
-        if not answer or len(answer) < 10:
-            return False
-
-        institution_keywords = ["위원회", "감독원", "은행", "기관", "센터"]
-        has_institution = any(keyword in answer for keyword in institution_keywords)
-
-        if "전자금융" in question and "분쟁" in question:
-            return "전자금융분쟁조정위원회" in answer or "금융감독원" in answer
-        elif "개인정보" in question:
-            return "개인정보보호위원회" in answer or "개인정보침해신고센터" in answer
-        elif "한국은행" in question:
-            return "한국은행" in answer
-
-        return has_institution
-
-    def _is_acceptable_answer(
-        self, answer: str, question: str, intent_analysis: Dict = None
-    ) -> bool:
-        if not answer:
-            return False
-
-        if len(answer) < 15:
-            return False
-
-        if self.model_handler.detect_critical_repetitive_patterns(answer):
-            return False
-
-        korean_ratio = self.data_processor.calculate_korean_ratio(answer)
-        if korean_ratio < 0.5:
-            return False
-
-        meaningful_keywords = [
-            "법령",
-            "규정",
-            "조치",
-            "관리",
-            "보안",
-            "방안",
-            "절차",
-            "기준",
-            "정책",
-            "체계",
-            "시스템",
-            "통제",
-            "특징",
-            "지표",
-            "탐지",
-            "대응",
-            "기관",
-            "위원회",
-            "감독원",
-        ]
-        if not any(word in answer for word in meaningful_keywords):
-            return False
-
-        if intent_analysis:
-            answer_type = intent_analysis.get("answer_type_required", "설명형")
-            if answer_type == "기관명":
-                institution_keywords = ["위원회", "감독원", "은행", "기관", "센터"]
-                if not any(keyword in answer for keyword in institution_keywords):
-                    return False
-
-        return True
-
-    def _retry_subjective_generation(
-        self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict
-    ) -> str:
-
-        alternative_hints = {"retry_mode": True, "domain": domain}
-
-        if intent_analysis:
-            primary_intent = intent_analysis.get("primary_intent", "일반")
-            intent_key = self._map_intent_to_key(primary_intent)
-
-            alternative_domains = ["사이버보안", "개인정보보호", "전자금융", "정보보안"]
-            for alt_domain in alternative_domains:
-                if alt_domain != domain:
-                    alt_templates = self.knowledge_base.get_template_examples(
-                        alt_domain, intent_key
-                    )
-                    if alt_templates:
-                        alternative_hints["alternative_templates"] = alt_templates[:2]
-                        break
-
-        if kb_analysis.get("institution_info", {}).get(
-            "is_institution_question", False
-        ):
-            institution_type = kb_analysis["institution_info"].get("institution_type")
-            if institution_type:
-                alternative_hints["institution_hints"] = (
-                    self.knowledge_base.get_institution_hints(institution_type)
-                )
-
-        return self.model_handler.generate_answer(
-            question, "subjective", 5, intent_analysis, alternative_hints
-        )
-
-    def _get_intent_based_fallback_answer(
-        self, question: str, intent_analysis: Dict, domain: str, kb_analysis: Dict
-    ) -> str:
-
-        if not intent_analysis:
-            return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
-
-        primary_intent = intent_analysis.get("primary_intent", "일반")
-        answer_type = intent_analysis.get("answer_type_required", "설명형")
-
-        fallback_templates = {
-            "기관_묻기": self._get_institution_fallback(question, domain),
-            "특징_묻기": self._get_feature_fallback(question, domain),
-            "지표_묻기": self._get_indicator_fallback(question, domain),
-            "방안_묻기": self._get_solution_fallback(question, domain),
-            "절차_묻기": self._get_procedure_fallback(question, domain),
-            "조치_묻기": self._get_measure_fallback(question, domain),
-        }
-
-        intent_key = self._map_intent_to_key(primary_intent)
-        if intent_key in fallback_templates:
-            return fallback_templates[intent_key]
-
-        domain_fallbacks = {
-            "사이버보안": "사이버보안 위협에 대응하기 위해 다층 방어체계를 구축하고 실시간 모니터링을 수행해야 합니다.",
-            "개인정보보호": "개인정보보호법에 따라 정보주체의 권리를 보장하고 적절한 보호조치를 이행해야 합니다.",
-            "전자금융": "전자금융거래법에 따라 안전한 거래환경을 제공하고 이용자 보호를 위한 조치를 시행해야 합니다.",
-            "정보보안": "정보보안관리체계를 구축하고 보안정책에 따라 체계적인 관리를 수행해야 합니다.",
-            "금융투자": "자본시장법에 따라 투자자 보호와 시장 공정성 확보를 위한 조치를 시행해야 합니다.",
-            "위험관리": "위험관리 체계를 구축하고 체계적인 위험평가와 대응방안을 수립해야 합니다.",
-        }
-
-        return domain_fallbacks.get(
-            domain, "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
-        )
-
-    def _get_institution_fallback(self, question: str, domain: str) -> str:
-        if "전자금융" in question and "분쟁" in question:
-            return "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다."
-        elif "개인정보" in question:
-            return (
-                "개인정보보호위원회에서 개인정보 보호에 관한 업무를 총괄하고 있습니다."
-            )
-        elif "한국은행" in question:
-            return "한국은행에서 통화신용정책 수행과 지급결제제도 운영을 담당합니다."
-        else:
-            return "관련 전문 기관에서 해당 업무를 담당하고 있습니다."
-
-    def _get_feature_fallback(self, question: str, domain: str) -> str:
-        if "트로이" in question or "악성코드" in question:
-            return "트로이 목마는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다."
-        elif domain == "사이버보안":
-            return "해당 보안 위협의 주요 특징을 체계적으로 분석하여 대응 방안을 수립해야 합니다."
-        else:
-            return "주요 특징을 체계적으로 분석하고 관련 법령에 따라 관리해야 합니다."
-
-    def _get_indicator_fallback(self, question: str, domain: str) -> str:
-        if "트로이" in question or "악성코드" in question:
-            return "네트워크 트래픽 모니터링에서 비정상적인 외부 통신 패턴과 시스템 동작 분석에서 비인가 프로세스 실행이 주요 탐지 지표입니다."
-        elif domain == "사이버보안":
-            return "주요 탐지 지표를 통해 실시간 모니터링과 이상 징후 분석을 수행해야 합니다."
-        else:
-            return "관련 지표를 체계적으로 분석하고 모니터링하여 적절한 대응을 수행해야 합니다."
-
-    def _get_solution_fallback(self, question: str, domain: str) -> str:
-        if "딥페이크" in question:
-            return "딥페이크 기술 악용에 대비하여 다층 방어체계 구축과 실시간 탐지 시스템 도입 등의 종합적 대응방안이 필요합니다."
-        elif domain == "사이버보안":
-            return "다층 방어체계를 구축하고 실시간 모니터링과 침입탐지시스템을 운영하는 등의 종합적 보안 강화 방안이 필요합니다."
-        else:
-            return "체계적인 관리 방안을 수립하고 관련 법령과 규정에 따라 지속적인 개선을 수행해야 합니다."
-
-    def _get_procedure_fallback(self, question: str, domain: str) -> str:
-        return "관련 절차에 따라 단계별로 체계적인 수행과 지속적인 관리가 필요합니다."
-
-    def _get_measure_fallback(self, question: str, domain: str) -> str:
-        return "적절한 보안 조치를 시행하고 관련 법령과 규정에 따라 지속적인 관리가 필요합니다."
-
     def _map_intent_to_key(self, primary_intent: str) -> str:
+        """의도를 키로 매핑"""
         if "기관" in primary_intent:
             return "기관_묻기"
         elif "특징" in primary_intent:
@@ -663,9 +500,10 @@ class FinancialAIInference:
         else:
             return "일반"
 
-    def _process_multiple_choice_with_enhanced_llm(
+    def _process_multiple_choice_with_llm(
         self, question: str, max_choice: int, domain: str, kb_analysis: Dict
     ) -> str:
+        """LLM 기반 객관식 처리"""
 
         pattern_hints = None
         if self.optimization_config["mc_pattern_priority"]:
@@ -682,46 +520,13 @@ class FinancialAIInference:
         if answer and answer.isdigit() and 1 <= int(answer) <= max_choice:
             return answer
         else:
-            fallback = self._enhanced_retry_mc_with_llm(question, max_choice, domain)
+            fallback = self._retry_mc_with_llm(question, max_choice, domain)
             return fallback
 
-    def _process_subjective_with_template_examples(
-        self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict
-    ) -> str:
-
-        template_examples = None
-        if (
-            intent_analysis
-            and intent_analysis.get("intent_confidence", 0)
-            >= self.optimization_config["intent_confidence_threshold"]
-        ):
-
-            primary_intent = intent_analysis.get("primary_intent", "일반")
-
-            if self.optimization_config["template_preference"]:
-                intent_key = self._map_intent_to_key(primary_intent)
-
-                template_examples = self.knowledge_base.get_template_examples(
-                    domain, intent_key
-                )
-
-        answer = self.model_handler.generate_answer(
-            question,
-            "subjective",
-            5,
-            intent_analysis,
-            domain_hints={
-                "domain": domain,
-                "template_examples": template_examples,
-                "template_guidance": True,
-            },
-        )
-
-        return answer
-
-    def _enhanced_retry_mc_with_llm(
+    def _retry_mc_with_llm(
         self, question: str, max_choice: int, domain: str
     ) -> str:
+        """LLM 기반 객관식 재시도"""
         context_hints = self.model_handler._analyze_mc_context(question, domain)
         retry_answer = self.model_handler.generate_answer(
             question,
@@ -753,9 +558,10 @@ class FinancialAIInference:
 
         return retry_answer
 
-    def _process_institution_question_with_enhanced_llm(
+    def _process_institution_question_with_llm(
         self, question: str, kb_analysis: Dict, intent_analysis: Dict
     ) -> str:
+        """LLM 기반 기관 질문 처리"""
         institution_info = kb_analysis.get("institution_info", {})
 
         institution_hints = None
@@ -781,6 +587,7 @@ class FinancialAIInference:
     def _enhance_institution_answer(
         self, answer: str, question: str, institution_info: Dict
     ) -> str:
+        """기관 답변 강화"""
         if not answer:
             return answer
 
@@ -799,7 +606,7 @@ class FinancialAIInference:
 
         return answer
 
-    def _enhanced_validate_and_improve_answer(
+    def _validate_and_improve_answer(
         self,
         answer: str,
         question: str,
@@ -809,6 +616,7 @@ class FinancialAIInference:
         intent_analysis: Dict = None,
         kb_analysis: Dict = None,
     ) -> str:
+        """답변 검증 및 개선"""
 
         if question_type == "multiple_choice":
             return answer
@@ -852,7 +660,7 @@ class FinancialAIInference:
                         question, intent_analysis, domain, kb_analysis
                     )
 
-        quality_score = self._calculate_enhanced_quality_score(
+        quality_score = self._calculate_quality_score(
             answer, question, intent_analysis
         )
         if quality_score < 0.3:
@@ -863,7 +671,7 @@ class FinancialAIInference:
             else:
                 improved_answer = "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
 
-            improved_quality = self._calculate_enhanced_quality_score(
+            improved_quality = self._calculate_quality_score(
                 improved_answer, question, intent_analysis
             )
 
@@ -891,6 +699,7 @@ class FinancialAIInference:
     def _validate_korean_answer_relaxed(
         self, answer: str, question_type: str, max_choice: int = 5, question: str = ""
     ) -> bool:
+        """완화된 한국어 답변 검증"""
         if not answer:
             return False
 
@@ -963,6 +772,7 @@ class FinancialAIInference:
     def _optimize_answer_structure(
         self, answer: str, intent_analysis: Dict = None
     ) -> str:
+        """답변 구조 최적화"""
         if not answer or len(answer) < 20:
             return answer
 
@@ -1025,15 +835,16 @@ class FinancialAIInference:
 
         return answer
 
-    def _get_enhanced_intent_based_fallback(
+    def _get_intent_based_fallback(
         self, question: str, question_type: str, max_choice: int
     ) -> str:
+        """의도 기반 대체 답변"""
 
         intent_analysis = self.data_processor.analyze_question_intent(question)
         domain = self.data_processor.extract_domain(question)
 
         if question_type == "multiple_choice":
-            return self._get_enhanced_safe_mc_answer_with_llm(
+            return self._get_safe_mc_answer_with_llm(
                 question, max_choice, domain
             )
         else:
@@ -1041,9 +852,10 @@ class FinancialAIInference:
                 question, intent_analysis, domain, {}
             )
 
-    def _calculate_enhanced_quality_score(
+    def _calculate_quality_score(
         self, answer: str, question: str, intent_analysis: Dict = None
     ) -> float:
+        """품질 점수 계산"""
         if not answer:
             return 0.0
 
@@ -1095,6 +907,7 @@ class FinancialAIInference:
         return min(score, 1.0)
 
     def _optimize_answer_length(self, answer: str) -> str:
+        """답변 길이 최적화"""
         if not answer:
             return answer
 
@@ -1113,9 +926,10 @@ class FinancialAIInference:
 
         return answer
 
-    def _get_enhanced_safe_mc_answer_with_llm(
+    def _get_safe_mc_answer_with_llm(
         self, question: str, max_choice: int, domain: str = "일반"
     ) -> str:
+        """안전한 LLM 객관식 답변"""
         if max_choice <= 0:
             max_choice = 5
 
@@ -1135,6 +949,7 @@ class FinancialAIInference:
         return fallback_answer
 
     def _simple_save_csv(self, df: pd.DataFrame, filepath: str) -> bool:
+        """간단한 CSV 저장"""
         filepath = Path(filepath)
 
         try:
@@ -1160,6 +975,7 @@ class FinancialAIInference:
         submission_file: str = None,
         output_file: str = None,
     ) -> Dict:
+        """추론 실행"""
 
         test_file = test_file or DEFAULT_FILES["test_file"]
         submission_file = submission_file or DEFAULT_FILES["submission_file"]
@@ -1179,6 +995,7 @@ class FinancialAIInference:
         submission_df: pd.DataFrame,
         output_file: str = None,
     ) -> Dict:
+        """데이터를 이용한 추론 실행"""
 
         output_file = output_file or DEFAULT_FILES["output_file"]
 
@@ -1208,12 +1025,14 @@ class FinancialAIInference:
         return self._get_results_summary()
 
     def _get_results_summary(self) -> Dict:
+        """결과 요약"""
         return {
             "success": True,
             "total_time": time.time() - self.start_time,
         }
 
     def cleanup(self):
+        """리소스 정리"""
         try:
             if hasattr(self, "model_handler"):
                 self.model_handler.cleanup()
@@ -1232,6 +1051,7 @@ class FinancialAIInference:
 
 
 def main():
+    """메인 실행 함수"""
 
     engine = None
     try:

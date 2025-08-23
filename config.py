@@ -11,7 +11,6 @@ OFFLINE_MODE = {"TRANSFORMERS_OFFLINE": "1", "HF_DATASETS_OFFLINE": "1"}
 
 BASE_DIR = Path(__file__).parent.absolute()
 PKL_DIR = BASE_DIR / "pkl"
-JSON_CONFIG_DIR = BASE_DIR / "configs"
 
 DEFAULT_FILES = {
     "test_file": "./test.csv",
@@ -115,19 +114,15 @@ FILE_VALIDATION = {
     "max_file_size_mb": 100,
 }
 
-JSON_CONFIG_FILES = {
-    "knowledge_data": JSON_CONFIG_DIR / "knowledge_data.json",
-    "model_config": JSON_CONFIG_DIR / "model_config.json",
-    "processing_config": JSON_CONFIG_DIR / "processing_config.json",
-}
-
 
 def setup_environment():
+    """환경 설정"""
     for key, value in OFFLINE_MODE.items():
         os.environ[key] = value
 
 
 def get_device():
+    """디바이스 설정"""
     if DEVICE_AUTO_SELECT:
         import torch
 
@@ -136,11 +131,12 @@ def get_device():
 
 
 def ensure_directories():
+    """디렉토리 생성"""
     PKL_DIR.mkdir(exist_ok=True)
-    JSON_CONFIG_DIR.mkdir(exist_ok=True)
 
 
 def validate_config():
+    """설정 검증"""
     errors = []
 
     if not 0 <= KOREAN_REQUIREMENTS["min_korean_ratio"] <= 1:
@@ -161,6 +157,7 @@ def validate_config():
 def adjust_generation_for_repetition_risk(
     question_type: str, risk_level: str = "medium"
 ):
+    """반복 위험에 따른 생성 설정 조정"""
     risk_adjustments = {
         "low": {
             "repetition_penalty": 1.1,
@@ -185,6 +182,7 @@ def adjust_generation_for_repetition_risk(
 
 
 def initialize_system():
+    """시스템 초기화"""
     setup_environment()
     ensure_directories()
     validate_config()

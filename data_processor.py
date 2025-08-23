@@ -1,67 +1,605 @@
 # data_processor.py
 
 import re
-import json
 import unicodedata
 from typing import Dict, List, Tuple
 from datetime import datetime
 from pathlib import Path
 
-from config import KOREAN_REQUIREMENTS, JSON_CONFIG_FILES
+from config import KOREAN_REQUIREMENTS
 
 
 class SimpleDataProcessor:
 
     def __init__(self):
-        self._load_json_configs()
+        self._initialize_integrated_data()
 
         self.korean_requirements = KOREAN_REQUIREMENTS.copy()
         self.korean_requirements["min_korean_ratio"] = 0.4
         self.korean_requirements["max_english_ratio"] = 0.3
         self.korean_requirements["min_length"] = 15
 
-    def _load_json_configs(self):
-        try:
-            with open(
-                JSON_CONFIG_FILES["processing_config"], "r", encoding="utf-8"
-            ) as f:
-                processing_config = json.load(f)
+    def _initialize_integrated_data(self):
+        """JSON 데이터를 코드 내부로 통합하여 초기화"""
+        
+        # mc_patterns 데이터
+        self.mc_patterns = [
+            "1\\s+[가-힣\\w].*\\n2\\s+[가-힣\\w].*\\n3\\s+[가-힣\\w]",
+            "①.*②.*③.*④.*⑤",
+            "1\\s+[가-힣].*2\\s+[가-힣].*3\\s+[가-힣].*4\\s+[가-힣].*5\\s+[가-힣]",
+            "1\\s+.*2\\s+.*3\\s+.*4\\s+.*5\\s+",
+            "1\\.\\s*.*2\\.\\s*.*3\\.\\s*.*4\\.\\s*.*5\\.",
+            "1\\)\\s*.*2\\)\\s*.*3\\)\\s*.*4\\)\\s*.*5\\)"
+        ]
 
-            self.mc_patterns = processing_config["mc_patterns"]
-            self.mc_keywords = processing_config["mc_keywords"]
-            self.question_intent_patterns = processing_config[
-                "question_intent_patterns"
+        # mc_keywords 데이터
+        self.mc_keywords = [
+            "해당하지.*않는.*것",
+            "적절하지.*않는.*것",
+            "옳지.*않는.*것",
+            "틀린.*것",
+            "맞는.*것",
+            "옳은.*것",
+            "적절한.*것",
+            "올바른.*것",
+            "가장.*적절한.*것",
+            "가장.*옳은.*것",
+            "구분.*해당하지.*않는.*것",
+            "다음.*중.*것은",
+            "다음.*중.*것",
+            "다음.*보기.*중",
+            "무엇인가\\?$",
+            "어떤.*것인가\\?$",
+            "몇.*개인가\\?$"
+        ]
+
+        # question_intent_patterns 데이터
+        self.question_intent_patterns = {
+            "기관_묻기": [
+                "기관.*기술하세요",
+                "기관.*설명하세요",
+                "기관.*서술하세요",
+                "기관.*무엇",
+                "어떤.*기관",
+                "어느.*기관",
+                "기관.*어디",
+                "분쟁조정을.*신청할.*수.*있는.*기관",
+                "조정.*신청.*기관",
+                "분쟁.*조정.*기관",
+                "신청.*수.*있는.*기관",
+                "분쟁.*해결.*기관",
+                "조정.*담당.*기관",
+                "감독.*기관",
+                "관리.*기관",
+                "담당.*기관",
+                "주관.*기관",
+                "소관.*기관",
+                "신고.*기관",
+                "접수.*기관",
+                "상담.*기관",
+                "문의.*기관",
+                "위원회.*무엇",
+                "위원회.*어디",
+                "위원회.*설명",
+                "전자금융.*분쟁.*기관",
+                "전자금융.*조정.*기관",
+                "개인정보.*신고.*기관",
+                "개인정보.*보호.*기관",
+                "개인정보.*침해.*기관"
+            ],
+            "특징_묻기": [
+                "특징.*설명하세요",
+                "특징.*기술하세요",
+                "특징.*서술하세요",
+                "어떤.*특징",
+                "주요.*특징",
+                "특징.*무엇",
+                "성격.*설명",
+                "성질.*설명",
+                "속성.*설명",
+                "특성.*설명",
+                "특성.*무엇",
+                "성격.*무엇",
+                "특성.*기술",
+                "속성.*기술",
+                "기반.*원격제어.*악성코드.*특징",
+                "트로이.*특징",
+                "RAT.*특징"
+            ],
+            "지표_묻기": [
+                "지표.*설명하세요",
+                "탐지.*지표",
+                "주요.*지표",
+                "어떤.*지표",
+                "지표.*무엇",
+                "징후.*설명",
+                "신호.*설명",
+                "패턴.*설명",
+                "행동.*패턴",
+                "활동.*패턴",
+                "모니터링.*지표",
+                "관찰.*지표",
+                "식별.*지표",
+                "발견.*방법",
+                "탐지.*방법",
+                "주요.*탐지.*지표",
+                "악성코드.*탐지.*지표",
+                "원격제어.*탐지.*지표"
+            ],
+            "방안_묻기": [
+                "방안.*기술하세요",
+                "방안.*설명하세요",
+                "대응.*방안",
+                "해결.*방안",
+                "관리.*방안",
+                "어떤.*방안",
+                "대책.*설명",
+                "조치.*방안",
+                "처리.*방안",
+                "개선.*방안",
+                "예방.*방안",
+                "보완.*방안",
+                "강화.*방안",
+                "딥페이크.*대응.*방안",
+                "금융권.*대응.*방안",
+                "악용.*대비.*방안"
+            ],
+            "절차_묻기": [
+                "절차.*설명하세요",
+                "절차.*기술하세요",
+                "어떤.*절차",
+                "처리.*절차",
+                "진행.*절차",
+                "수행.*절차",
+                "실행.*절차",
+                "과정.*설명",
+                "단계.*설명",
+                "프로세스.*설명"
+            ],
+            "조치_묻기": [
+                "조치.*설명하세요",
+                "조치.*기술하세요",
+                "어떤.*조치",
+                "보안.*조치",
+                "대응.*조치",
+                "예방.*조치",
+                "개선.*조치",
+                "강화.*조치",
+                "보완.*조치"
+            ],
+            "법령_묻기": [
+                "법령.*설명",
+                "법률.*설명",
+                "규정.*설명",
+                "조항.*설명",
+                "규칙.*설명",
+                "기준.*설명",
+                "법적.*근거",
+                "관련.*법",
+                "적용.*법"
+            ],
+            "정의_묻기": [
+                "정의.*설명",
+                "개념.*설명",
+                "의미.*설명",
+                "뜻.*설명",
+                "무엇.*의미",
+                "무엇.*뜻",
+                "용어.*설명",
+                "개념.*무엇"
             ]
-            self.subj_patterns = processing_config["subj_patterns"]
+        }
 
-            self.korean_recovery_config = processing_config["korean_text_recovery"]
-            self.korean_quality_patterns = processing_config["korean_quality_patterns"]
+        # subj_patterns 데이터
+        self.subj_patterns = [
+            "설명하세요",
+            "기술하세요",
+            "서술하세요",
+            "작성하세요",
+            "무엇인가요",
+            "어떻게.*해야.*하며",
+            "방안을.*기술",
+            "대응.*방안",
+            "특징.*다음과.*같",
+            "탐지.*지표",
+            "행동.*패턴",
+            "분석하여.*제시",
+            "조치.*사항",
+            "제시하시오",
+            "논하시오",
+            "답하시오",
+            "특징과.*주요.*탐지.*지표를.*설명하세요",
+            "기관을.*기술하세요",
+            "대응.*방안을.*기술하세요"
+        ]
 
-            self._setup_korean_recovery_mappings()
+        # korean_text_recovery 데이터
+        self.korean_recovery_config = {
+            "broken_unicode_chars": {
+                "\\u1100": "",
+                "\\u1101": "",
+                "\\u1102": "",
+                "\\u1103": "",
+                "\\u1104": "",
+                "\\u1105": "",
+                "\\u1106": "",
+                "\\u1107": "",
+                "\\u1108": "",
+                "\\u1109": "",
+                "\\u110A": "",
+                "\\u110B": "",
+                "\\u110C": "",
+                "\\u110D": "",
+                "\\u110E": "",
+                "\\u110F": "",
+                "\\u1110": "",
+                "\\u1111": "",
+                "\\u1112": "",
+                "\\u1161": "",
+                "\\u1162": "",
+                "\\u1163": "",
+                "\\u1164": "",
+                "\\u1165": "",
+                "\\u1166": "",
+                "\\u1167": "",
+                "\\u1168": "",
+                "\\u1169": "",
+                "\\u116A": "",
+                "\\u116B": "",
+                "\\u116C": "",
+                "\\u116D": "",
+                "\\u116E": "",
+                "\\u116F": "",
+                "\\u1170": "",
+                "\\u1171": "",
+                "\\u1172": "",
+                "\\u1173": "",
+                "\\u1174": "",
+                "\\u1175": "",
+                "\\u11A8": "",
+                "\\u11A9": "",
+                "\\u11AA": "",
+                "\\u11AB": "",
+                "\\u11AC": "",
+                "\\u11AD": "",
+                "\\u11AE": "",
+                "\\u11AF": "",
+                "\\u11B0": "",
+                "\\u11B1": "",
+                "\\u11B2": "",
+                "\\u11B3": "",
+                "\\u11B4": "",
+                "\\u11B5": "",
+                "\\u11B6": "",
+                "\\u11B7": "",
+                "\\u11B8": "",
+                "\\u11B9": "",
+                "\\u11BA": "",
+                "\\u11BB": "",
+                "\\u11BC": "",
+                "\\u11BD": "",
+                "\\u11BE": "",
+                "\\u11BF": "",
+                "\\u11C0": "",
+                "\\u11C1": "",
+                "\\u11C2": ""
+            },
+            "japanese_katakana_removal": {
+                "ト": "",
+                "リ": "",
+                "ス": "",
+                "ン": "",
+                "ー": "",
+                "ィ": "",
+                "ウ": "",
+                "エ": "",
+                "オ": "",
+                "カ": "",
+                "キ": "",
+                "ク": "",
+                "ケ": "",
+                "コ": "",
+                "サ": "",
+                "シ": "",
+                "セ": "",
+                "ソ": "",
+                "タ": "",
+                "チ": "",
+                "ツ": "",
+                "テ": "",
+                "ナ": "",
+                "ニ": "",
+                "ヌ": "",
+                "ネ": "",
+                "ノ": "",
+                "ハ": "",
+                "ヒ": "",
+                "フ": "",
+                "ヘ": "",
+                "ホ": "",
+                "マ": "",
+                "ミ": "",
+                "ム": "",
+                "メ": "",
+                "モ": "",
+                "ヤ": "",
+                "ユ": "",
+                "ヨ": "",
+                "ラ": "",
+                "ル": "",
+                "レ": "",
+                "ロ": "",
+                "ワ": "",
+                "ヰ": "",
+                "ヱ": "",
+                "ヲ": ""
+            },
+            "broken_korean_patterns": {
+                "어어지인": "",
+                "선 어": "",
+                "언 어": "",
+                "순 어": "",
+                "ᄒᆞᆫ": "",
+                "ᄒᆞᆫ선": "",
+                "어어지인가": "",
+                "지인가": "",
+                "가 시": "",
+                "시 언": "",
+                "언 어어": "",
+                "지인)가": "",
+                "순 어어": "",
+                "지인.": ""
+            },
+            "spaced_korean_fixes": {
+                "작 로": "으로",
+                "렴": "련",
+                "니 터": "니터",
+                "지 속": "지속",
+                "모 니": "모니",
+                "체 계": "체계",
+                "관 리": "관리",
+                "법 령": "법령",
+                "규 정": "규정",
+                "조 치": "조치",
+                "절 차": "절차",
+                "대 응": "대응",
+                "방 안": "방안",
+                "기 관": "기관",
+                "위 원": "위원",
+                "감 독": "감독",
+                "전 자": "전자",
+                "금 융": "금융",
+                "개 인": "개인",
+                "정 보": "정보",
+                "보 호": "보호",
+                "관 련": "관련",
+                "필 요": "필요",
+                "중 요": "중요",
+                "주 요": "주요",
+                "시 스": "시스",
+                "템": "템",
+                "프 로": "프로",
+                "세 스": "세스",
+                "네 트": "네트",
+                "워 크": "워크",
+                "트 래": "트래",
+                "픽": "픽",
+                "파 일": "파일",
+                "로 그": "로그",
+                "연 결": "연결",
+                "접 근": "접근",
+                "권 한": "권한",
+                "사 용": "사용",
+                "계 정": "계정",
+                "활 동": "활동",
+                "패 턴": "패턴",
+                "행 동": "행동",
+                "모 니 터 링": "모니터링",
+                "탐 지": "탐지",
+                "발 견": "발견",
+                "식 별": "식별",
+                "분 석": "분석",
+                "확 인": "확인",
+                "점 검": "점검",
+                "감 사": "감사",
+                "보 안": "보안",
+                "안 전": "안전",
+                "위 험": "위험",
+                "내 부": "내부",
+                "외 부": "외부",
+                "시 행": "시행",
+                "실 시": "실시",
+                "수 립": "수립",
+                "구 축": "구축",
+                "마 련": "마련",
+                "준 비": "준비",
+                "실 행": "실행",
+                "진 행": "진행",
+                "처 리": "처리",
+                "관 찰": "관찰",
+                "추 적": "추적",
+                "기 록": "기록",
+                "저 장": "저장",
+                "백 업": "백업",
+                "복 구": "복구",
+                "복 원": "복원",
+                "복 사": "복사",
+                "이 동": "이동",
+                "전 송": "전송",
+                "수 신": "수신",
+                "발 신": "발신",
+                "전 달": "전달",
+                "통 신": "통신",
+                "연 락": "연락",
+                "회 의": "회의",
+                "논 의": "논의",
+                "검 토": "검토",
+                "평 가": "평가",
+                "심 사": "심사",
+                "심 의": "심의",
+                "승 인": "승인",
+                "허 가": "허가",
+                "인 가": "인가",
+                "등 록": "등록",
+                "신 청": "신청",
+                "요 청": "요청",
+                "신 고": "신고",
+                "보 고": "보고",
+                "통 보": "통보",
+                "고 지": "고지",
+                "안 내": "안내",
+                "지 침": "지침",
+                "지 시": "지시",
+                "명 령": "명령",
+                "지 도": "지도",
+                "교 육": "교육",
+                "훈 련": "훈련",
+                "연 수": "연수",
+                "학 습": "학습",
+                "습 득": "습득",
+                "이 해": "이해",
+                "파 악": "파악",
+                "인 식": "인식",
+                "감 지": "감지"
+            },
+            "common_korean_typos": {
+                "윋": "융",
+                "젂": "전",
+                "엯": "연",
+                "룐": "른",
+                "겫": "결",
+                "뷮": "분",
+                "쟈": "저",
+                "럭": "력",
+                "솟": "솔",
+                "쟣": "저",
+                "뿣": "불",
+                "뻙": "분",
+                "걗": "것",
+                "룊": "른",
+                "믝": "미",
+                "읶": "인",
+                "멈": "멈",
+                "솔": "솔",
+                "랛": "란",
+                "궗": "사",
+                "쪗": "저",
+                "롸": "로",
+                "뿞": "분",
+                "딞": "딘",
+                "쭒": "주",
+                "놟": "놓",
+                "룍": "른",
+                "쫒": "조",
+                "놔": "놔"
+            }
+        }
 
-            with open(JSON_CONFIG_FILES["knowledge_data"], "r", encoding="utf-8") as f:
-                knowledge_data = json.load(f)
+        # korean_quality_patterns 데이터
+        self.korean_quality_patterns = [
+            {
+                "pattern": r"([가-힣])\s+(은|는|이|가|을|를|에|의|와|과|로|으로)\s+",
+                "replacement": r"\1\2 "
+            },
+            {
+                "pattern": r"([가-힣])\s+(다|요|함|니다|습니다)\s*\.",
+                "replacement": r"\1\2."
+            },
+            {
+                "pattern": r"([가-힣])\s*$",
+                "replacement": r"\1."
+            },
+            {
+                "pattern": r"\.+",
+                "replacement": "."
+            },
+            {
+                "pattern": r"\s*\.\s*",
+                "replacement": ". "
+            },
+            {
+                "pattern": r"\s+",
+                "replacement": " "
+            },
+            {
+                "pattern": r"\(\s*\)",
+                "replacement": ""
+            },
+            {
+                "pattern": r"\(\s*\)\s*[가-힣]{1,3}",
+                "replacement": ""
+            },
+            {
+                "pattern": r"[.,!?]{3,}",
+                "replacement": "."
+            },
+            {
+                "pattern": r"\s+[.,!?]\s+",
+                "replacement": ". "
+            }
+        ]
 
-            self.domain_keywords = knowledge_data["domain_keywords"]
+        # domain_keywords 데이터
+        self.domain_keywords = {
+            "개인정보보호": [
+                "개인정보", "정보주체", "개인정보보호법", "민감정보", "고유식별정보",
+                "수집", "이용", "제공", "파기", "동의", "법정대리인", "아동", "처리",
+                "개인정보처리방침", "열람권", "정정삭제권", "처리정지권", "손해배상",
+                "개인정보보호위원회", "개인정보영향평가", "개인정보관리체계",
+                "개인정보처리시스템", "개인정보보호책임자", "개인정보취급자",
+                "개인정보침해신고센터", "PIMS", "관리체계 수립", "정책 수립",
+                "만 14세", "미만 아동", "중요한 요소", "경영진", "최고책임자",
+                "자원 할당", "내부 감사"
+            ],
+            "전자금융": [
+                "전자금융", "전자적", "접근매체", "전자금융거래법", "전자서명",
+                "전자인증", "공인인증서", "분쟁조정", "전자지급수단", "전자화폐",
+                "금융감독원", "한국은행", "전자금융업", "전자금융분쟁조정위원회",
+                "전자금융거래", "전자금융업무", "전자금융서비스", "전자금융거래기록",
+                "이용자", "금융통화위원회", "자료제출", "통화신용정책", "지급결제제도",
+                "요청", "요구", "경우", "보안 강화", "통계조사", "경영 실적", "원활한 운영"
+            ],
+            "사이버보안": [
+                "트로이", "악성코드", "멀웨어", "바이러스", "피싱", "스미싱", "랜섬웨어",
+                "해킹", "딥페이크", "원격제어", "RAT", "원격접근", "봇넷", "백도어",
+                "루트킷", "취약점", "제로데이", "사회공학", "APT", "DDoS", "침입탐지",
+                "침입방지", "보안관제", "SBOM", "소프트웨어 구성 요소", "Trojan",
+                "원격제어 악성코드", "탐지 지표", "보안 위협", "특징", "주요 탐지",
+                "금융권", "활용", "이유", "적절한", "소프트웨어", "접근 제어",
+                "투명성", "다양성", "공급망 보안"
+            ],
+            "정보보안": [
+                "정보보안", "보안관리", "ISMS", "보안정책", "접근통제", "암호화",
+                "방화벽", "침입탐지", "침입방지시스템", "IDS", "IPS", "보안관제",
+                "로그관리", "백업", "복구", "재해복구", "BCP", "정보보안관리체계",
+                "정보보호", "관리체계 수립", "정책 수립", "최고책임자", "경영진",
+                "자원 할당", "내부 감사", "절차 수립", "복구 절차", "비상연락체계",
+                "개인정보 파기", "복구 목표시간", "옳지 않은", "고려", "요소"
+            ],
+            "금융투자": [
+                "금융투자업", "투자자문업", "투자매매업", "투자중개업", "소비자금융업",
+                "보험중개업", "자본시장법", "집합투자업", "신탁업", "펀드", "파생상품",
+                "투자자보호", "적합성원칙", "설명의무", "금융산업", "구분",
+                "해당하지 않는", "금융산업의 이해"
+            ],
+            "위험관리": [
+                "위험관리", "위험평가", "위험대응", "위험수용", "리스크", "내부통제",
+                "컴플라이언스", "위험식별", "위험분석", "위험모니터링", "위험회피",
+                "위험전가", "위험감소", "잔여위험", "위험성향", "위험 관리 계획",
+                "수행인력", "위험 대응 전략", "재해 복구", "복구 절차", "비상연락체계",
+                "복구 목표시간", "계획 수립", "고려", "요소", "적절하지 않은", "대상", "기간"
+            ]
+        }
 
-            print("데이터 처리 설정 파일 로드 완료")
+        self._setup_korean_recovery_mappings()
 
-        except FileNotFoundError as e:
-            print(f"설정 파일을 찾을 수 없습니다: {e}")
-            self._load_default_configs()
-        except json.JSONDecodeError as e:
-            print(f"JSON 파일 파싱 오류: {e}")
-            self._load_default_configs()
-        except Exception as e:
-            print(f"설정 파일 로드 중 오류: {e}")
-            self._load_default_configs()
+        print("통합 데이터 초기화 완료")
 
     def _setup_korean_recovery_mappings(self):
+        """한국어 복구 매핑 설정"""
         self.korean_recovery_mapping = {}
 
-        for broken, replacement in self.korean_recovery_config[
-            "broken_unicode_chars"
-        ].items():
+        for broken, replacement in self.korean_recovery_config["broken_unicode_chars"].items():
             try:
                 actual_char = broken.encode().decode("unicode_escape")
                 self.korean_recovery_mapping[actual_char] = replacement
@@ -90,65 +628,8 @@ class SimpleDataProcessor:
         }
         self.korean_recovery_mapping.update(problematic_patterns)
 
-    def _load_default_configs(self):
-        print("기본 설정으로 대체합니다.")
-
-        self.mc_patterns = [
-            r"1\s+[가-힣\w].*\n2\s+[가-힣\w].*\n3\s+[가-힣\w]",
-            r"①.*②.*③.*④.*⑤",
-        ]
-
-        self.mc_keywords = [
-            r"해당하지.*않는.*것",
-            r"적절하지.*않는.*것",
-            r"옳지.*않는.*것",
-            r"맞는.*것",
-            r"옳은.*것",
-            r"적절한.*것",
-        ]
-
-        self.question_intent_patterns = {
-            "기관_묻기": ["기관.*기술하세요", "기관.*설명하세요"],
-            "특징_묻기": ["특징.*설명하세요", "특징.*기술하세요"],
-            "지표_묻기": ["지표.*설명하세요", "탐지.*지표"],
-            "방안_묻기": ["방안.*기술하세요", "방안.*설명하세요"],
-            "절차_묻기": ["절차.*설명하세요", "절차.*기술하세요"],
-            "조치_묻기": ["조치.*설명하세요", "조치.*기술하세요"],
-        }
-
-        self.subj_patterns = [
-            r"설명하세요",
-            r"기술하세요",
-            r"서술하세요",
-            r"작성하세요",
-        ]
-
-        self.domain_keywords = {"일반": ["법령", "규정", "관리", "조치", "절차"]}
-
-        self.korean_recovery_mapping = {
-            "어어지인": "",
-            "선 어": "",
-            "언 어": "",
-            "순 어": "",
-            "ᄒᆞᆫ": "",
-            "작로": "으로",
-            "갈취 묻는 말": "",
-            "묻고 갈취": "",
-        }
-
-        self.korean_quality_patterns = [
-            {
-                "pattern": r"([가-힣])\s+(은|는|이|가|을|를|에|의|와|과|로|으로)\s+",
-                "replacement": r"\1\2 ",
-            },
-            {
-                "pattern": r"([가-힣])\s+(다|요|함|니다|습니다)\s*\.",
-                "replacement": r"\1\2.",
-            },
-            {"pattern": r"\s+", "replacement": " "},
-        ]
-
     def detect_critical_repetitive_patterns(self, text: str) -> bool:
+        """문제 패턴 감지"""
         if not text or len(text) < 20:
             return False
 
@@ -178,6 +659,7 @@ class SimpleDataProcessor:
         return False
 
     def remove_critical_repetitive_patterns(self, text: str) -> str:
+        """문제 패턴 제거"""
         if not text:
             return ""
 
@@ -223,6 +705,7 @@ class SimpleDataProcessor:
         return text
 
     def restore_korean_characters(self, text: str) -> str:
+        """한국어 문자 복구"""
         if not text:
             return ""
 
@@ -241,6 +724,7 @@ class SimpleDataProcessor:
         return text
 
     def enhance_korean_text_quality(self, text: str) -> str:
+        """한국어 텍스트 품질 향상"""
         if not text:
             return ""
 
@@ -266,6 +750,7 @@ class SimpleDataProcessor:
         return text
 
     def fix_grammatical_structure(self, text: str) -> str:
+        """문법 구조 수정"""
         if not text:
             return ""
 
@@ -342,6 +827,7 @@ class SimpleDataProcessor:
         return result
 
     def analyze_question_intent(self, question: str) -> Dict:
+        """질문 의도 분석"""
         question_lower = question.lower()
 
         intent_analysis = {
@@ -442,6 +928,7 @@ class SimpleDataProcessor:
         return intent_analysis
 
     def _add_context_analysis(self, question: str, intent_analysis: Dict):
+        """문맥 분석 추가"""
         question_lower = question.lower()
 
         urgency_keywords = ["긴급", "즉시", "신속", "빠른"]
@@ -461,6 +948,7 @@ class SimpleDataProcessor:
             intent_analysis["context_hints"].append("단계별 설명 필요")
 
     def extract_choice_range(self, question: str) -> Tuple[str, int]:
+        """선택지 범위 추출"""
         question_type = self.analyze_question_type(question)
 
         if question_type != "multiple_choice":
@@ -504,6 +992,7 @@ class SimpleDataProcessor:
         return "subjective", 0
 
     def analyze_question_type(self, question: str) -> str:
+        """질문 유형 분석"""
 
         question = question.strip()
 
@@ -543,6 +1032,7 @@ class SimpleDataProcessor:
         return "subjective"
 
     def extract_domain(self, question: str) -> str:
+        """도메인 추출"""
         question_lower = question.lower()
 
         domain_scores = {}
@@ -603,6 +1093,7 @@ class SimpleDataProcessor:
         return detected_domain
 
     def clean_korean_text(self, text: str) -> str:
+        """한국어 텍스트 정리"""
         if not text:
             return ""
 
@@ -640,6 +1131,7 @@ class SimpleDataProcessor:
         return text
 
     def calculate_korean_ratio(self, text: str) -> float:
+        """한국어 비율 계산"""
         if not text:
             return 0.0
 
@@ -652,6 +1144,7 @@ class SimpleDataProcessor:
         return korean_chars / total_chars
 
     def calculate_english_ratio(self, text: str) -> float:
+        """영어 비율 계산"""
         if not text:
             return 0.0
 
@@ -664,6 +1157,7 @@ class SimpleDataProcessor:
         return english_chars / total_chars
 
     def validate_mc_answer_range(self, answer: str, max_choice: int) -> bool:
+        """객관식 답변 범위 확인"""
         if not answer or not answer.isdigit():
             return False
 
@@ -673,6 +1167,7 @@ class SimpleDataProcessor:
     def validate_answer_intent_match(
         self, answer: str, question: str, intent_analysis: Dict
     ) -> bool:
+        """답변과 의도 매칭 검증"""
         if not answer or not intent_analysis:
             return False
 
@@ -973,6 +1468,7 @@ class SimpleDataProcessor:
     def validate_korean_answer(
         self, answer: str, question_type: str, max_choice: int = 5, question: str = ""
     ) -> bool:
+        """한국어 답변 검증"""
         if not answer:
             return False
 
@@ -1058,12 +1554,15 @@ class SimpleDataProcessor:
     def validate_answer(
         self, answer: str, question_type: str, max_choice: int = 5, question: str = ""
     ) -> bool:
+        """답변 검증"""
         return self.validate_korean_answer(answer, question_type, max_choice, question)
 
     def clean_text(self, text: str) -> str:
+        """텍스트 정리"""
         return self.clean_korean_text(text)
 
     def extract_choices(self, question: str) -> List[str]:
+        """선택지 추출"""
         choices = []
 
         lines = question.split("\n")
@@ -1101,6 +1600,7 @@ class SimpleDataProcessor:
         return choices[:5]
 
     def analyze_question_difficulty(self, question: str) -> str:
+        """질문 난이도 분석"""
         question_lower = question.lower()
 
         technical_terms = [
@@ -1151,6 +1651,7 @@ class SimpleDataProcessor:
     def normalize_korean_answer(
         self, answer: str, question_type: str, max_choice: int = 5
     ) -> str:
+        """한국어 답변 정규화"""
         if not answer:
             return ""
 
@@ -1199,7 +1700,9 @@ class SimpleDataProcessor:
     def normalize_answer(
         self, answer: str, question_type: str, max_choice: int = 5
     ) -> str:
+        """답변 정규화"""
         return self.normalize_korean_answer(answer, question_type, max_choice)
 
     def cleanup(self):
+        """리소스 정리"""
         pass

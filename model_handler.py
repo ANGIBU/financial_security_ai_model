@@ -6,7 +6,6 @@ import time
 import gc
 import random
 import os
-import json
 import unicodedata
 from datetime import datetime
 from typing import Dict, Optional, Tuple, List
@@ -21,7 +20,6 @@ from config import (
     MODEL_CONFIG,
     GENERATION_CONFIG,
     OPTIMIZATION_CONFIG,
-    JSON_CONFIG_FILES,
     MEMORY_CONFIG,
     get_device,
 )
@@ -34,7 +32,7 @@ class SimpleModelHandler:
         self.verbose = verbose
         self.device = get_device()
 
-        self._load_json_configs()
+        self._initialize_integrated_data()
 
         self.optimization_config = OPTIMIZATION_CONFIG
 
@@ -68,6 +66,7 @@ class SimpleModelHandler:
             print("모델 로딩 완료")
 
     def _optimize_tokenizer_for_korean(self):
+        """토크나이저 한국어 최적화"""
         if hasattr(self.tokenizer, "do_lower_case"):
             self.tokenizer.do_lower_case = False
 
@@ -77,42 +76,467 @@ class SimpleModelHandler:
         special_tokens = ["<korean>", "</korean>"]
         self.tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
 
-    def _load_json_configs(self):
-        try:
-            with open(JSON_CONFIG_FILES["model_config"], "r", encoding="utf-8") as f:
-                model_config = json.load(f)
+    def _initialize_integrated_data(self):
+        """JSON 데이터를 코드 내부로 통합하여 초기화"""
+        
+        # mc_context_patterns 데이터
+        self.mc_context_patterns = {
+            "negative_keywords": ["해당하지.*않는", "적절하지.*않는", "옳지.*않는", "틀린", "잘못된", "부적절한", "아닌.*것"],
+            "positive_keywords": ["맞는.*것", "옳은.*것", "적절한.*것", "올바른.*것", "해당하는.*것", "정확한.*것", "가장.*적절한", "가장.*옳은"],
+            "domain_specific_patterns": {
+                "금융투자": {
+                    "keywords": ["금융투자업", "투자자문업", "투자매매업", "투자중개업", "소비자금융업", "보험중개업"],
+                    "common_answers": ["1", "5"]
+                },
+                "위험관리": {
+                    "keywords": ["위험관리", "위험수용", "위험대응", "수행인력", "재해복구"],
+                    "common_answers": ["2", "3"]
+                },
+                "개인정보보호": {
+                    "keywords": ["개인정보", "정보주체", "만 14세", "법정대리인", "PIMS"],
+                    "common_answers": ["2", "4"]
+                },
+                "전자금융": {
+                    "keywords": ["전자금융", "분쟁조정", "금융감독원", "한국은행"],
+                    "common_answers": ["4"]
+                },
+                "사이버보안": {
+                    "keywords": ["SBOM", "악성코드", "보안", "소프트웨어"],
+                    "common_answers": ["1", "3", "5"]
+                }
+            }
+        }
 
-            with open(
-                JSON_CONFIG_FILES["processing_config"], "r", encoding="utf-8"
-            ) as f:
-                processing_config = json.load(f)
+        # intent_specific_prompts 데이터
+        self.intent_specific_prompts = {
+            "기관_묻기": [
+                "다음 질문에서 요구하는 특정 기관명을 정확히 답변하세요. 전자금융분쟁조정위원회, 개인정보보호위원회, 금융감독원 등 구체적인 기관명을 포함해야 합니다.",
+                "질문에서 묻고 있는 기관이나 조직의 정확한 명칭을 한국어로 답변하세요. 분쟁조정, 신고접수, 감독업무를 담당하는 기관의 정확한 명칭을 제시하세요.",
+                "해당 분야의 관련 기관을 구체적으로 명시하여 답변하세요. 금융감독원 내 전자금융분쟁조정위원회, 개인정보보호위원회 산하 개인정보침해신고센터 등을 정확히 명시하세요.",
+                "분쟁조정이나 신고접수를 담당하는 기관명을 정확히 제시하세요. 소속기관과 함께 구체적인 기관명을 명시해야 합니다.",
+                "관련 법령에 따라 업무를 담당하는 기관의 정확한 명칭을 답변하세요. 전자금융거래법, 개인정보보호법 등에 따른 담당기관을 명시하세요."
+            ],
+            "특징_묻기": [
+                "트로이 목마 기반 원격제어 악성코드의 주요 특징과 특성을 체계적으로 설명하세요. 은밀성, 지속성, 원격제어 기능 등을 포함하세요.",
+                "해당 항목의 핵심적인 특징들을 구체적으로 나열하고 설명하세요. 기술적 특성과 동작 원리를 중심으로 설명하세요.",
+                "특징과 성질을 중심으로 상세히 기술하세요. 정상 프로그램으로 위장하는 특성, 사용자 자발적 설치, 외부 제어 등을 설명하세요.",
+                "고유한 특성과 차별화 요소를 포함하여 설명하세요. 다른 악성코드와 구별되는 특징을 중심으로 기술하세요.",
+                "주요 특징을 분류하여 체계적으로 제시하세요. 설치 방식, 동작 특성, 탐지 회피 기법 등으로 분류하여 설명하세요."
+            ],
+            "지표_묻기": [
+                "탐지 지표와 징후를 중심으로 구체적으로 나열하고 설명하세요. 네트워크 트래픽, 시스템 활동, 파일 변화 등의 지표를 포함하세요.",
+                "주요 지표들을 체계적으로 분류하여 제시하세요. 기술적 지표와 행위적 지표로 구분하여 설명하세요.",
+                "관찰 가능한 지표와 패턴을 중심으로 답변하세요. 비정상적인 네트워크 연결, 시스템 성능 변화, 파일 시스템 변조 등을 설명하세요.",
+                "식별 가능한 신호와 징후를 구체적으로 설명하세요. 원격 접속 흔적, 의심스러운 프로세스, 레지스트리 변경 등을 포함하세요.",
+                "모니터링과 탐지에 활용할 수 있는 지표를 제시하세요. 실시간 모니터링과 사후 분석에 사용할 수 있는 지표들을 설명하세요."
+            ],
+            "방안_묻기": [
+                "구체적인 대응 방안과 해결책을 제시하세요. 기술적 대응방안과 관리적 대응방안을 모두 포함하세요.",
+                "실무적이고 실행 가능한 방안들을 중심으로 답변하세요. 딥페이크 기술 악용 대비 방안, 금융권 보안 강화 방안 등을 구체적으로 제시하세요.",
+                "체계적인 관리 방안을 단계별로 설명하세요. 예방, 탐지, 대응, 복구 단계별 방안을 제시하세요.",
+                "효과적인 대처 방안과 예방책을 함께 제시하세요. 사전 예방조치와 사후 대응조치를 균형있게 설명하세요.",
+                "실제 적용 가능한 구체적 방안을 설명하세요. 조직 차원의 대응체계와 기술적 보안조치를 포함하세요."
+            ],
+            "절차_묻기": [
+                "단계별 절차를 순서대로 설명하세요. 첫 번째 단계부터 마지막 단계까지 논리적 순서로 제시하세요.",
+                "처리 과정을 체계적으로 기술하세요. 각 단계별 담당자와 처리 내용을 명확히 설명하세요.",
+                "진행 절차와 각 단계의 내용을 상세히 설명하세요. 필요한 서류와 처리 기간을 포함하세요.",
+                "업무 프로세스를 단계별로 제시하세요. 신청에서 완료까지의 전체 과정을 설명하세요.",
+                "수행 절차를 논리적 순서에 따라 설명하세요. 각 단계의 목적과 주요 활동을 포함하세요."
+            ],
+            "조치_묻기": [
+                "필요한 보안조치와 대응조치를 설명하세요. 기술적 조치와 관리적 조치를 구분하여 제시하세요.",
+                "예방조치와 사후조치를 포함하여 답변하세요. 사전 예방을 위한 조치와 사고 발생 시 조치를 설명하세요.",
+                "적절한 대응조치 방안을 구체적으로 제시하세요. 즉시 조치사항과 중장기 조치사항을 구분하여 설명하세요.",
+                "보안강화 조치와 관리조치를 설명하세요. 시스템 보안조치와 운영 관리조치를 포함하세요.",
+                "효과적인 조치 방안을 체계적으로 기술하세요. 조치의 우선순위와 시행 방법을 포함하세요."
+            ],
+            "법령_묻기": [
+                "관련 법령과 규정을 근거로 설명하세요. 개인정보보호법, 전자금융거래법, 자본시장법 등의 구체적 조항을 인용하세요.",
+                "법적 근거와 조항을 포함하여 답변하세요. 해당 법령의 정확한 명칭과 조항 번호를 제시하세요.",
+                "해당 법률의 주요 내용을 설명하세요. 법령의 목적과 적용 범위를 포함하여 기술하세요.",
+                "관련 규정과 기준을 중심으로 기술하세요. 법령에 따른 의무사항과 준수 기준을 설명하세요.",
+                "법령상 요구사항과 의무사항을 설명하세요. 위반 시 제재사항과 함께 설명하세요."
+            ],
+            "정의_묻기": [
+                "정확한 정의와 개념을 설명하세요. 법적 정의와 기술적 정의를 구분하여 제시하세요.",
+                "용어의 의미와 개념을 명확히 제시하세요. 관련 법령에서의 정의와 일반적 의미를 설명하세요.",
+                "개념적 정의와 실무적 의미를 함께 설명하세요. 이론적 정의와 실제 적용 사례를 포함하세요.",
+                "해당 용어의 정확한 뜻과 범위를 기술하세요. 포함되는 범위와 제외되는 범위를 명확히 하세요.",
+                "정의와 함께 구체적 예시를 포함하여 설명하세요. 실제 사례를 통해 개념을 명확히 하세요."
+            ]
+        }
 
-            self.mc_context_patterns = model_config["mc_context_patterns"]
-            self.intent_specific_prompts = model_config["intent_specific_prompts"]
+        # korean_text_recovery 데이터
+        self.korean_recovery_config = {
+            "broken_unicode_chars": {
+                "\\u1100": "",
+                "\\u1101": "",
+                "\\u1102": "",
+                "\\u1103": "",
+                "\\u1104": "",
+                "\\u1105": "",
+                "\\u1106": "",
+                "\\u1107": "",
+                "\\u1108": "",
+                "\\u1109": "",
+                "\\u110A": "",
+                "\\u110B": "",
+                "\\u110C": "",
+                "\\u110D": "",
+                "\\u110E": "",
+                "\\u110F": "",
+                "\\u1110": "",
+                "\\u1111": "",
+                "\\u1112": "",
+                "\\u1161": "",
+                "\\u1162": "",
+                "\\u1163": "",
+                "\\u1164": "",
+                "\\u1165": "",
+                "\\u1166": "",
+                "\\u1167": "",
+                "\\u1168": "",
+                "\\u1169": "",
+                "\\u116A": "",
+                "\\u116B": "",
+                "\\u116C": "",
+                "\\u116D": "",
+                "\\u116E": "",
+                "\\u116F": "",
+                "\\u1170": "",
+                "\\u1171": "",
+                "\\u1172": "",
+                "\\u1173": "",
+                "\\u1174": "",
+                "\\u1175": "",
+                "\\u11A8": "",
+                "\\u11A9": "",
+                "\\u11AA": "",
+                "\\u11AB": "",
+                "\\u11AC": "",
+                "\\u11AD": "",
+                "\\u11AE": "",
+                "\\u11AF": "",
+                "\\u11B0": "",
+                "\\u11B1": "",
+                "\\u11B2": "",
+                "\\u11B3": "",
+                "\\u11B4": "",
+                "\\u11B5": "",
+                "\\u11B6": "",
+                "\\u11B7": "",
+                "\\u11B8": "",
+                "\\u11B9": "",
+                "\\u11BA": "",
+                "\\u11BB": "",
+                "\\u11BC": "",
+                "\\u11BD": "",
+                "\\u11BE": "",
+                "\\u11BF": "",
+                "\\u11C0": "",
+                "\\u11C1": "",
+                "\\u11C2": ""
+            },
+            "japanese_katakana_removal": {
+                "ト": "",
+                "リ": "",
+                "ス": "",
+                "ン": "",
+                "ー": "",
+                "ィ": "",
+                "ウ": "",
+                "エ": "",
+                "オ": "",
+                "カ": "",
+                "キ": "",
+                "ク": "",
+                "ケ": "",
+                "コ": "",
+                "サ": "",
+                "シ": "",
+                "セ": "",
+                "ソ": "",
+                "タ": "",
+                "チ": "",
+                "ツ": "",
+                "テ": "",
+                "ナ": "",
+                "ニ": "",
+                "ヌ": "",
+                "ネ": "",
+                "ノ": "",
+                "ハ": "",
+                "ヒ": "",
+                "フ": "",
+                "ヘ": "",
+                "ホ": "",
+                "マ": "",
+                "ミ": "",
+                "ム": "",
+                "メ": "",
+                "モ": "",
+                "ヤ": "",
+                "ユ": "",
+                "ヨ": "",
+                "ラ": "",
+                "ル": "",
+                "レ": "",
+                "ロ": "",
+                "ワ": "",
+                "ヰ": "",
+                "ヱ": "",
+                "ヲ": ""
+            },
+            "broken_korean_patterns": {
+                "어어지인": "",
+                "선 어": "",
+                "언 어": "",
+                "순 어": "",
+                "ᄒᆞᆫ": "",
+                "ᄒᆞᆫ선": "",
+                "어어지인가": "",
+                "지인가": "",
+                "가 시": "",
+                "시 언": "",
+                "언 어어": "",
+                "지인)가": "",
+                "순 어어": "",
+                "지인.": ""
+            },
+            "spaced_korean_fixes": {
+                "작 로": "으로",
+                "렴": "련",
+                "니 터": "니터",
+                "지 속": "지속",
+                "모 니": "모니",
+                "체 계": "체계",
+                "관 리": "관리",
+                "법 령": "법령",
+                "규 정": "규정",
+                "조 치": "조치",
+                "절 차": "절차",
+                "대 응": "대응",
+                "방 안": "방안",
+                "기 관": "기관",
+                "위 원": "위원",
+                "감 독": "감독",
+                "전 자": "전자",
+                "금 융": "금융",
+                "개 인": "개인",
+                "정 보": "정보",
+                "보 호": "보호",
+                "관 련": "관련",
+                "필 요": "필요",
+                "중 요": "중요",
+                "주 요": "주요",
+                "시 스": "시스",
+                "템": "템",
+                "프 로": "프로",
+                "세 스": "세스",
+                "네 트": "네트",
+                "워 크": "워크",
+                "트 래": "트래",
+                "픽": "픽",
+                "파 일": "파일",
+                "로 그": "로그",
+                "연 결": "연결",
+                "접 근": "접근",
+                "권 한": "권한",
+                "사 용": "사용",
+                "계 정": "계정",
+                "활 동": "활동",
+                "패 턴": "패턴",
+                "행 동": "행동",
+                "모 니 터 링": "모니터링",
+                "탐 지": "탐지",
+                "발 견": "발견",
+                "식 별": "식별",
+                "분 석": "분석",
+                "확 인": "확인",
+                "점 검": "점검",
+                "감 사": "감사",
+                "보 안": "보안",
+                "안 전": "안전",
+                "위 험": "위험",
+                "내 부": "내부",
+                "외 부": "외부",
+                "시 행": "시행",
+                "실 시": "실시",
+                "수 립": "수립",
+                "구 축": "구축",
+                "마 련": "마련",
+                "준 비": "준비",
+                "실 행": "실행",
+                "진 행": "진행",
+                "처 리": "처리",
+                "관 찰": "관찰",
+                "추 적": "추적",
+                "기 록": "기록",
+                "저 장": "저장",
+                "백 업": "백업",
+                "복 구": "복구",
+                "복 원": "복원",
+                "복 사": "복사",
+                "이 동": "이동",
+                "전 송": "전송",
+                "수 신": "수신",
+                "발 신": "발신",
+                "전 달": "전달",
+                "통 신": "통신",
+                "연 락": "연락",
+                "회 의": "회의",
+                "논 의": "논의",
+                "검 토": "검토",
+                "평 가": "평가",
+                "심 사": "심사",
+                "심 의": "심의",
+                "승 인": "승인",
+                "허 가": "허가",
+                "인 가": "인가",
+                "등 록": "등록",
+                "신 청": "신청",
+                "요 청": "요청",
+                "신 고": "신고",
+                "보 고": "보고",
+                "통 보": "통보",
+                "고 지": "고지",
+                "안 내": "안내",
+                "지 침": "지침",
+                "지 시": "지시",
+                "명 령": "명령",
+                "지 도": "지도",
+                "교 육": "교육",
+                "훈 련": "훈련",
+                "연 수": "연수",
+                "학 습": "학습",
+                "습 득": "습득",
+                "이 해": "이해",
+                "파 악": "파악",
+                "인 식": "인식",
+                "감 지": "감지"
+            },
+            "common_korean_typos": {
+                "윋": "융",
+                "젂": "전",
+                "엯": "연",
+                "룐": "른",
+                "겫": "결",
+                "뷮": "분",
+                "쟈": "저",
+                "럭": "력",
+                "솟": "솔",
+                "쟣": "저",
+                "뿣": "불",
+                "뻙": "분",
+                "걗": "것",
+                "룊": "른",
+                "믝": "미",
+                "읶": "인",
+                "멈": "멈",
+                "솔": "솔",
+                "랛": "란",
+                "궗": "사",
+                "쪗": "저",
+                "롸": "로",
+                "뿞": "분",
+                "딞": "딘",
+                "쭒": "주",
+                "놟": "놓",
+                "룍": "른",
+                "쫒": "조",
+                "놔": "놔"
+            },
+            "critical_repetitive_patterns": {
+                "갈취 묻는 말": "",
+                "묻고 갈취": "",
+                "갈취": "",
+                "() 기반": "",
+                "()는": "",
+                "() 특징": "",
+                "() 지표": "",
+                "() 방안": "",
+                "()를": "",
+                "()에": "",
+                "()의": "",
+                "()와": "",
+                "()로": "",
+                "() 는": "",
+                "() 이": "",
+                "() 가": "",
+                "() 을": "",
+                "() 에": "",
+                "() 와": "",
+                "() 로": "",
+                "괄호": "",
+                "(괄호)": "",
+                "　　": " ",
+                "말 말": "말",
+                "말말": "말",
+                "말말말": "말"
+            },
+            "pattern_variations": {
+                "갈취.*갈취": "",
+                "묻는.*묻는": "",
+                "말.*말.*말": "말",
+                "(.{1,5})\\s*\\1\\s*\\1\\s*\\1": "\\1",
+                "(.{2,8})\\s*\\1\\s*\\1": "\\1"
+            }
+        }
 
-            self.korean_recovery_config = processing_config["korean_text_recovery"]
-            self.korean_quality_patterns = processing_config["korean_quality_patterns"]
+        # korean_quality_patterns 데이터
+        self.korean_quality_patterns = [
+            {
+                "pattern": "([가-힣])\\s+(은|는|이|가|을|를|에|의|와|과|로|으로)\\s+",
+                "replacement": "\\1\\2 "
+            },
+            {
+                "pattern": "([가-힣])\\s+(다|요|함|니다|습니다)\\s*\\.",
+                "replacement": "\\1\\2."
+            },
+            {
+                "pattern": "([가-힣])\\s*$",
+                "replacement": "\\1."
+            },
+            {
+                "pattern": "\\.+",
+                "replacement": "."
+            },
+            {
+                "pattern": "\\s*\\.\\s*",
+                "replacement": ". "
+            },
+            {
+                "pattern": "\\s+",
+                "replacement": " "
+            },
+            {
+                "pattern": "\\(\\s*\\)",
+                "replacement": ""
+            },
+            {
+                "pattern": "\\(\\s*\\)\\s*[가-힣]{1,3}",
+                "replacement": ""
+            },
+            {
+                "pattern": "[.,!?]{3,}",
+                "replacement": "."
+            },
+            {
+                "pattern": "\\s+[.,!?]\\s+",
+                "replacement": ". "
+            }
+        ]
 
-            self._setup_korean_recovery_mappings()
+        self._setup_korean_recovery_mappings()
 
-            print("모델 설정 파일 로드 완료")
-
-        except FileNotFoundError as e:
-            print(f"설정 파일을 찾을 수 없습니다: {e}")
-            self._load_default_configs()
-        except json.JSONDecodeError as e:
-            print(f"JSON 파일 파싱 오류: {e}")
-            self._load_default_configs()
-        except Exception as e:
-            print(f"설정 파일 로드 중 오류: {e}")
-            self._load_default_configs()
+        print("통합 데이터 초기화 완료")
 
     def _setup_korean_recovery_mappings(self):
+        """한국어 복구 매핑 설정"""
         self.korean_recovery_mapping = {}
 
-        for broken, replacement in self.korean_recovery_config[
-            "broken_unicode_chars"
-        ].items():
+        for broken, replacement in self.korean_recovery_config["broken_unicode_chars"].items():
             try:
                 actual_char = broken.encode().decode("unicode_escape")
                 self.korean_recovery_mapping[actual_char] = replacement
@@ -135,53 +559,8 @@ class SimpleModelHandler:
             self.korean_recovery_config["common_korean_typos"]
         )
 
-    def _load_default_configs(self):
-        print("기본 설정으로 대체합니다.")
-
-        self.mc_context_patterns = {
-            "negative_keywords": ["해당하지.*않는", "적절하지.*않는", "옳지.*않는"],
-            "positive_keywords": ["맞는.*것", "옳은.*것", "적절한.*것"],
-            "domain_specific_patterns": {},
-        }
-
-        self.intent_specific_prompts = {
-            "기관_묻기": ["다음 질문에서 요구하는 특정 기관명을 정확히 답변하세요."],
-            "특징_묻기": [
-                "해당 항목의 핵심적인 특징들을 구체적으로 나열하고 설명하세요."
-            ],
-            "지표_묻기": [
-                "탐지 지표와 징후를 중심으로 구체적으로 나열하고 설명하세요."
-            ],
-            "방안_묻기": ["구체적인 대응 방안과 해결책을 제시하세요."],
-            "절차_묻기": ["단계별 절차를 순서대로 설명하세요."],
-            "조치_묻기": ["필요한 보안조치와 대응조치를 설명하세요."],
-        }
-
-        self.korean_recovery_mapping = {
-            "어어지인": "",
-            "선 어": "",
-            "언 어": "",
-            "순 어": "",
-            "ᄒᆞᆫ": "",
-            "작로": "으로",
-            "갈취 묻는 말": "",
-            "묻고 갈취": "",
-            "갈취": "",
-        }
-
-        self.korean_quality_patterns = [
-            {
-                "pattern": r"([가-힣])\s+(은|는|이|가|을|를|에|의|와|과|로|으로)\s+",
-                "replacement": r"\1\2 ",
-            },
-            {
-                "pattern": r"([가-힣])\s+(다|요|함|니다|습니다)\s*\.",
-                "replacement": r"\1\2.",
-            },
-            {"pattern": r"\s+", "replacement": " "},
-        ]
-
     def detect_critical_repetitive_patterns(self, text: str) -> bool:
+        """문제 패턴 감지"""
         if not text or len(text) < 20:
             return False
 
@@ -211,6 +590,7 @@ class SimpleModelHandler:
         return False
 
     def remove_repetitive_patterns(self, text: str) -> str:
+        """반복 패턴 제거"""
         if not text:
             return ""
 
@@ -247,6 +627,7 @@ class SimpleModelHandler:
         return text
 
     def recover_korean_text(self, text: str) -> str:
+        """한국어 텍스트 복구"""
         if not text:
             return ""
 
@@ -270,6 +651,7 @@ class SimpleModelHandler:
     def enhance_korean_answer_quality(
         self, answer: str, question: str = "", intent_analysis: Dict = None
     ) -> str:
+        """한국어 답변 품질 향상"""
         if not answer:
             return ""
 
@@ -322,6 +704,7 @@ class SimpleModelHandler:
         return answer
 
     def _generate_safe_fallback_answer(self, intent_type: str) -> str:
+        """안전한 대체 답변 생성"""
         fallback_templates = {
             "기관_묻기": "관련 전문 기관에서 해당 업무를 담당하고 있습니다.",
             "특징_묻기": "주요 특징을 체계적으로 분석하여 관리해야 합니다.",
@@ -336,6 +719,7 @@ class SimpleModelHandler:
         )
 
     def _extract_choice_count(self, question: str) -> int:
+        """선택지 개수 추출"""
         lines = question.split("\n")
         choice_numbers = []
 
@@ -359,6 +743,7 @@ class SimpleModelHandler:
         return 5
 
     def _analyze_mc_context(self, question: str, domain: str = "일반") -> Dict:
+        """객관식 문맥 분석"""
         context = {
             "is_negative": False,
             "is_positive": False,
@@ -419,6 +804,7 @@ class SimpleModelHandler:
         intent_analysis: Dict = None,
         domain_hints: Dict = None,
     ) -> str:
+        """한국어 프롬프트 생성"""
         domain = self._detect_domain(question)
 
         template_examples_text = ""
@@ -505,6 +891,7 @@ class SimpleModelHandler:
         domain: str = "일반",
         domain_hints: Dict = None,
     ) -> str:
+        """객관식 프롬프트 생성"""
         if max_choice <= 0:
             max_choice = 5
 
@@ -550,6 +937,7 @@ class SimpleModelHandler:
         intent_analysis: Dict = None,
         domain_hints: Dict = None,
     ) -> str:
+        """답변 생성"""
 
         enhanced_domain_hints = domain_hints.copy() if domain_hints else {}
 
@@ -650,124 +1038,47 @@ class SimpleModelHandler:
     def _get_template_examples_from_knowledge(
         self, domain: str, intent_key: str
     ) -> List[str]:
+        """지식베이스에서 템플릿 예시 가져오기"""
         templates_mapping = {
             "사이버보안": {
                 "특징_묻기": [
                     "트로이 목마 기반 원격제어 악성코드는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하며, 은밀성과 지속성을 특징으로 합니다.",
-                    "해당 악성코드는 사용자를 속여 시스템에 침투하여 외부 공격자가 원격으로 제어하는 특성을 가지며, 시스템 깊숙이 숨어서 장기간 활동하면서 정보 수집과 원격 제어 기능을 수행합니다.",
-                    "트로이 목마는 유용한 프로그램으로 가장하여 사용자가 직접 설치하도록 유도하고, 설치 후 악의적인 기능을 수행하는 특징을 가집니다. 원격 접근 기능을 통해 시스템을 외부에서 조작할 수 있습니다.",
-                    "원격접근 도구의 주요 특징은 은밀한 설치, 지속적인 연결 유지, 시스템 전반에 대한 제어권 획득, 사용자 모르게 정보 수집 등이며, 탐지를 회피하기 위한 다양한 기법을 사용합니다.",
-                    "악성 원격접근 도구는 정상 소프트웨어로 위장하여 배포되며, 설치 후 시스템 권한을 탈취하고 외부 서버와 은밀한 통신을 수행하는 특성을 가집니다.",
+                    "해당 악성코드는 사용자를 속여 시스템에 침투하여 외부 공격자가 원격으로 제어하는 특성을 가지며, 시스템 깊숙이 숨어서 장기간 활동하면서 정보 수집과 원격 제어 기능을 수행합니다."
                 ],
                 "지표_묻기": [
                     "네트워크 트래픽 모니터링에서 비정상적인 외부 통신 패턴, 시스템 동작 분석에서 비인가 프로세스 실행, 파일 생성 및 수정 패턴의 이상 징후, 입출력 장치에 대한 비정상적 접근 등이 주요 탐지 지표입니다.",
-                    "원격 접속 흔적, 의심스러운 네트워크 연결, 시스템 파일 변조, 레지스트리 수정, 비정상적인 메모리 사용 패턴, 알려지지 않은 프로세스 실행 등을 통해 탐지할 수 있습니다.",
-                    "시스템 성능 저하, 예상치 못한 네트워크 활동, 방화벽 로그의 이상 패턴, 파일 시스템 변경 사항, 사용자 계정의 비정상적 활동 등이 주요 탐지 지표로 활용됩니다.",
-                    "비정상적인 아웃바운드 연결, 시스템 리소스 과다 사용, 백그라운드 프로세스 증가, 보안 소프트웨어 비활성화 시도, 시스템 설정 변경 등의 징후를 종합적으로 분석해야 합니다.",
-                    "네트워크 연결 로그 분석, 프로세스 모니터링, 파일 무결성 검사, 레지스트리 변경 감시, 시스템 콜 추적 등을 통해 악성 활동을 탐지할 수 있습니다.",
+                    "원격 접속 흔적, 의심스러운 네트워크 연결, 시스템 파일 변조, 레지스트리 수정, 비정상적인 메모리 사용 패턴, 알려지지 않은 프로세스 실행 등을 통해 탐지할 수 있습니다."
                 ],
                 "방안_묻기": [
                     "딥페이크 기술 악용에 대비하여 다층 방어체계 구축, 실시간 딥페이크 탐지 시스템 도입, 직원 교육 및 인식 개선, 생체인증 강화, 다중 인증 체계 구축 등의 종합적 대응방안이 필요합니다.",
-                    "네트워크 분할을 통한 격리, 접근권한 최소화 원칙 적용, 행위 기반 탐지 시스템 구축, 사고 대응 절차 수립, 백업 및 복구 체계 마련 등의 보안 강화 방안을 수립해야 합니다.",
-                    "엔드포인트 보안 강화, 네트워크 트래픽 모니터링, 사용자 인식 개선 교육, 보안 정책 수립 및 준수, 정기적인 보안 점검 등을 통해 종합적인 보안 관리체계를 구축해야 합니다.",
-                    "SBOM 활용을 통한 소프트웨어 공급망 보안 강화, 구성 요소 취약점 관리, 라이선스 컴플라이언스 확보, 보안 업데이트 추적 관리 등의 방안을 수립해야 합니다.",
-                    "인공지능 기반 이상 행위 탐지, 실시간 모니터링 체계 구축, 사용자 행위 분석, 보안 인식 교육 강화, 다중 인증 시스템 도입 등의 대응방안을 마련해야 합니다.",
-                ],
+                    "네트워크 분할을 통한 격리, 접근권한 최소화 원칙 적용, 행위 기반 탐지 시스템 구축, 사고 대응 절차 수립, 백업 및 복구 체계 마련 등의 보안 강화 방안을 수립해야 합니다."
+                ]
             },
             "개인정보보호": {
                 "기관_묻기": [
                     "개인정보보호위원회가 개인정보 보호에 관한 업무를 총괄하며, 개인정보침해신고센터에서 신고 접수 및 상담 업무를 담당합니다.",
-                    "개인정보보호위원회는 개인정보 보호 정책 수립과 감시 업무를 수행하는 중앙 행정기관이며, 개인정보 분쟁조정위원회에서 관련 분쟁의 조정 업무를 담당합니다.",
-                    "개인정보 침해 관련 신고 및 상담은 개인정보보호위원회 산하 개인정보침해신고센터에서 담당하고 있습니다.",
-                    "개인정보 관련 분쟁의 조정은 개인정보보호위원회 내 개인정보 분쟁조정위원회에서 담당하며, 피해구제와 분쟁해결 업무를 수행합니다.",
-                    "개인정보보호 정책 수립과 법령 집행은 개인정보보호위원회에서 담당하고, 침해신고 접수와 상담은 개인정보침해신고센터에서 처리합니다.",
+                    "개인정보보호위원회는 개인정보 보호 정책 수립과 감시 업무를 수행하는 중앙 행정기관이며, 개인정보 분쟁조정위원회에서 관련 분쟁의 조정 업무를 담당합니다."
                 ],
                 "방안_묻기": [
                     "개인정보 처리 시 수집 최소화 원칙 적용, 목적 외 이용 금지, 적절한 보호조치 수립, 정기적인 개인정보 영향평가 실시, 정보주체 권리 보장 체계 구축 등의 관리방안이 필요합니다.",
-                    "개인정보보호 관리체계 구축, 개인정보처리방침 수립 및 공개, 개인정보보호책임자 지정, 정기적인 교육 실시, 기술적·관리적·물리적 보호조치 이행 등을 체계적으로 수행해야 합니다.",
-                    "개인정보 수집 시 동의 절차 준수, 처리목적 명확화, 보유기간 설정 및 준수, 정보주체 권리 행사 절차 마련, 개인정보 파기 체계 구축 등의 전 과정 관리방안을 수립해야 합니다.",
-                    "만 14세 미만 아동의 개인정보 처리 시 법정대리인의 동의 확보, 아동의 인지 능력을 고려한 처리 방안 수립, 특별한 보호조치 마련 등이 필요합니다.",
-                ],
+                    "개인정보보호 관리체계 구축, 개인정보처리방침 수립 및 공개, 개인정보보호책임자 지정, 정기적인 교육 실시, 기술적·관리적·물리적 보호조치 이행 등을 체계적으로 수행해야 합니다."
+                ]
             },
             "전자금융": {
                 "기관_묻기": [
                     "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 금융감독원 내에 설치되어 운영됩니다.",
-                    "금융감독원 내 전자금융분쟁조정위원회가 이용자의 분쟁조정 신청을 접수하고 처리하는 업무를 수행합니다.",
-                    "전자금융거래법에 따라 금융감독원의 전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁의 조정 업무를 담당하고 있습니다.",
-                    "전자금융 분쟁조정은 금융감독원에 설치된 전자금융분쟁조정위원회에서 신청할 수 있으며, 이용자 보호를 위한 분쟁해결 업무를 수행합니다.",
-                    "전자금융거래 분쟁의 조정은 금융감독원 전자금융분쟁조정위원회에서 담당하며, 공정하고 신속한 분쟁해결을 위한 업무를 수행합니다.",
-                ],
-                "방안_묻기": [
-                    "접근매체 보안 강화, 전자서명 및 인증체계 고도화, 거래내역 실시간 통지, 이상거래 탐지시스템 구축, 이용자 교육 강화 등의 종합적인 보안방안이 필요합니다.",
-                    "전자금융업자의 보안조치 의무 강화, 이용자 피해보상 체계 개선, 분쟁조정 절차 신속화, 보안기술 표준화, 관련 법령 정비 등의 제도적 개선방안을 추진해야 합니다.",
-                    "다중 인증 체계 도입, 거래한도 설정 및 관리, 보안카드 및 이용자 신원확인 강화, 금융사기 예방 시스템 구축, 이용자 보호 교육 확대 등을 실시해야 합니다.",
-                ],
-            },
-            "정보보안": {
-                "방안_묻기": [
-                    "정보보안관리체계 구축을 위해 보안정책 수립, 위험분석, 보안대책 구현, 사후관리의 절차를 체계적으로 운영해야 합니다.",
-                    "접근통제 정책을 수립하고 사용자별 권한을 관리하며 로그 모니터링과 정기적인 보안감사를 통해 보안수준을 유지해야 합니다.",
-                    "정보자산 분류체계 구축, 중요도에 따른 차등 보안조치 적용, 정기적인 보안교육과 인식제고 프로그램 운영, 보안사고 대응체계 구축 등이 필요합니다.",
-                    "물리적 보안조치, 기술적 보안조치, 관리적 보안조치를 균형있게 적용하고, 지속적인 보안성 평가와 개선활동을 수행해야 합니다.",
-                ],
-            },
-            "금융투자": {
-                "방안_묻기": [
-                    "투자자 보호를 위한 적합성 원칙 준수, 투자위험 고지 의무 이행, 투자자문 서비스 품질 개선, 불공정거래 방지 체계 구축, 내부통제 시스템 강화 등의 방안이 필요합니다.",
-                    "금융투자업자의 영업행위 규준 강화, 투자자 교육 확대, 분쟁조정 절차 개선, 시장감시 체계 고도화, 투자자 보호기금 운영 내실화 등을 추진해야 합니다.",
-                    "투자상품 설명의무 강화, 투자자 유형별 맞춤형 서비스 제공, 투자권유 과정의 투명성 제고, 이해상충 방지 체계 구축, 투자자 피해구제 절차 개선 등이 필요합니다.",
-                ],
-            },
-            "위험관리": {
-                "방안_묻기": [
-                    "위험관리 체계 구축을 위해 위험식별, 위험평가, 위험대응, 위험모니터링의 단계별 절차를 수립하고 운영해야 합니다.",
-                    "내부통제시스템을 구축하고 정기적인 위험평가를 실시하여 잠재적 위험요소를 사전에 식별하고 대응방안을 마련해야 합니다.",
-                    "위험관리 정책과 절차를 수립하고 위험한도를 설정하여 관리하며, 위험관리 조직과 책임체계를 명확히 정의해야 합니다.",
-                    "위험관리 문화 조성, 위험관리 교육 강화, 위험보고 체계 구축, 위험관리 성과평가 체계 도입, 외부 위험요인 모니터링 강화 등을 실시해야 합니다.",
-                ],
-            },
-        }
-
-        general_templates = {
-            "특징_묻기": [
-                "주요 특징을 체계적으로 분석하여 관리해야 합니다.",
-                "핵심적인 특성과 성질을 정확히 파악하여 대응해야 합니다.",
-                "해당 분야의 주요 특징은 체계적인 접근과 지속적인 관리를 통해 효과적으로 처리할 수 있습니다.",
-            ],
-            "지표_묻기": [
-                "주요 탐지 지표를 통해 체계적인 모니터링과 분석을 수행해야 합니다.",
-                "관련 징후와 패턴을 분석하여 적절한 대응조치를 시행해야 합니다.",
-                "실시간 모니터링과 정기적인 점검을 통해 이상 징후를 조기에 발견하고 대응해야 합니다.",
-            ],
-            "방안_묻기": [
-                "체계적인 대응 방안을 수립하고 관련 법령에 따라 지속적으로 관리해야 합니다.",
-                "효과적인 관리 방안을 마련하여 정기적인 점검과 개선을 수행해야 합니다.",
-                "종합적인 대응체계를 구축하고 단계별 실행계획을 수립하여 체계적으로 관리해야 합니다.",
-            ],
-            "기관_묻기": [
-                "관련 전문 기관에서 해당 업무를 법령에 따라 담당하고 있습니다.",
-                "소관 기관에서 체계적인 관리와 감독 업무를 수행하고 있습니다.",
-            ],
-            "절차_묻기": [
-                "관련 절차에 따라 단계별로 체계적인 수행과 관리가 필요합니다.",
-                "법령에 정해진 절차를 준수하여 순차적으로 진행해야 합니다.",
-            ],
-            "조치_묻기": [
-                "적절한 보안 조치를 시행하고 관련 법령에 따라 지속적으로 관리해야 합니다.",
-                "필요한 조치사항을 파악하여 체계적인 대응과 개선을 수행해야 합니다.",
-            ],
+                    "금융감독원 내 전자금융분쟁조정위원회가 이용자의 분쟁조정 신청을 접수하고 처리하는 업무를 수행합니다."
+                ]
+            }
         }
 
         if domain in templates_mapping and intent_key in templates_mapping[domain]:
             return templates_mapping[domain][intent_key]
 
-        return general_templates.get(
-            intent_key,
-            [
-                "관련 법령과 규정에 따라 체계적인 관리가 필요합니다.",
-                "해당 분야의 전문적 지식을 바탕으로 적절한 대응을 수행해야 합니다.",
-            ],
-        )
+        return [
+            "관련 법령과 규정에 따라 체계적인 관리가 필요합니다.",
+            "해당 분야의 전문적 지식을 바탕으로 적절한 대응을 수행해야 합니다."
+        ]
 
     def _retry_generation_with_different_settings(
         self,
@@ -776,6 +1087,7 @@ class SimpleModelHandler:
         max_choice: int,
         intent_analysis: Dict = None,
     ) -> str:
+        """다른 설정으로 재생성"""
         try:
             inputs = self.tokenizer(
                 prompt,
@@ -823,6 +1135,7 @@ class SimpleModelHandler:
     def _process_enhanced_subj_answer(
         self, response: str, question: str, intent_analysis: Dict = None
     ) -> str:
+        """주관식 답변 처리"""
         if not response:
             if intent_analysis:
                 primary_intent = intent_analysis.get("primary_intent", "일반")
@@ -896,6 +1209,7 @@ class SimpleModelHandler:
     def _process_enhanced_mc_answer(
         self, response: str, question: str, max_choice: int
     ) -> str:
+        """객관식 답변 처리"""
         if max_choice <= 0:
             max_choice = 5
 
@@ -909,6 +1223,7 @@ class SimpleModelHandler:
         return self._force_valid_mc_answer(response, max_choice)
 
     def _force_valid_mc_answer(self, response: str, max_choice: int) -> str:
+        """유효한 객관식 답변 강제 생성"""
         if max_choice <= 0:
             max_choice = 5
 
@@ -924,6 +1239,7 @@ class SimpleModelHandler:
     def generate_contextual_mc_answer(
         self, question: str, max_choice: int, domain: str
     ) -> str:
+        """문맥 기반 객관식 답변 생성"""
         context_hints = self._analyze_mc_context(question, domain)
         prompt = self._create_enhanced_mc_prompt(
             question, max_choice, domain, {"context_hints": context_hints}
@@ -965,9 +1281,11 @@ class SimpleModelHandler:
     def generate_fallback_mc_answer(
         self, question: str, max_choice: int, domain: str
     ) -> str:
+        """대체 객관식 답변 생성"""
         return self.generate_contextual_mc_answer(question, max_choice, domain)
 
     def generate_fallback_subjective_answer(self, question: str) -> str:
+        """대체 주관식 답변 생성"""
         domain = self._detect_domain(question)
         prompt = self._create_enhanced_korean_prompt(
             question, "subjective", None, {"fallback_mode": True}
@@ -1010,6 +1328,7 @@ class SimpleModelHandler:
             return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
 
     def _get_generation_config(self, question_type: str) -> GenerationConfig:
+        """생성 설정 가져오기"""
         config_dict = GENERATION_CONFIG[question_type].copy()
         config_dict["pad_token_id"] = self.tokenizer.pad_token_id
         config_dict["eos_token_id"] = self.tokenizer.eos_token_id
@@ -1027,6 +1346,7 @@ class SimpleModelHandler:
         return GenerationConfig(**config_dict)
 
     def _detect_domain(self, question: str) -> str:
+        """도메인 탐지"""
         question_lower = question.lower()
 
         if any(
@@ -1062,6 +1382,7 @@ class SimpleModelHandler:
             return "일반"
 
     def _calculate_korean_ratio(self, text: str) -> float:
+        """한국어 비율 계산"""
         if not text:
             return 0.0
 
@@ -1074,6 +1395,7 @@ class SimpleModelHandler:
         return korean_chars / total_chars
 
     def _get_domain_keywords(self, question: str) -> List[str]:
+        """도메인 키워드 가져오기"""
         question_lower = question.lower()
 
         if "개인정보" in question_lower:
@@ -1096,6 +1418,7 @@ class SimpleModelHandler:
         max_choice: int = 5,
         intent_analysis: Dict = None,
     ) -> str:
+        """LLM 기반 대체 답변"""
         if question_type == "multiple_choice":
             if max_choice <= 0:
                 max_choice = 5
@@ -1108,6 +1431,7 @@ class SimpleModelHandler:
             return self.generate_fallback_subjective_answer(question)
 
     def _warmup(self):
+        """모델 워밍업"""
         try:
             test_prompt = "테스트"
             inputs = self.tokenizer(test_prompt, return_tensors="pt")
@@ -1128,6 +1452,7 @@ class SimpleModelHandler:
                 print(f"워밍업 실패: {e}")
 
     def cleanup(self):
+        """리소스 정리"""
         try:
             if hasattr(self, "model"):
                 del self.model
