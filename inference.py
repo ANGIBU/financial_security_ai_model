@@ -338,7 +338,7 @@ class FinancialAIInference:
     def _validate_template_answer(
         self, answer: str, question: str, intent_analysis: Dict = None
     ) -> bool:
-        """템플릿 답변 검증 (완화된 기준)"""
+        """템플릿 답변 검증"""
         if not answer:
             return False
 
@@ -349,12 +349,12 @@ class FinancialAIInference:
         if self.model_handler.detect_critical_repetitive_patterns(answer):
             return False
 
-        # 한국어 비율 체크 (완화)
+        # 한국어 비율 체크
         korean_ratio = self.data_processor.calculate_korean_ratio(answer)
         if korean_ratio < 0.5:
             return False
 
-        # 의미있는 키워드 체크 (완화)
+        # 의미있는 키워드 체크
         meaningful_keywords = [
             "특징", "지표", "탐지", "위원회", "기관", "업무", "담당", "법령", "규정", 
             "관리", "보안", "방안", "절차", "조치", "대응", "시스템", "모니터링",
@@ -413,13 +413,13 @@ class FinancialAIInference:
     def _process_multiple_choice_with_llm(
         self, question: str, max_choice: int, domain: str, kb_analysis: Dict
     ) -> str:
-        """LLM 기반 객관식 처리 - 정확도 강화"""
+        """LLM 기반 객관식 처리"""
 
         # 금융투자업 구분 문제 특별 처리
         if self._is_financial_investment_classification_question(question):
             return self._handle_financial_investment_classification(question, max_choice)
 
-        # 패턴 힌트 강화
+        # 패턴 힌트
         pattern_hints = self.knowledge_base.get_mc_pattern_hints(question)
         
         # 도메인 힌트도 추가
@@ -707,10 +707,15 @@ class FinancialAIInference:
 
         answers = []
         total_questions = len(test_df)
-        inference_start_time = time.time()
 
-        # 진행률 표시바 추가
-        with tqdm(total=total_questions, desc="문항 처리 중", unit="문항") as pbar:
+        # 진행률 표시바 - 길이를 반으로 줄이고 시간 정보 제거
+        with tqdm(
+            total=total_questions, 
+            desc="문항 처리 중", 
+            unit="문항",
+            ncols=60,
+            bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}'
+        ) as pbar:
             for question_idx, (original_idx, row) in enumerate(test_df.iterrows()):
                 question = row["Question"]
                 question_id = row["ID"]
