@@ -882,338 +882,7 @@ class SimpleModelHandler:
             r'답[:\s]*([1-9])',
             r'^([1-9])',
             r'([1-9])\s*번',
-            r'([1-9])\s*
-
-    def _retry_generation_with_different_settings(
-        self,
-        prompt: str,
-        question_type: str,
-        max_choice: int,
-        intent_analysis: Dict = None,
-    ) -> str:
-        """다른 설정으로 재생성"""
-        try:
-            inputs = self.tokenizer(
-                prompt,
-                return_tensors="pt",
-                truncation=True,
-                max_length=1500,
-                add_special_tokens=True,
-            )
-
-            if self.device == "cuda":
-                inputs = inputs.to(self.model.device)
-
-            retry_config = GenerationConfig(
-                max_new_tokens=400 if question_type == "subjective" else 10,
-                temperature=0.7,
-                top_p=0.95,
-                do_sample=True,
-                repetition_penalty=1.1,
-                no_repeat_ngram_size=2,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-            )
-
-            with torch.no_grad():
-                outputs = self.model.generate(**inputs, generation_config=retry_config)
-
-            response = self.tokenizer.decode(
-                outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
-            ).strip()
-
-            if self.detect_critical_repetitive_patterns(response):
-                return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
-
-            return response
-
-        except Exception:
-            return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
-
-    def _force_valid_mc_answer(self, response: str, max_choice: int) -> str:
-        """유효한 객관식 답변 강제 생성"""
-        if max_choice <= 0:
-            max_choice = 5
-
-        all_numbers = re.findall(r"\d+", response)
-
-        for num_str in all_numbers:
-            num = int(num_str)
-            if 1 <= num <= max_choice:
-                return str(num)
-
-        return str((max_choice + 1) // 2)
-
-    def generate_contextual_mc_answer(
-        self, question: str, max_choice: int, domain: str
-    ) -> str:
-        """문맥 기반 객관식 답변 생성 - 강화"""
-        context_hints = self._analyze_mc_context(question, domain)
-        
-        # 더 간단하고 직접적인 프롬프트
-        simple_prompt = f"""다음 문제의 정답 번호를 선택하세요:
-
-{question}
-
-1~{max_choice} 중 정답: """
-
-        try:
-            inputs = self.tokenizer(
-                simple_prompt, return_tensors="pt", truncation=True, max_length=800
-            )
-            if self.device == "cuda":
-                inputs = inputs.to(self.model.device)
-
-            # 더 확실한 설정
-            gen_config = GenerationConfig(
-                max_new_tokens=5,
-                temperature=0.1,  # 매우 낮은 temperature
-                top_p=0.5,
-                do_sample=True,
-                repetition_penalty=1.05,
-                no_repeat_ngram_size=2,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-            )
-
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    **inputs,
-                    generation_config=gen_config,
-                )
-
-            response = self.tokenizer.decode(
-                outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
-            ).strip()
-
-            answer = self._process_mc_answer_enhanced(response, question, max_choice)
-
-            if answer and answer.isdigit() and 1 <= int(answer) <= max_choice:
-                return answer
-
-        except Exception as e:
-            if self.verbose:
-                print(f"컨텍스트 기반 답변 생성 오류: {e}")
-
-        # 강제 답변 생성
-        return self._force_valid_mc_answer_enhanced(response if 'response' in locals() else "", question, max_choice)
-
-    def generate_fallback_mc_answer(
-        self, question: str, max_choice: int, domain: str
-    ) -> str:
-        """대체 객관식 답변 생성 - 간소화"""
-        return self.generate_contextual_mc_answer(question, max_choice, domain)
-
-    def _analyze_mc_context(self, question: str, domain: str = "일반") -> Dict:
-        """객관식 문맥 분석"""
-        context = {
-            "is_negative": False,
-            "is_positive": False,
-            "domain_hints": [],
-            "key_terms": [],
-            "choice_count": self._extract_choice_count(question),
-            "domain": domain,
-            "likely_answers": [],
-            "confidence_score": 0.0,
-        }
-
-        question_lower = question.lower()
-
-        for pattern in self.mc_context_patterns["negative_keywords"]:
-            if re.search(pattern, question_lower):
-                context["is_negative"] = True
-                break
-
-        for pattern in self.mc_context_patterns["positive_keywords"]:
-            if re.search(pattern, question_lower):
-                context["is_positive"] = True
-                break
-
-        if domain in self.mc_context_patterns["domain_specific_patterns"]:
-            domain_info = self.mc_context_patterns["domain_specific_patterns"][domain]
-
-            keyword_matches = sum(
-                1 for keyword in domain_info["keywords"] if keyword in question_lower
-            )
-
-            if keyword_matches > 0:
-                context["domain_hints"].append(domain)
-                context["likely_answers"] = domain_info["common_answers"]
-                context["confidence_score"] = min(
-                    keyword_matches / len(domain_info["keywords"]), 1.0
-                )
-
-        return context
-
-    def _extract_choice_count(self, question: str) -> int:
-        """선택지 개수 추출"""
-        lines = question.split("\n")
-        choice_numbers = []
-
-        for line in lines:
-            match = re.match(r"^(\d+)\s+(.+)", line.strip())
-            if match:
-                num = int(match.group(1))
-                content = match.group(2).strip()
-                if 1 <= num <= 5 and len(content) > 0:
-                    choice_numbers.append(num)
-
-        if choice_numbers:
-            choice_numbers.sort()
-            return max(choice_numbers)
-
-        for i in range(5, 2, -1):
-            pattern = r"1\s.*" + ".*".join([f"{j}\s" for j in range(2, i + 1)])
-            if re.search(pattern, question, re.DOTALL):
-                return i
-
-        return 5
-
-    def _get_generation_config(self, question_type: str) -> GenerationConfig:
-        """생성 설정 가져오기"""
-        config_dict = GENERATION_CONFIG[question_type].copy()
-        config_dict["pad_token_id"] = self.tokenizer.pad_token_id
-        config_dict["eos_token_id"] = self.tokenizer.eos_token_id
-
-        if question_type == "subjective":
-            config_dict["repetition_penalty"] = 1.05
-            config_dict["no_repeat_ngram_size"] = 2
-            config_dict["temperature"] = 0.6
-            config_dict["top_p"] = 0.9
-            config_dict["max_new_tokens"] = 500
-        else:
-            config_dict["repetition_penalty"] = 1.1
-            config_dict["no_repeat_ngram_size"] = 2
-
-        return GenerationConfig(**config_dict)
-
-    def _detect_domain(self, question: str) -> str:
-        """도메인 탐지"""
-        question_lower = question.lower()
-
-        if any(
-            word in question_lower
-            for word in ["개인정보", "정보주체", "만 14세", "법정대리인"]
-        ):
-            return "개인정보보호"
-        elif any(
-            word in question_lower
-            for word in ["트로이", "악성코드", "RAT", "원격제어", "딥페이크", "SBOM"]
-        ):
-            return "사이버보안"
-        elif any(
-            word in question_lower
-            for word in ["전자금융", "전자적", "분쟁조정", "금융감독원"]
-        ):
-            return "전자금융"
-        elif any(
-            word in question_lower
-            for word in ["정보보안", "isms", "관리체계", "정책 수립"]
-        ):
-            return "정보보안"
-        elif any(
-            word in question_lower
-            for word in ["위험관리", "위험 관리", "재해복구", "위험수용"]
-        ):
-            return "위험관리"
-        elif any(
-            word in question_lower for word in ["금융투자", "투자자문", "금융투자업"]
-        ):
-            return "금융투자"
-        else:
-            return "일반"
-
-    def _calculate_korean_ratio(self, text: str) -> float:
-        """한국어 비율 계산"""
-        if not text:
-            return 0.0
-
-        korean_chars = len(re.findall(r"[가-힣]", text))
-        total_chars = len(re.sub(r"[^\w가-힣]", "", text))
-
-        if total_chars == 0:
-            return 0.0
-
-        return korean_chars / total_chars
-
-    def _get_domain_keywords(self, question: str) -> List[str]:
-        """도메인 키워드 가져오기"""
-        question_lower = question.lower()
-
-        if "개인정보" in question_lower:
-            return ["개인정보보호법", "정보주체", "처리", "보호조치", "동의"]
-        elif "전자금융" in question_lower:
-            return ["전자금융거래법", "접근매체", "인증", "보안", "분쟁조정"]
-        elif "보안" in question_lower or "악성코드" in question_lower:
-            return ["보안정책", "탐지", "대응", "모니터링", "방어"]
-        elif "금융투자" in question_lower:
-            return ["자본시장법", "투자자보호", "적합성원칙", "내부통제"]
-        elif "위험관리" in question_lower:
-            return ["위험식별", "위험평가", "위험대응", "내부통제"]
-        else:
-            return ["법령", "규정", "관리", "조치", "절차"]
-
-    def _get_fallback_answer_with_llm(
-        self,
-        question_type: str,
-        question: str = "",
-        max_choice: int = 5,
-        intent_analysis: Dict = None,
-    ) -> str:
-        """LLM 기반 대체 답변"""
-        if question_type == "multiple_choice":
-            if max_choice <= 0:
-                max_choice = 5
-            domain = self._detect_domain(question)
-            return self.generate_fallback_mc_answer(question, max_choice, domain)
-        else:
-            # 주관식 대체 답변도 도메인별로 특화
-            domain = self._detect_domain(question)
-            
-            if domain == "사이버보안" and "트로이" in question:
-                return "트로이 목마 기반 원격제어 악성코드의 주요 특징과 탐지 지표를 체계적으로 분석하여 관리해야 합니다."
-            elif domain == "전자금융" and "분쟁조정" in question:
-                return "전자금융분쟁조정위원회에서 관련 업무를 담당하고 있습니다."
-            else:
-                return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
-
-    def _warmup(self):
-        """모델 워밍업"""
-        try:
-            test_prompt = "테스트"
-            inputs = self.tokenizer(test_prompt, return_tensors="pt")
-            if self.device == "cuda":
-                inputs = inputs.to(self.model.device)
-
-            with torch.no_grad():
-                _ = self.model.generate(
-                    **inputs,
-                    max_new_tokens=5,
-                    do_sample=False,
-                    repetition_penalty=1.1,
-                )
-            if self.verbose:
-                print("모델 워밍업 완료")
-        except Exception as e:
-            if self.verbose:
-                print(f"워밍업 실패: {e}")
-
-    def cleanup(self):
-        """리소스 정리"""
-        try:
-            if hasattr(self, "model"):
-                del self.model
-            if hasattr(self, "tokenizer"):
-                del self.tokenizer
-
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            gc.collect()
-
-        except Exception as e:
-            if self.verbose:
-                print(f"정리 중 오류: {e}")
-,
+            r'([1-9])\s*\.', 
             r'선택[:\s]*([1-9])',
             r'([1-9])\s*\.',
         ]
@@ -1387,49 +1056,61 @@ class SimpleModelHandler:
     def generate_contextual_mc_answer(
         self, question: str, max_choice: int, domain: str
     ) -> str:
-        """문맥 기반 객관식 답변 생성"""
+        """문맥 기반 객관식 답변 생성 - 강화"""
         context_hints = self._analyze_mc_context(question, domain)
-        prompt = self._create_mc_prompt(
-            question, max_choice, domain, {"context_hints": context_hints}
-        )
+        
+        # 더 간단하고 직접적인 프롬프트
+        simple_prompt = f"""다음 문제의 정답 번호를 선택하세요:
+
+{question}
+
+1~{max_choice} 중 정답: """
 
         try:
             inputs = self.tokenizer(
-                prompt, return_tensors="pt", truncation=True, max_length=1000
+                simple_prompt, return_tensors="pt", truncation=True, max_length=800
             )
             if self.device == "cuda":
                 inputs = inputs.to(self.model.device)
 
-            gen_config = self._get_generation_config("multiple_choice")
+            # 더 확실한 설정
+            gen_config = GenerationConfig(
+                max_new_tokens=5,
+                temperature=0.1,  # 매우 낮은 temperature
+                top_p=0.5,
+                do_sample=True,
+                repetition_penalty=1.05,
+                no_repeat_ngram_size=2,
+                pad_token_id=self.tokenizer.pad_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,
+            )
 
             with torch.no_grad():
                 outputs = self.model.generate(
                     **inputs,
                     generation_config=gen_config,
-                    repetition_penalty=1.2,
-                    no_repeat_ngram_size=3,
                 )
 
             response = self.tokenizer.decode(
                 outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
             ).strip()
 
-            answer = self._process_mc_answer(response, question, max_choice)
+            answer = self._process_mc_answer_enhanced(response, question, max_choice)
 
-            if not (answer and answer.isdigit() and 1 <= int(answer) <= max_choice):
-                answer = self._force_valid_mc_answer(response, max_choice)
-
-            return answer
+            if answer and answer.isdigit() and 1 <= int(answer) <= max_choice:
+                return answer
 
         except Exception as e:
             if self.verbose:
                 print(f"컨텍스트 기반 답변 생성 오류: {e}")
-            return self._force_valid_mc_answer("", max_choice)
+
+        # 강제 답변 생성
+        return self._force_valid_mc_answer_enhanced(response if 'response' in locals() else "", question, max_choice)
 
     def generate_fallback_mc_answer(
         self, question: str, max_choice: int, domain: str
     ) -> str:
-        """대체 객관식 답변 생성"""
+        """대체 객관식 답변 생성 - 간소화"""
         return self.generate_contextual_mc_answer(question, max_choice, domain)
 
     def _analyze_mc_context(self, question: str, domain: str = "일반") -> Dict:
