@@ -17,7 +17,7 @@ class FinancialSecurityKnowledgeBase:
     def _initialize_integrated_data(self):
         """JSON 데이터를 코드 내부로 통합하여 초기화"""
         
-        # 템플릿 데이터 강화 - 더 구체적이고 전문적인 답변들로 구성
+        # 템플릿 데이터 - 더 구체적이고 전문적인 답변들로 구성
         self.korean_subjective_templates = {
             "사이버보안": {
                 "특징_묻기": [
@@ -206,14 +206,15 @@ class FinancialSecurityKnowledgeBase:
             }
         }
 
-        # 객관식 답변 패턴 강화
+        # 객관식 답변 패턴
         self.mc_answer_patterns = {
             "금융투자_해당하지않는": {
                 "question_keywords": ["금융투자업", "구분", "해당하지 않는"],
-                "choices": ["소비자금융업", "투자자문업", "투자매매업", "투자중개업", "보험중개업"],
-                "correct_answer": "5",
-                "explanation": "금융투자업의 구분에는 소비자금융업, 투자자문업, 투자매매업, 투자중개업이 포함되며, 보험중개업은 해당하지 않습니다.",
-                "hint": "금융투자업 구분에서 보험중개업은 제외됩니다."
+                "non_financial_investment": ["소비자금융업", "보험중개업"],
+                "financial_investment": ["투자자문업", "투자매매업", "투자중개업"],
+                "correct_logic": "금융투자업이 아닌 것을 찾아야 함",
+                "explanation": "금융투자업에는 투자자문업, 투자매매업, 투자중개업이 포함되며, 소비자금융업과 보험중개업은 금융투자업에 해당하지 않습니다.",
+                "hint": "금융투자업에 해당하지 않는 업종은 소비자금융업과 보험중개업입니다."
             },
             "위험관리_적절하지않은": {
                 "question_keywords": ["위험 관리", "계획 수립", "적절하지 않은"],
@@ -262,10 +263,10 @@ class FinancialSecurityKnowledgeBase:
         print("통합 데이터 초기화 완료")
 
     def analyze_question(self, question: str) -> Dict:
-        """질문 분석 - 정확도 강화"""
+        """질문 분석"""
         question_lower = question.lower()
 
-        # 도메인 탐지 강화
+        # 도메인 탐지
         detected_domains = []
         domain_scores = {}
 
@@ -315,7 +316,7 @@ class FinancialSecurityKnowledgeBase:
         return analysis_result
 
     def get_template_examples(self, domain: str, intent_type: str = "일반") -> List[str]:
-        """도메인별 템플릿 예시 반환 - 정확도 강화"""
+        """도메인별 템플릿 예시 반환"""
         templates = []
         
         # 도메인과 의도 타입에 정확히 매칭되는 템플릿 찾기
@@ -412,11 +413,18 @@ class FinancialSecurityKnowledgeBase:
         if any(term in template for term in professional_terms):
             return True
             
-        return len(template) >= 50  # 길이만으로도 품질 인정
+        return len(template) >= 50
 
     def get_mc_pattern_hints(self, question: str) -> str:
-        """객관식 패턴 힌트 제공 - 강화"""
+        """객관식 패턴 힌트 제공"""
         question_lower = question.lower()
+        
+        # 금융투자업 구분 문제 특별 처리
+        if ("금융투자업" in question_lower and 
+            "구분" in question_lower and 
+            "해당하지" in question_lower and 
+            "않는" in question_lower):
+            return "금융투자업에는 투자자문업, 투자매매업, 투자중개업이 포함됩니다. 소비자금융업과 보험중개업은 금융투자업에 해당하지 않으므로, 이 중에서 선택하세요."
         
         # 1단계: 정확한 패턴 매칭
         best_match = None
@@ -473,7 +481,7 @@ class FinancialSecurityKnowledgeBase:
         
         # 도메인별 일반 힌트
         domain_hints = {
-            "금융투자": "금융투자업의 구분과 각 업무의 특징을 고려하세요.",
+            "금융투자": "금융투자업에는 투자자문업, 투자매매업, 투자중개업이 포함되며, 소비자금융업과 보험중개업은 포함되지 않습니다.",
             "위험관리": "위험관리 계획의 필수 요소와 부적절한 요소를 구분하세요.",
             "개인정보": "개인정보보호법의 연령 제한과 동의 절차를 확인하세요.",
             "전자금융": "한국은행의 권한과 업무 범위를 고려하세요.",
@@ -487,7 +495,7 @@ class FinancialSecurityKnowledgeBase:
         return "각 선택지를 신중히 검토하고 문제의 핵심 요구사항을 파악하세요."
 
     def get_institution_hints(self, institution_type: str) -> str:
-        """기관 힌트 제공 - 강화"""
+        """기관 힌트 제공"""
         
         # 기관별 상세 정보 제공
         institution_details = {
@@ -604,7 +612,7 @@ class FinancialSecurityKnowledgeBase:
         return pattern_info
 
     def _check_institution_question(self, question: str) -> Dict:
-        """기관 관련 질문 확인 - 정확도 강화"""
+        """기관 관련 질문 확인"""
         question_lower = question.lower()
 
         institution_info = {
@@ -616,7 +624,7 @@ class FinancialSecurityKnowledgeBase:
             "hint_available": False,
         }
 
-        # 기관 질문 패턴 강화
+        # 기관 질문 패턴
         institution_patterns = [
             "기관.*기술하세요", "기관.*설명하세요", "어떤.*기관", "어느.*기관",
             "조정.*신청.*기관", "분쟁.*조정.*기관", "신청.*수.*있는.*기관",
@@ -635,7 +643,7 @@ class FinancialSecurityKnowledgeBase:
                 pattern_matches += 1
                 matched_patterns.append(pattern)
 
-        # 기관 질문으로 판단되는 조건 강화
+        # 기관 질문으로 판단되는 조건
         is_asking_institution = pattern_matches > 0
 
         if is_asking_institution:
@@ -644,7 +652,7 @@ class FinancialSecurityKnowledgeBase:
             institution_info["question_pattern"] = matched_patterns[0] if matched_patterns else None
             institution_info["hint_available"] = True
 
-            # 기관 타입 매칭 강화
+            # 기관 타입 매칭
             institution_mapping = {
                 "전자금융분쟁조정": ["전자금융", "전자적", "분쟁", "조정", "금융감독원", "이용자"],
                 "개인정보보호": ["개인정보", "정보주체", "침해", "신고", "상담", "보호위원회"],

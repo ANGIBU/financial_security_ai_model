@@ -3,6 +3,7 @@
 import os
 import sys
 from pathlib import Path
+from tqdm import tqdm
 
 current_dir = Path(__file__).parent.absolute()
 sys.path.append(str(current_dir))
@@ -159,28 +160,32 @@ def run_question_type_test(question_type: str, test_size: int):
 
         print(f"{question_type} 문항 검색 중...")
 
-        for idx, row in test_df.iterrows():
-            question = row["Question"]
-            question_id = row["ID"]
+        # 진행률 표시바 추가
+        with tqdm(total=len(test_df), desc=f"{question_type} 문항 검색", unit="문항") as pbar:
+            for idx, row in test_df.iterrows():
+                question = row["Question"]
+                question_id = row["ID"]
 
-            detected_type, max_choice = engine.data_processor.extract_choice_range(
-                question
-            )
-
-            if question_type == "주관식" and detected_type == "subjective":
-                type_indices.append(idx)
-                type_questions.append(question_id)
-            elif question_type == "객관식" and detected_type == "multiple_choice":
-                type_indices.append(idx)
-                type_questions.append(question_id)
-
-            if len(type_indices) >= test_size:
-                break
-
-            if (idx + 1) % 50 == 0:
-                print(
-                    f"분석 진행: {idx + 1}/{len(test_df)} ({((idx + 1)/len(test_df)*100):.1f}%) - 찾은 {question_type} 문항: {len(type_indices)}개"
+                detected_type, max_choice = engine.data_processor.extract_choice_range(
+                    question
                 )
+
+                if question_type == "주관식" and detected_type == "subjective":
+                    type_indices.append(idx)
+                    type_questions.append(question_id)
+                elif question_type == "객관식" and detected_type == "multiple_choice":
+                    type_indices.append(idx)
+                    type_questions.append(question_id)
+
+                # 진행률 업데이트
+                pbar.update(1)
+                pbar.set_postfix({
+                    '찾은 문항': len(type_indices),
+                    '목표': test_size
+                })
+
+                if len(type_indices) >= test_size:
+                    break
 
         if len(type_indices) == 0:
             print(f"오류: {question_type} 문항을 찾을 수 없습니다")

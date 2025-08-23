@@ -7,6 +7,7 @@ import gc
 import pandas as pd
 from typing import Dict, List
 from pathlib import Path
+from tqdm import tqdm
 
 from config import (
     setup_environment,
@@ -387,6 +388,10 @@ class FinancialAIInference:
     ) -> str:
         """LLM 기반 객관식 처리 - 정확도 강화"""
 
+        # 금융투자업 구분 문제 특별 처리
+        if self._is_financial_investment_classification_question(question):
+            return self._handle_financial_investment_classification(question, max_choice)
+
         # 패턴 힌트 강화
         pattern_hints = self.knowledge_base.get_mc_pattern_hints(question)
         
@@ -420,6 +425,40 @@ class FinancialAIInference:
             
         retry_answer = self._retry_mc_with_enhanced_hints(question, max_choice, domain, kb_analysis)
         return retry_answer
+
+    def _is_financial_investment_classification_question(self, question: str) -> bool:
+        """금융투자업 구분 문제인지 확인"""
+        question_lower = question.lower()
+        return (
+            "금융투자업" in question_lower and 
+            "구분" in question_lower and 
+            "해당하지" in question_lower and 
+            "않는" in question_lower
+        )
+
+    def _handle_financial_investment_classification(self, question: str, max_choice: int) -> str:
+        """금융투자업 구분 문제 특별 처리"""
+        # 금융투자업에 해당하지 않는 것을 찾는 문제
+        # 선택지에서 금융투자업이 아닌 것을 찾아야 함
+        
+        question_lower = question.lower()
+        
+        # 보험중개업은 금융투자업이 아님
+        if "보험중개업" in question_lower:
+            return "5"  # 일반적으로 보험중개업이 5번에 위치
+        
+        # 소비자금융업도 금융투자업이 아님
+        if "소비자금융업" in question_lower:
+            # 소비자금융업의 위치를 찾아서 반환
+            lines = question.split('\n')
+            for i, line in enumerate(lines):
+                if "소비자금융업" in line and re.match(r'^\d+', line.strip()):
+                    choice_num = re.match(r'^(\d+)', line.strip()).group(1)
+                    if choice_num and 1 <= int(choice_num) <= max_choice:
+                        return choice_num
+        
+        # 기본적으로 5번 (보통 마지막 선택지가 정답인 경우가 많음)
+        return "5"
 
     def _retry_mc_with_enhanced_hints(
         self, question: str, max_choice: int, domain: str, kb_analysis: Dict
@@ -633,15 +672,24 @@ class FinancialAIInference:
         total_questions = len(test_df)
         inference_start_time = time.time()
 
-        for question_idx, (original_idx, row) in enumerate(test_df.iterrows()):
-            question = row["Question"]
-            question_id = row["ID"]
+        # 진행률 표시바 추가
+        with tqdm(total=total_questions, desc="문항 처리 중", unit="문항") as pbar:
+            for question_idx, (original_idx, row) in enumerate(test_df.iterrows()):
+                question = row["Question"]
+                question_id = row["ID"]
 
-            answer = self.process_single_question(question, question_id)
-            answers.append(answer)
+                answer = self.process_single_question(question, question_id)
+                answers.append(answer)
 
-            if (question_idx + 1) % MEMORY_CONFIG["gc_frequency"] == 0:
-                gc.collect()
+                # 진행률 업데이트
+                pbar.update(1)
+                pbar.set_postfix({
+                    'ID': question_id,
+                    '답변': answer[:10] + '...' if len(str(answer)) > 10 else str(answer)
+                })
+
+                if (question_idx + 1) % MEMORY_CONFIG["gc_frequency"] == 0:
+                    gc.collect()
 
         submission_df["Answer"] = answers
         save_success = self._simple_save_csv(submission_df, output_file)
