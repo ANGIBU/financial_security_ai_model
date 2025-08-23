@@ -10,8 +10,10 @@ from config import JSON_CONFIG_FILES, TEMPLATE_QUALITY_CRITERIA
 
 
 class FinancialSecurityKnowledgeBase:
+
     def __init__(self):
         self._load_json_configs()
+
         self.template_quality_criteria = TEMPLATE_QUALITY_CRITERIA
 
     def _load_json_configs(self):
@@ -307,7 +309,6 @@ class FinancialSecurityKnowledgeBase:
         return analysis_result
 
     def _analyze_mc_pattern(self, question: str) -> Dict:
-
         question_lower = question.lower()
 
         pattern_info = {
@@ -338,7 +339,6 @@ class FinancialSecurityKnowledgeBase:
         return pattern_info
 
     def _check_institution_question(self, question: str) -> Dict:
-        """기관 관련 질문 확인"""
         question_lower = question.lower()
 
         institution_info = {
@@ -401,7 +401,6 @@ class FinancialSecurityKnowledgeBase:
         return institution_info
 
     def _check_competition_compliance(self, question: str) -> Dict:
-        """대회 규칙 준수 확인"""
         compliance = {
             "korean_content": True,
             "appropriate_domain": True,
@@ -427,7 +426,6 @@ class FinancialSecurityKnowledgeBase:
         return compliance
 
     def get_mc_pattern_hints(self, question: str) -> str:
-        """객관식 패턴 힌트 반환"""
         mc_pattern_info = self._analyze_mc_pattern(question)
 
         if (
@@ -451,7 +449,6 @@ class FinancialSecurityKnowledgeBase:
     def get_template_examples(
         self, domain: str, intent_type: str = "일반"
     ) -> List[str]:
-        """템플릿 예시 반환"""
 
         templates = []
         
@@ -500,7 +497,6 @@ class FinancialSecurityKnowledgeBase:
         return []
 
     def _generate_enhanced_fallback_templates(self, domain: str, intent_type: str) -> List[str]:
-        """향상된 폴백 템플릿 생성"""
         
         fallback_templates = {
             "사이버보안": {
@@ -627,7 +623,6 @@ class FinancialSecurityKnowledgeBase:
         ]
 
     def get_template_hints(self, domain: str, intent_type: str = "일반") -> str:
-        """템플릿 힌트 반환"""
 
         structure_hints = []
 
@@ -665,7 +660,6 @@ class FinancialSecurityKnowledgeBase:
         return " ".join(structure_hints)
 
     def get_institution_hints(self, institution_type: str) -> str:
-        """기관별 힌트 정보 반환"""
         
         default_hints = {
             "전자금융분쟁조정": "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 금융감독원 내에 설치되어 운영되며, 이용자와 전자금융업자 간의 분쟁을 공정하고 신속하게 해결하기 위한 업무를 수행합니다.",
@@ -698,23 +692,19 @@ class FinancialSecurityKnowledgeBase:
     def get_korean_subjective_template(
         self, domain: str, intent_type: str = "일반"
     ) -> List[str]:
-        """한국어 주관식 답변 템플릿 반환"""
         return self.get_template_examples(domain, intent_type)
 
     def get_high_quality_template(
         self, domain: str, intent_type: str, min_quality: float = 0.8
     ) -> List[str]:
-        """고품질 템플릿 반환"""
         return self.get_template_examples(domain, intent_type)
 
     def get_subjective_template(
         self, domain: str, intent_type: str = "일반"
     ) -> List[str]:
-        """주관식 답변 템플릿 반환"""
         return self.get_template_examples(domain, intent_type)
 
     def _calculate_complexity(self, question: str) -> float:
-        """질문 복잡도 계산"""
         length_factor = min(len(question) / 200, 1.0)
 
         korean_term_count = sum(
@@ -732,7 +722,6 @@ class FinancialSecurityKnowledgeBase:
         return (length_factor + term_factor + domain_factor) / 3
 
     def _find_korean_technical_terms(self, question: str) -> List[str]:
-        """한국어 전문 용어 찾기"""
         found_terms = []
 
         for term in self.korean_financial_terms.keys():
@@ -744,7 +733,6 @@ class FinancialSecurityKnowledgeBase:
     def _determine_technical_level(
         self, complexity: float, korean_terms: List[str]
     ) -> str:
-        """기술 수준 결정"""
         if complexity > 0.7 or len(korean_terms) >= 2:
             return "고급"
         elif complexity > 0.4 or len(korean_terms) >= 1:
@@ -753,7 +741,6 @@ class FinancialSecurityKnowledgeBase:
             return "초급"
 
     def get_domain_specific_guidance(self, domain: str) -> Dict:
-        """도메인별 지침 반환"""
         guidance = {
             "개인정보보호": {
                 "key_laws": ["개인정보보호법", "정보통신망법"],
