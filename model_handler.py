@@ -36,10 +36,6 @@ class SimpleModelHandler:
 
         self.optimization_config = OPTIMIZATION_CONFIG
 
-        if verbose:
-            print(f"모델 로딩: {self.model_name}")
-            print(f"디바이스: {self.device}")
-
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_name,
             trust_remote_code=MODEL_CONFIG["trust_remote_code"],
@@ -61,9 +57,6 @@ class SimpleModelHandler:
         self.model.eval()
 
         self._warmup()
-
-        if verbose:
-            print("모델 로딩 완료")
 
     def _optimize_tokenizer_for_korean(self):
         """토크나이저 한국어 최적화"""
@@ -472,8 +465,6 @@ class SimpleModelHandler:
         ]
 
         self._setup_korean_recovery_mappings()
-
-        print("통합 데이터 초기화 완료")
 
     def _setup_korean_recovery_mappings(self):
         """한국어 복구 매핑 설정"""
@@ -1043,8 +1034,6 @@ class SimpleModelHandler:
                     do_sample=False,
                     repetition_penalty=1.1,
                 )
-            if self.verbose:
-                print("모델 워밍업 완료")
         except Exception as e:
             if self.verbose:
                 print(f"워밍업 실패: {e}")

@@ -256,8 +256,6 @@ class FinancialSecurityKnowledgeBase:
             }
         }
 
-        print("통합 데이터 초기화 완료")
-
     def analyze_question(self, question: str) -> Dict:
         """질문 분석"""
         question_lower = question.lower()

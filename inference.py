@@ -34,7 +34,7 @@ class FinancialAIInference:
 
         setup_environment()
 
-        self.model_handler = SimpleModelHandler(verbose=verbose)
+        self.model_handler = SimpleModelHandler(verbose=False)
         self.data_processor = SimpleDataProcessor()
         self.knowledge_base = FinancialSecurityKnowledgeBase()
 
@@ -65,8 +65,6 @@ class FinancialAIInference:
                 )
 
         except Exception as e:
-            if self.verbose:
-                print(f"오류 발생: {e}")
             fallback = self._get_intent_based_fallback(
                 question, question_type, max_choice if "max_choice" in locals() else 5
             )
@@ -81,15 +79,10 @@ class FinancialAIInference:
         kb_analysis: Dict,
     ) -> str:
         """주관식 질문 처리 - 템플릿 우선 적용"""
-        
-        if self.verbose:
-            print(f"질문 처리: {question_id}, 도메인: {domain}")
 
         # 1단계: 직접 답변 매칭 (특정 질문들)
         direct_answer = self._get_direct_answer_for_specific_questions(question, domain)
         if direct_answer:
-            if self.verbose:
-                print("1단계: 직접 답변 매칭 성공")
             return direct_answer
 
         # 2단계: 의도 분석
@@ -98,20 +91,14 @@ class FinancialAIInference:
         # 3단계: 템플릿 기반 답변 생성 (우선순위 높임)
         template_answer = self._generate_from_template_first(question, domain, intent_analysis, kb_analysis)
         if template_answer and len(template_answer) > 30:
-            if self.verbose:
-                print("3단계: 템플릿 기반 답변 성공")
             return self._finalize_answer(template_answer, question, intent_analysis)
 
         # 4단계: LLM 생성 (단순화된 프롬프트)
         llm_answer = self._generate_simple_llm_answer(question, domain, intent_analysis)
         if llm_answer and len(llm_answer) > 20:
-            if self.verbose:
-                print("4단계: 단순 LLM 생성 성공")
             return self._finalize_answer(llm_answer, question, intent_analysis)
 
         # 5단계: 도메인별 전문 폴백
-        if self.verbose:
-            print("5단계: 도메인별 전문 폴백")
         return self._get_domain_specific_fallback(question, domain, intent_analysis)
 
     def _generate_from_template_first(self, question: str, domain: str, intent_analysis: Dict, kb_analysis: Dict) -> str:
@@ -188,8 +175,7 @@ class FinancialAIInference:
                 return answer
                 
         except Exception as e:
-            if self.verbose:
-                print(f"LLM 생성 오류: {e}")
+            pass
         
         return None
 
@@ -401,9 +387,6 @@ class FinancialAIInference:
             "pattern_hints": pattern_hints
         }
 
-        if self.verbose and pattern_hints:
-            print(f"객관식 힌트: {pattern_hints}")
-
         # LLM으로 1차 시도
         answer = self.model_handler.generate_answer(
             question,
@@ -415,14 +398,9 @@ class FinancialAIInference:
 
         # 유효한 답변 확인
         if answer and answer.isdigit() and 1 <= int(answer) <= max_choice:
-            if self.verbose:
-                print(f"1차 객관식 성공: {answer}")
             return answer
         
         # 2차 시도 - 더 구체적인 힌트로
-        if self.verbose:
-            print(f"1차 답변 실패: {answer}, 2차 시도 중...")
-            
         retry_answer = self._retry_mc_with_enhanced_hints(question, max_choice, domain, kb_analysis)
         return retry_answer
 
@@ -487,27 +465,17 @@ class FinancialAIInference:
 
         # 유효성 검증
         if retry_answer and retry_answer.isdigit() and 1 <= int(retry_answer) <= max_choice:
-            if self.verbose:
-                print(f"2차 객관식 성공: {retry_answer}")
             return retry_answer
 
         # 3차 시도 - 문맥 기반 생성
-        if self.verbose:
-            print(f"2차 답변 실패: {retry_answer}, 3차 시도 중...")
-            
         contextual_answer = self.model_handler.generate_contextual_mc_answer(
             question, max_choice, domain
         )
 
         if contextual_answer and contextual_answer.isdigit() and 1 <= int(contextual_answer) <= max_choice:
-            if self.verbose:
-                print(f"3차 객관식 성공: {contextual_answer}")
             return contextual_answer
 
         # 최종 안전장치
-        if self.verbose:
-            print(f"3차 답변 실패: {contextual_answer}, 안전장치 작동")
-            
         safe_answer = self._get_pattern_based_fallback(question, max_choice, domain)
         return safe_answer
 
@@ -584,19 +552,14 @@ class FinancialAIInference:
 
         try:
             df.to_csv(filepath, index=False, encoding=FILE_VALIDATION["encoding"])
-            if self.verbose:
-                print(f"\n결과 저장 완료: {filepath}")
             return True
 
         except PermissionError as e:
-            if self.verbose:
-                print(f"\n파일 저장 권한 오류: {e}")
-                print("파일이 다른 프로그램에서 열려있는지 확인하세요.")
+            print(f"파일 저장 권한 오류: {filepath}")
             return False
 
         except Exception as e:
-            if self.verbose:
-                print(f"\n파일 저장 중 오류: {e}")
+            print(f"파일 저장 중 오류: {e}")
             return False
 
     def execute_inference(
@@ -648,17 +611,10 @@ class FinancialAIInference:
                 question = row["Question"]
                 question_id = row["ID"]
 
-                # verbose 모드를 임시로 비활성화하여 깔끔한 진행률 표시
-                original_verbose = self.verbose
-                self.verbose = False
-                
                 answer = self.process_single_question(question, question_id)
                 answers.append(answer)
-                
-                # verbose 모드 복원
-                self.verbose = original_verbose
 
-                # 진행률 업데이트 (postfix 제거로 단순화)
+                # 진행률 업데이트
                 pbar.update(1)
 
                 if (question_idx + 1) % MEMORY_CONFIG["gc_frequency"] == 0:
@@ -669,7 +625,6 @@ class FinancialAIInference:
 
         if not save_success:
             print(f"지정된 파일로 저장에 실패했습니다: {output_file}")
-            print("파일이 다른 프로그램에서 열려있거나 권한 문제일 수 있습니다.")
 
         return self._get_results_summary()
 
@@ -695,8 +650,7 @@ class FinancialAIInference:
             gc.collect()
 
         except Exception as e:
-            if self.verbose:
-                print(f"정리 중 오류: {e}")
+            pass
 
 
 def main():
@@ -704,20 +658,18 @@ def main():
 
     engine = None
     try:
-        engine = FinancialAIInference(verbose=True)
+        engine = FinancialAIInference(verbose=False)
 
         results = engine.execute_inference()
 
         if results["success"]:
-            print("\n추론 완료")
-            print(f"총 처리시간: {results['total_time']:.1f}초")
+            print(f"\n추론 완료 (처리시간: {results['total_time']:.1f}초)")
 
     except KeyboardInterrupt:
         print("\n추론 중단됨")
     except Exception as e:
         print(f"오류 발생: {e}")
         import traceback
-
         traceback.print_exc()
     finally:
         if engine:

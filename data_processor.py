@@ -611,8 +611,6 @@ class SimpleDataProcessor:
 
         self._setup_korean_recovery_mappings()
 
-        print("통합 데이터 초기화 완료")
-
     def _setup_korean_recovery_mappings(self):
         """한국어 복구 매핑 설정"""
         self.korean_recovery_mapping = {}
