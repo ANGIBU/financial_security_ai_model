@@ -109,7 +109,8 @@ def run_specific_id_test():
             results, output_file, len(specific_test_df), found_ids
         )
 
-        print_answer_analysis(specific_test_df, output_file)
+        # 엔진을 재사용하여 답변 분석 (모델 재로딩 방지)
+        print_answer_analysis_optimized(engine, specific_test_df, output_file)
 
         return True
 
@@ -190,7 +191,8 @@ def run_question_type_test(question_type: str, test_size: int):
             print_subjective_results(
                 results, output_file, len(type_indices), type_questions
             )
-            print_subjective_answer_analysis(type_test_df, output_file)
+            # 주관식의 경우 상세 분석
+            print_subjective_answer_analysis_optimized(engine, type_test_df, output_file)
         else:
             print_multiple_choice_results(
                 results, output_file, len(type_indices), type_questions
@@ -210,8 +212,8 @@ def run_question_type_test(question_type: str, test_size: int):
             engine.cleanup()
 
 
-def print_answer_analysis(test_df, output_file):
-    """답변 분석 출력"""
+def print_answer_analysis_optimized(engine, test_df, output_file):
+    """최적화된 답변 분석 (모델 재로딩 없음)"""
     try:
         import pandas as pd
         result_df = pd.read_csv(output_file, encoding=FILE_VALIDATION["encoding"])
@@ -222,9 +224,7 @@ def print_answer_analysis(test_df, output_file):
         objective_count = 0
         fallback_count = 0
         
-        from inference import FinancialAIInference
-        temp_engine = FinancialAIInference(verbose=False)
-        
+        # 기존 엔진 재사용 (모델 재로딩 방지)
         for idx, row in result_df.iterrows():
             question_id = row["ID"]
             answer = str(row["Answer"])
@@ -232,26 +232,30 @@ def print_answer_analysis(test_df, output_file):
             question_row = test_df[test_df["ID"] == question_id]
             if len(question_row) > 0:
                 question = question_row.iloc[0]["Question"]
-                question_type, max_choice = temp_engine.data_processor.extract_choice_range(question)
+                question_type, max_choice = engine.data_processor.extract_choice_range(question)
                 
                 if question_type == "subjective":
                     subjective_count += 1
-                    if "관련 법령과 규정에 따라 체계적인 관리가 필요합니다" in answer:
+                    # 폴백 답변 패턴 체크
+                    fallback_patterns = [
+                        "관련 법령과 규정에 따라 체계적인 관리",
+                        "체계적이고 전문적인 관리",
+                        "지속적으로 운영해야 합니다"
+                    ]
+                    if any(pattern in answer for pattern in fallback_patterns):
                         fallback_count += 1
                 else:
                     objective_count += 1
                     
-        print(f"주관식: {subjective_count}개, 객관식: {objective_count}개")
-        print(f"폴백 답변: {fallback_count}개 (주관식 중 {fallback_count/max(1, subjective_count)*100:.1f}%)")
-        
-        temp_engine.cleanup()
+        if subjective_count > 0:
+            fallback_rate = fallback_count / subjective_count * 100
         
     except Exception as e:
         print(f"답변 분석 중 오류: {e}")
 
 
-def print_subjective_answer_analysis(test_df, output_file):
-    """주관식 답변 상세 분석"""
+def print_subjective_answer_analysis_optimized(engine, test_df, output_file):
+    """최적화된 주관식 답변 상세 분석"""
     try:
         import pandas as pd
         result_df = pd.read_csv(output_file, encoding=FILE_VALIDATION["encoding"])
@@ -268,7 +272,9 @@ def print_subjective_answer_analysis(test_df, output_file):
             fallback_patterns = [
                 "관련 법령과 규정에 따라 체계적인 관리가 필요합니다",
                 "관련 법령과 규정에 따라 체계적인 관리를",
-                "체계적인 관리가 필요합니다"
+                "체계적인 관리가 필요합니다",
+                "체계적이고 전문적인 관리",
+                "지속적으로 운영해야 합니다"
             ]
             
             is_fallback = any(pattern in answer for pattern in fallback_patterns)
@@ -286,9 +292,21 @@ def print_subjective_answer_analysis(test_df, output_file):
             
         success_rate = len(good_answers) / (len(good_answers) + len(fallback_answers)) * 100 if (len(good_answers) + len(fallback_answers)) > 0 else 0
         print(f"주관식 성공률: {success_rate:.1f}%")
+        print("분석 완료!")
         
     except Exception as e:
         print(f"주관식 답변 분석 중 오류: {e}")
+
+
+# 기존 함수들은 제거하고 최적화된 버전만 사용
+def print_answer_analysis(test_df, output_file):
+    """사용 안 함 - 최적화된 버전으로 대체"""
+    pass
+
+
+def print_subjective_answer_analysis(test_df, output_file):
+    """사용 안 함 - 최적화된 버전으로 대체"""
+    pass
 
 
 def print_specific_id_results(
@@ -395,9 +413,9 @@ def main():
         print(f"\n특정 ID 테스트를 실행합니다...")
         success = run_specific_id_test()
         if success:
-            print(f"\n특정 ID 테스트 완료")
+            print(f"\n테스트 완료")
         else:
-            print("\n특정 ID 테스트 실패")
+            print("\n테스트 실패")
             sys.exit(1)
     else:
         question_count = select_question_count(test_type)
@@ -406,9 +424,9 @@ def main():
         success = run_question_type_test(test_type, question_count)
 
         if success:
-            print(f"\n{test_type} 테스트 완료")
+            print(f"\n✅ {test_type} 테스트 완료! 프로그램을 종료합니다.")
         else:
-            print(f"\n{test_type} 테스트 실패")
+            print(f"\n❌ {test_type} 테스트 실패")
             sys.exit(1)
 
 
