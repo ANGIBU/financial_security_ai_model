@@ -634,27 +634,32 @@ class FinancialAIInference:
         answers = []
         total_questions = len(test_df)
 
-        # 진행률 표시바 - 길이를 반으로 줄이고 시간 정보 제거
+        # 개선된 진행률 표시바 - 한 줄 유지, 심플한 표시
         with tqdm(
             total=total_questions, 
-            desc="문항 처리 중", 
+            desc="처리 중", 
             unit="문항",
-            ncols=60,
-            bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}'
+            ncols=50,
+            bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}',
+            leave=True,
+            dynamic_ncols=False
         ) as pbar:
             for question_idx, (original_idx, row) in enumerate(test_df.iterrows()):
                 question = row["Question"]
                 question_id = row["ID"]
 
+                # verbose 모드를 임시로 비활성화하여 깔끔한 진행률 표시
+                original_verbose = self.verbose
+                self.verbose = False
+                
                 answer = self.process_single_question(question, question_id)
                 answers.append(answer)
+                
+                # verbose 모드 복원
+                self.verbose = original_verbose
 
-                # 진행률 업데이트
+                # 진행률 업데이트 (postfix 제거로 단순화)
                 pbar.update(1)
-                pbar.set_postfix({
-                    'ID': question_id,
-                    '답변': answer[:10] + '...' if len(str(answer)) > 10 else str(answer)
-                })
 
                 if (question_idx + 1) % MEMORY_CONFIG["gc_frequency"] == 0:
                     gc.collect()
