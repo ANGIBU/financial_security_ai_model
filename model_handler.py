@@ -638,91 +638,63 @@ class SimpleModelHandler:
         intent_analysis: Dict = None,
         domain_hints: Dict = None,
     ) -> str:
-        """목적별 한국어 프롬프트 생성 - 대회 규칙 준수"""
+        """SOLAR 모델용 프롬프트 생성"""
         domain = self._detect_domain(question)
         question_lower = question.lower()
 
         if question_type == "multiple_choice":
             return self._create_mc_prompt(question, self._extract_choice_count(question), domain, domain_hints)
 
-        # 주관식 프롬프트 - LLM이 스스로 답변을 생성하도록 유도
-        base_instruction = "다음 질문에 대해 전문적이고 구체적인 한국어 답변을 작성하세요."
-        
-        # 도메인별 전문 가이드라인
-        domain_guidance = ""
-        if domain == "사이버보안":
-            if "트로이" in question_lower and "원격제어" in question_lower:
-                domain_guidance = """
-사이버보안 전문가의 관점에서 다음 요소들을 포함하여 답변하세요:
-- 악성코드의 기술적 특성과 작동 원리
-- 시스템 침투 방법과 은밀성 유지 기법
-- 네트워크 및 시스템 기반 탐지 방법
-- 실무에서 활용 가능한 모니터링 지표"""
-            else:
-                domain_guidance = "사이버보안 전문 용어와 기술적 세부사항을 포함하여 실무적 관점에서 답변하세요."
-        
-        elif domain == "전자금융":
-            if "분쟁조정" in question_lower and "기관" in question_lower:
-                domain_guidance = """
-전자금융 법률 전문가의 관점에서 다음 요소들을 포함하여 답변하세요:
-- 관련 법령과 조항의 구체적 근거
-- 기관의 설치 배경과 법적 지위
-- 주요 업무와 권한의 범위
-- 이용자 보호를 위한 역할과 절차"""
-            else:
-                domain_guidance = "전자금융거래법과 관련 기관의 역할을 법적 근거와 함께 전문적으로 설명하세요."
-        
-        elif domain == "개인정보보호":
-            if "기관" in question_lower:
-                domain_guidance = """
-개인정보보호 법률 전문가의 관점에서 다음 요소들을 포함하여 답변하세요:
-- 개인정보보호법상의 법적 근거
-- 기관의 조직 구성과 역할 분담
-- 신고 및 상담 절차의 구체적 내용
-- 개인정보 침해 구제 방안"""
-            else:
-                domain_guidance = "개인정보보호법과 관련 기관의 업무를 법적 근거와 함께 구체적으로 설명하세요."
-        
-        else:
-            domain_guidance = "해당 분야의 전문가 관점에서 관련 법령과 실무를 바탕으로 체계적으로 설명하세요."
+        # 간단한 모드 처리
+        if domain_hints and domain_hints.get("simple_mode") or domain_hints.get("last_attempt"):
+            simple_instruction = "다음 질문에 대해 한국어로 간단하고 명확하게 답변해주세요."
+            user_prompt = f"{simple_instruction}\n\n질문: {question}"
+            return f"### User:\n{user_prompt}\n\n### Assistant:"
 
-        # 의도별 추가 지침
-        intent_instruction = ""
-        if intent_analysis:
-            primary_intent = intent_analysis.get("primary_intent", "일반")
+        # SOLAR 모델용 간단하고 직접적인 프롬프트
+        instruction = ""
+        
+        # 도메인과 의도에 따른 맞춤 지시문 - 한국어 강조
+        if domain == "사이버보안" and "트로이" in question_lower:
+            if "특징" in question_lower and "지표" in question_lower:
+                instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요. 트로이 목마 기반 원격제어 악성코드의 특징과 탐지 지표를 모두 포함하여 상세히 설명해주세요."
+            elif "특징" in question_lower:
+                instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요. 트로이 목마 기반 원격제어 악성코드의 주요 특징을 상세히 설명해주세요."
+            elif "지표" in question_lower:
+                instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요. RAT 악성코드의 탐지 지표를 구체적으로 설명해주세요."
+            else:
+                instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요."
+                
+        elif domain == "전자금융" and "분쟁조정" in question_lower and "기관" in question_lower:
+            instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요. 전자금융 분쟁조정을 담당하는 기관의 명칭과 주요 업무를 구체적으로 설명해주세요."
             
-            if "기관" in primary_intent:
-                intent_instruction = "구체적인 기관명, 설치 근거, 주요 업무, 연락처 등을 포함하여 실무적으로 활용 가능한 정보를 제공하세요."
-            elif "특징" in primary_intent:
-                intent_instruction = "주요 특징을 분류하고 각각의 기술적 세부사항과 실무적 의미를 상세히 설명하세요."
-            elif "지표" in primary_intent:
-                intent_instruction = "탐지 지표를 체계적으로 분류하고 각 지표의 모니터링 방법과 분석 기법을 구체적으로 설명하세요."
-            elif primary_intent in ["특징_묻기", "지표_묻기"] and "특징" in question_lower and "지표" in question_lower:
-                intent_instruction = "특징과 탐지 지표를 모두 포함하여 각각을 명확히 구분하고 연관성을 설명하세요."
+        elif domain == "개인정보보호" and "기관" in question_lower and ("신고" in question_lower or "침해" in question_lower):
+            instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요. 개인정보 침해 신고를 담당하는 기관과 업무를 설명해주세요."
+            
+        else:
+            # 일반적인 지시문 - 한국어 강조
+            if intent_analysis:
+                primary_intent = intent_analysis.get("primary_intent", "일반")
+                if "기관" in primary_intent:
+                    instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요. 관련 업무를 담당하는 기관을 구체적으로 설명해주세요."
+                elif "특징" in primary_intent:
+                    instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요. 주요 특징을 상세히 설명해주세요."
+                elif "지표" in primary_intent:
+                    instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요. 탐지 지표를 구체적으로 설명해주세요."
+                else:
+                    instruction = "다음 질문에 대해 한국어로 전문적이고 구체적으로 답변해주세요."
+            else:
+                instruction = "다음 질문에 대해 한국어로 전문적이고 구체적으로 답변해주세요."
 
-        # 품질 요구사항
-        quality_requirements = """
-답변 작성 시 다음 기준을 준수하세요:
-- 완전한 한국어로만 작성
-- 전문 용어를 정확히 사용
-- 구체적이고 실무적인 내용 포함
-- 법적 근거나 기술적 원리 명시
-- 150자 이상의 충분한 설명"""
-
-        # 최종 프롬프트 구성
-        prompt = f"""{base_instruction}
-
-질문: {question}
-
-{domain_guidance}
-
-{intent_instruction}
-
-{quality_requirements}
-
-답변:"""
-
-        return prompt
+        # SOLAR 모델 표준 형식 사용 + Few-shot learning
+        user_prompt = f"{instruction}\n\n질문: {question}"
+        
+        # Few-shot 예시가 있으면 추가
+        if domain_hints and "few_shot_examples" in domain_hints and domain_hints["few_shot_examples"]:
+            examples_text = "\n\n예시:\n" + "\n\n".join(domain_hints["few_shot_examples"])
+            user_prompt = f"{instruction}{examples_text}\n\n질문: {question}"
+        
+        return f"### User:\n{user_prompt}\n\n### Assistant:"
 
     def _create_mc_prompt(
         self,
@@ -801,7 +773,7 @@ class SimpleModelHandler:
 
             gen_config = self._get_generation_config(question_type)
 
-            # 객관식 전용 설정
+            # 주관식 설정 - SOLAR 모델 최적화
             if question_type == "multiple_choice":
                 gen_config.max_new_tokens = 10
                 gen_config.repetition_penalty = 1.1
@@ -810,12 +782,12 @@ class SimpleModelHandler:
                 gen_config.top_p = 0.7
                 gen_config.do_sample = True
             else:
-                # 주관식 설정 - 더 안정적으로
-                gen_config.max_new_tokens = 400
-                gen_config.repetition_penalty = 1.02
+                # SOLAR 모델 한국어 답변 최적화 설정
+                gen_config.max_new_tokens = 512
+                gen_config.repetition_penalty = 1.1
                 gen_config.no_repeat_ngram_size = 3
-                gen_config.temperature = 0.4
-                gen_config.top_p = 0.85
+                gen_config.temperature = 0.7
+                gen_config.top_p = 0.9
                 gen_config.do_sample = True
 
             with torch.no_grad():

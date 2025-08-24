@@ -463,48 +463,55 @@ class FinancialAIInference:
     def _validate_template_answer(
         self, answer: str, question: str, intent_analysis: Dict = None
     ) -> bool:
-        """템플릿 답변 검증"""
+        """템플릿 답변 검증 - 완화된 기준"""
         if not answer:
             return False
 
-        if len(answer) < 15:
+        if len(answer) < 10:  # 너무 짧은 답변만 제외
             return False
 
         # 반복 패턴 체크
         if self.model_handler.detect_critical_repetitive_patterns(answer):
             return False
 
-        # 한국어 비율 체크
+        # 한국어 비율 체크 완화
         korean_ratio = self.data_processor.calculate_korean_ratio(answer)
-        if korean_ratio < 0.5:
+        if korean_ratio < 0.3:  # 0.5에서 0.3으로 완화
             return False
 
-        # 의미있는 키워드 체크
-        meaningful_keywords = [
-            "특징", "지표", "탐지", "위원회", "기관", "업무", "담당", "법령", "규정", 
-            "관리", "보안", "방안", "절차", "조치", "대응", "시스템", "모니터링",
-            "트로이", "악성코드", "원격제어", "전자금융", "분쟁조정", "개인정보",
-            "외부", "공격자", "은밀", "지속", "활동", "수행", "침투", "제어"
+        # 최소 한국어 문자 수 완화
+        korean_chars = len(re.findall(r"[가-힣]", answer))
+        if korean_chars < 5:  # 기존보다 많이 완화
+            return False
+
+        # 완전히 의미 없는 답변만 제외
+        meaningless_patterns = [
+            r"^관련 법령.*필요합니다\.?$",
+            r"^체계적인 관리.*필요합니다\.?$",
+            r"^[.]+$",
+            r"^[\s]*$"
         ]
         
-        if any(word in answer for word in meaningful_keywords):
-            return True
+        for pattern in meaningless_patterns:
+            if re.match(pattern, answer.strip()):
+                return False
 
-        # 길이가 충분하고 한국어 비율이 적절하면 통과
-        if len(answer) >= 30 and korean_ratio >= 0.7:
-            return True
-
-        return False
+        return True  # 나머지는 모두 통과
 
     def _finalize_answer(
         self, answer: str, question: str, intent_analysis: Dict = None
     ) -> str:
         """답변 최종 처리"""
         if not answer:
-            return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
+            # 최종 LLM 시도
+            return self._last_attempt_llm_answer(question)
 
         # 기본적인 정리만 수행
         answer = answer.strip()
+        
+        # 너무 짧은 답변이면 다시 시도
+        if len(answer) < 20:
+            return self._last_attempt_llm_answer(question)
         
         # 문장 끝 처리
         if answer and not answer.endswith((".", "다", "요", "함")):
@@ -518,6 +525,36 @@ class FinancialAIInference:
                 answer += "."
 
         return answer
+
+    def _last_attempt_llm_answer(self, question: str) -> str:
+        """최종 시도 LLM 답변"""
+        domain = self.data_processor.extract_domain(question)
+        
+        # 매우 간단한 프롬프트로 최종 시도
+        simple_domain_hints = {
+            "domain": domain,
+            "simple_mode": True,
+            "last_attempt": True
+        }
+        
+        try:
+            final_answer = self.model_handler.generate_answer(
+                question,
+                "subjective",
+                5,
+                None,  # 의도 분석 없이
+                domain_hints=simple_domain_hints
+            )
+            
+            if final_answer and len(final_answer) > 10:
+                return final_answer
+                
+        except Exception as e:
+            if self.verbose:
+                print(f"최종 시도 실패: {e}")
+        
+        # 정말 마지막 폴백
+        return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
 
     def _map_intent_to_key(self, primary_intent: str) -> str:
         """의도를 키로 매핑"""
