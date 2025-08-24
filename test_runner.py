@@ -83,7 +83,7 @@ def run_specific_id_test():
     engine = None
     try:
         print("\n특정 ID 테스트 시스템 초기화 중...")
-        engine = FinancialAIInference(verbose=False)
+        engine = FinancialAIInference(verbose=True)  # verbose=True로 변경하여 디버깅 정보 확인
 
         import pandas as pd
 
@@ -117,6 +117,9 @@ def run_specific_id_test():
             results, output_file, len(specific_test_df), found_ids
         )
 
+        # 결과 분석 추가
+        print_answer_analysis(specific_test_df, output_file)
+
         return True
 
     except Exception as e:
@@ -144,7 +147,7 @@ def run_question_type_test(question_type: str, test_size: int):
     engine = None
     try:
         print(f"\n{question_type} 테스트 시스템 초기화 중...")
-        engine = FinancialAIInference(verbose=False)
+        engine = FinancialAIInference(verbose=True)  # verbose=True로 변경
 
         import pandas as pd
 
@@ -226,6 +229,8 @@ def run_question_type_test(question_type: str, test_size: int):
             print_subjective_results(
                 results, output_file, len(type_indices), type_questions
             )
+            # 주관식 결과 상세 분석
+            print_subjective_answer_analysis(type_test_df, output_file)
         else:
             print_multiple_choice_results(
                 results, output_file, len(type_indices), type_questions
@@ -243,6 +248,94 @@ def run_question_type_test(question_type: str, test_size: int):
     finally:
         if engine:
             engine.cleanup()
+
+
+def print_answer_analysis(test_df, output_file):
+    """답변 분석 출력"""
+    try:
+        import pandas as pd
+        result_df = pd.read_csv(output_file, encoding=FILE_VALIDATION["encoding"])
+        
+        print("\n=== 답변 분석 ===")
+        
+        # 주관식과 객관식 분리
+        subjective_count = 0
+        objective_count = 0
+        fallback_count = 0
+        
+        from inference import FinancialAIInference
+        temp_engine = FinancialAIInference(verbose=False)
+        
+        for idx, row in result_df.iterrows():
+            question_id = row["ID"]
+            answer = str(row["Answer"])
+            
+            # 해당 질문 찾기
+            question_row = test_df[test_df["ID"] == question_id]
+            if len(question_row) > 0:
+                question = question_row.iloc[0]["Question"]
+                question_type, max_choice = temp_engine.data_processor.extract_choice_range(question)
+                
+                if question_type == "subjective":
+                    subjective_count += 1
+                    # 폴백 답변인지 확인
+                    if "관련 법령과 규정에 따라 체계적인 관리가 필요합니다" in answer:
+                        fallback_count += 1
+                        print(f"폴백 답변 발견: {question_id}")
+                else:
+                    objective_count += 1
+                    
+        print(f"주관식 문항: {subjective_count}개")
+        print(f"객관식 문항: {objective_count}개")
+        print(f"폴백 답변: {fallback_count}개 (주관식 중 {fallback_count/max(1, subjective_count)*100:.1f}%)")
+        
+        temp_engine.cleanup()
+        
+    except Exception as e:
+        print(f"답변 분석 중 오류: {e}")
+
+
+def print_subjective_answer_analysis(test_df, output_file):
+    """주관식 답변 상세 분석"""
+    try:
+        import pandas as pd
+        result_df = pd.read_csv(output_file, encoding=FILE_VALIDATION["encoding"])
+        
+        print("\n=== 주관식 답변 상세 분석 ===")
+        
+        fallback_answers = []
+        good_answers = []
+        
+        for idx, row in result_df.iterrows():
+            question_id = row["ID"]
+            answer = str(row["Answer"])
+            
+            # 폴백 답변 패턴 체크
+            fallback_patterns = [
+                "관련 법령과 규정에 따라 체계적인 관리가 필요합니다",
+                "관련 법령과 규정에 따라 체계적인 관리를",
+                "체계적인 관리가 필요합니다"
+            ]
+            
+            is_fallback = any(pattern in answer for pattern in fallback_patterns)
+            
+            if is_fallback:
+                fallback_answers.append(question_id)
+            else:
+                good_answers.append(question_id)
+                print(f"정상 답변 {question_id}: {answer[:100]}{'...' if len(answer) > 100 else ''}")
+                
+        print(f"\n정상 답변: {len(good_answers)}개")
+        print(f"폴백 답변: {len(fallback_answers)}개")
+        
+        if fallback_answers:
+            print(f"폴백 답변 ID들: {', '.join(fallback_answers)}")
+            
+        success_rate = len(good_answers) / (len(good_answers) + len(fallback_answers)) * 100 if (len(good_answers) + len(fallback_answers)) > 0 else 0
+        print(f"주관식 성공률: {success_rate:.1f}%")
+        
+    except Exception as e:
+        print(f"주관식 답변 분석 중 오류: {e}")
 
 
 def print_specific_id_results(

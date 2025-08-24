@@ -110,46 +110,6 @@ class SimpleModelHandler:
             }
         }
 
-        # intent_specific_prompts 데이터
-        self.intent_specific_prompts = {
-            "기관_묻기": [
-                "질문에서 묻고 있는 기관이나 조직의 정확한 명칭을 한국어로 답변하세요.",
-                "해당 분야의 관련 기관을 구체적으로 명시하여 답변하세요.",
-                "분쟁조정이나 신고접수를 담당하는 기관명을 정확히 제시하세요.",
-                "관련 법령에 따라 업무를 담당하는 기관의 정확한 명칭을 답변하세요."
-            ],
-            "특징_묻기": [
-                "해당 항목의 핵심적인 특징들을 구체적으로 나열하고 설명하세요.",
-                "특징과 성질을 중심으로 상세히 기술하세요.",
-                "고유한 특성과 차별화 요소를 포함하여 설명하세요.",
-                "주요 특징을 분류하여 체계적으로 제시하세요."
-            ],
-            "지표_묻기": [
-                "탐지 지표와 징후를 중심으로 구체적으로 나열하고 설명하세요.",
-                "주요 지표들을 체계적으로 분류하여 제시하세요.",
-                "관찰 가능한 지표와 패턴을 중심으로 답변하세요.",
-                "식별 가능한 신호와 징후를 구체적으로 설명하세요."
-            ],
-            "방안_묻기": [
-                "구체적인 대응 방안과 해결책을 제시하세요.",
-                "실무적이고 실행 가능한 방안들을 중심으로 답변하세요.",
-                "체계적인 관리 방안을 단계별로 설명하세요.",
-                "효과적인 대처 방안과 예방책을 함께 제시하세요."
-            ],
-            "절차_묻기": [
-                "단계별 절차를 순서대로 설명하세요.",
-                "처리 과정을 체계적으로 기술하세요.",
-                "진행 절차와 각 단계의 내용을 상세히 설명하세요.",
-                "업무 프로세스를 단계별로 제시하세요."
-            ],
-            "조치_묻기": [
-                "필요한 보안조치와 대응조치를 설명하세요.",
-                "예방조치와 사후조치를 포함하여 답변하세요.",
-                "적절한 대응조치 방안을 구체적으로 제시하세요.",
-                "보안 조치와 관리조치를 설명하세요."
-            ]
-        }
-
         # korean_text_recovery 데이터
         self.korean_recovery_config = {
             "broken_unicode_chars": {
@@ -631,109 +591,67 @@ class SimpleModelHandler:
 
         return text
 
-    def _create_targeted_korean_prompt(
+    def _create_simple_korean_prompt(
         self,
         question: str,
         question_type: str,
         intent_analysis: Dict = None,
         domain_hints: Dict = None,
     ) -> str:
-        """SOLAR 모델용 프롬프트 생성"""
-        domain = self._detect_domain(question)
-        question_lower = question.lower()
-
+        """SOLAR 모델용 단순화된 한국어 프롬프트"""
+        
         if question_type == "multiple_choice":
-            return self._create_mc_prompt(question, self._extract_choice_count(question), domain, domain_hints)
+            return self._create_simple_mc_prompt(question, self._extract_choice_count(question), 
+                                               domain_hints.get("domain", "일반") if domain_hints else "일반", 
+                                               domain_hints)
 
+        # 주관식 프롬프트 - 매우 단순화
+        domain = domain_hints.get("domain", "일반") if domain_hints else "일반"
+        
         # 간단한 모드 처리
-        if domain_hints and domain_hints.get("simple_mode") or domain_hints.get("last_attempt"):
-            simple_instruction = "다음 질문에 대해 한국어로 간단하고 명확하게 답변해주세요."
-            user_prompt = f"{simple_instruction}\n\n질문: {question}"
-            return f"### User:\n{user_prompt}\n\n### Assistant:"
+        if domain_hints and (domain_hints.get("simple_mode") or domain_hints.get("last_attempt") or domain_hints.get("direct_answer")):
+            return f"""질문: {question}
 
-        # SOLAR 모델용 간단하고 직접적인 프롬프트
-        instruction = ""
-        
-        # 도메인과 의도에 따른 맞춤 지시문 - 한국어 강조
-        if domain == "사이버보안" and "트로이" in question_lower:
-            if "특징" in question_lower and "지표" in question_lower:
-                instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요. 트로이 목마 기반 원격제어 악성코드의 특징과 탐지 지표를 모두 포함하여 상세히 설명해주세요."
-            elif "특징" in question_lower:
-                instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요. 트로이 목마 기반 원격제어 악성코드의 주요 특징을 상세히 설명해주세요."
-            elif "지표" in question_lower:
-                instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요. RAT 악성코드의 탐지 지표를 구체적으로 설명해주세요."
-            else:
-                instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요."
-                
-        elif domain == "전자금융" and "분쟁조정" in question_lower and "기관" in question_lower:
-            instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요. 전자금융 분쟁조정을 담당하는 기관의 명칭과 주요 업무를 구체적으로 설명해주세요."
-            
-        elif domain == "개인정보보호" and "기관" in question_lower and ("신고" in question_lower or "침해" in question_lower):
-            instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요. 개인정보 침해 신고를 담당하는 기관과 업무를 설명해주세요."
-            
-        else:
-            # 일반적인 지시문 - 한국어 강조
-            if intent_analysis:
-                primary_intent = intent_analysis.get("primary_intent", "일반")
-                if "기관" in primary_intent:
-                    instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요. 관련 업무를 담당하는 기관을 구체적으로 설명해주세요."
-                elif "특징" in primary_intent:
-                    instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요. 주요 특징을 상세히 설명해주세요."
-                elif "지표" in primary_intent:
-                    instruction = "다음 질문에 대해 한국어로 전문적인 답변을 작성해주세요. 탐지 지표를 구체적으로 설명해주세요."
-                else:
-                    instruction = "다음 질문에 대해 한국어로 전문적이고 구체적으로 답변해주세요."
-            else:
-                instruction = "다음 질문에 대해 한국어로 전문적이고 구체적으로 답변해주세요."
+위 질문에 대해 한국어로 전문적이고 구체적인 답변을 작성하세요.
 
-        # SOLAR 모델 표준 형식 사용 + Few-shot learning
-        user_prompt = f"{instruction}\n\n질문: {question}"
-        
-        # Few-shot 예시가 있으면 추가
-        if domain_hints and "few_shot_examples" in domain_hints and domain_hints["few_shot_examples"]:
-            examples_text = "\n\n예시:\n" + "\n\n".join(domain_hints["few_shot_examples"])
-            user_prompt = f"{instruction}{examples_text}\n\n질문: {question}"
-        
-        return f"### User:\n{user_prompt}\n\n### Assistant:"
+답변:"""
 
-    def _create_mc_prompt(
+        # 도메인별 간단한 지시문
+        domain_instructions = {
+            "사이버보안": "사이버보안 전문 용어를 사용하여 기술적으로 답변하세요.",
+            "전자금융": "전자금융거래법과 관련 기관을 포함하여 답변하세요.",
+            "개인정보보호": "개인정보보호법과 관련 기관을 포함하여 답변하세요.",
+            "정보보안": "정보보안관리체계 관련 내용을 포함하여 답변하세요.",
+            "위험관리": "위험관리 절차와 방법을 포함하여 답변하세요.",
+            "금융투자": "자본시장법과 금융투자업 관련 내용을 포함하여 답변하세요."
+        }
+        
+        instruction = domain_instructions.get(domain, "전문적이고 구체적으로 답변하세요.")
+        
+        # SOLAR 모델에 최적화된 매우 간단한 형식
+        return f"""질문: {question}
+
+{instruction}
+
+답변:"""
+
+    def _create_simple_mc_prompt(
         self,
         question: str,
         max_choice: int,
         domain: str = "일반",
         domain_hints: Dict = None,
     ) -> str:
-        """객관식 프롬프트 생성 - 정확도 향상"""
+        """객관식 프롬프트 - 단순화"""
         if max_choice <= 0:
             max_choice = 5
 
-        context = self._analyze_mc_context(question, domain)
-        
-        # 패턴 힌트 추가
-        hint_context = ""
-        if domain_hints and "pattern_hints" in domain_hints and domain_hints["pattern_hints"]:
-            hint_context = f"\n힌트: {domain_hints['pattern_hints']}"
-        
-        # 도메인별 추가 힌트
-        domain_hint = self._get_domain_specific_mc_hint(question, domain)
-        if domain_hint:
-            hint_context += f"\n도메인 정보: {domain_hint}"
-
-        # 간단하고 명확한 지시문
-        if context["is_negative"]:
-            instruction = f"해당하지 않는 것 또는 적절하지 않은 것을 1~{max_choice} 중에서 선택하세요."
-        elif context["is_positive"]:
-            instruction = f"가장 적절한 것 또는 옳은 것을 1~{max_choice} 중에서 선택하세요."
-        else:
-            instruction = f"정답을 1~{max_choice} 중에서 선택하세요."
-
-        # 간소화된 프롬프트 구성
+        # 매우 간단한 객관식 프롬프트
         return f"""{question}
-{hint_context}
 
-{instruction}
+위 문제의 정답을 1부터 {max_choice} 중에서 선택하세요.
 
-정답 번호만 답하세요: """
+정답 번호: """
 
     def generate_answer(
         self,
@@ -743,59 +661,56 @@ class SimpleModelHandler:
         intent_analysis: Dict = None,
         domain_hints: Dict = None,
     ) -> str:
-        """답변 생성"""
+        """답변 생성 - 단순화"""
 
         # 도메인 힌트 설정
         enhanced_domain_hints = domain_hints.copy() if domain_hints else {}
 
-        # 객관식과 주관식에 따른 다른 처리
-        if question_type == "multiple_choice":
-            prompt = self._create_mc_prompt(question, max_choice, 
-                                          enhanced_domain_hints.get("domain", "일반"), 
-                                          enhanced_domain_hints)
-        else:
-            # 목적별 프롬프트 생성
-            prompt = self._create_targeted_korean_prompt(
-                question, question_type, intent_analysis, enhanced_domain_hints
-            )
+        # 단순화된 프롬프트 생성
+        prompt = self._create_simple_korean_prompt(
+            question, question_type, intent_analysis, enhanced_domain_hints
+        )
 
         try:
             inputs = self.tokenizer(
                 prompt,
                 return_tensors="pt",
                 truncation=True,
-                max_length=2000 if question_type == "subjective" else 1500,
+                max_length=1500,  # 길이 단축
                 add_special_tokens=True,
             )
 
             if self.device == "cuda":
                 inputs = inputs.to(self.model.device)
 
-            gen_config = self._get_generation_config(question_type)
-
-            # 주관식 설정 - SOLAR 모델 최적화
+            # 단순화된 생성 설정
             if question_type == "multiple_choice":
-                gen_config.max_new_tokens = 10
-                gen_config.repetition_penalty = 1.1
-                gen_config.no_repeat_ngram_size = 2
-                gen_config.temperature = 0.2
-                gen_config.top_p = 0.7
-                gen_config.do_sample = True
+                gen_config = GenerationConfig(
+                    max_new_tokens=5,
+                    temperature=0.1,
+                    top_p=0.5,
+                    do_sample=True,
+                    repetition_penalty=1.05,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                )
             else:
-                # SOLAR 모델 한국어 답변 최적화 설정
-                gen_config.max_new_tokens = 512
-                gen_config.repetition_penalty = 1.1
-                gen_config.no_repeat_ngram_size = 3
-                gen_config.temperature = 0.7
-                gen_config.top_p = 0.9
-                gen_config.do_sample = True
+                # 주관식 - SOLAR 모델 한국어 최적화
+                gen_config = GenerationConfig(
+                    max_new_tokens=400,
+                    temperature=0.6,
+                    top_p=0.9,
+                    do_sample=True,
+                    repetition_penalty=1.05,
+                    no_repeat_ngram_size=3,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                )
 
             with torch.no_grad():
                 outputs = self.model.generate(
                     **inputs,
                     generation_config=gen_config,
-                    pad_token_id=self.tokenizer.pad_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id,
                 )
 
             response = self.tokenizer.decode(
@@ -804,38 +719,33 @@ class SimpleModelHandler:
                 clean_up_tokenization_spaces=True,
             ).strip()
 
+            # 반복 패턴 체크
             if self.detect_critical_repetitive_patterns(response):
-                return self._retry_generation_with_different_settings(
-                    prompt, question_type, max_choice, intent_analysis
-                )
+                return self._retry_generation_simple(prompt, question_type, max_choice)
 
             if question_type == "multiple_choice":
-                answer = self._process_mc_answer_improved(response, question, max_choice)
+                answer = self._process_mc_answer_simple(response, question, max_choice)
                 return answer
             else:
-                answer = self._process_subjective_answer(response, question, intent_analysis)
+                answer = self._process_subjective_answer_simple(response, question)
                 return answer
 
         except Exception as e:
             if self.verbose:
                 print(f"모델 실행 오류: {e}")
 
-            return self._get_fallback_answer_with_llm(
-                question_type, question, max_choice, intent_analysis
-            )
+            return self._get_fallback_answer_simple(question_type, question, max_choice)
 
-    def _process_subjective_answer(
-        self, response: str, question: str, intent_analysis: Dict = None
-    ) -> str:
-        """주관식 답변 처리"""
+    def _process_subjective_answer_simple(self, response: str, question: str) -> str:
+        """주관식 답변 처리 - 단순화"""
         if not response:
-            return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
+            return None
 
         # 반복 패턴 체크 및 제거
         if self.detect_critical_repetitive_patterns(response):
             response = self.remove_repetitive_patterns(response)
             if len(response) < 15:
-                return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
+                return None
 
         # 한국어 텍스트 복구
         response = self.recover_korean_text(response)
@@ -843,16 +753,18 @@ class SimpleModelHandler:
         # 프롬프트 관련 텍스트 제거
         response = re.sub(r"답변[:：]\s*", "", response)
         response = re.sub(r"질문[:：].*?\n", "", response)
-        response = re.sub(r"다음.*?답변하세요[.:]\s*", "", response)
-        response = re.sub(r"지침[:：].*?\n", "", response)
 
         # 기본 정리
         response = re.sub(r"\s+", " ", response).strip()
 
-        # 한국어 비율 체크
+        # 길이 체크 (매우 완화)
+        if len(response) < 10:
+            return None
+
+        # 한국어 비율 체크 (완화)
         korean_ratio = self._calculate_korean_ratio(response)
-        if korean_ratio < 0.5 or len(response) < 15:
-            return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
+        if korean_ratio < 0.3:  # 매우 완화
+            return None
 
         # 문장 끝 처리
         if response and not response.endswith((".", "다", "요", "함")):
@@ -863,18 +775,10 @@ class SimpleModelHandler:
             else:
                 response += "."
 
-        # 길이 조정
-        if len(response) > 600:
-            sentences = response.split(". ")
-            if len(sentences) > 5:
-                response = ". ".join(sentences[:5])
-                if not response.endswith("."):
-                    response += "."
-
         return response
 
-    def _process_mc_answer_improved(self, response: str, question: str, max_choice: int) -> str:
-        """객관식 답변 처리 개선"""
+    def _process_mc_answer_simple(self, response: str, question: str, max_choice: int) -> str:
+        """객관식 답변 처리 - 단순화"""
         if max_choice <= 0:
             max_choice = 5
 
@@ -882,91 +786,20 @@ class SimpleModelHandler:
         response = self.recover_korean_text(response)
         response = response.strip()
 
-        # 1단계: 첫 번째 유효한 숫자 찾기
+        # 첫 번째 유효한 숫자 찾기
         first_numbers = re.findall(r'\b([1-9])\b', response)
         for num in first_numbers:
             if 1 <= int(num) <= max_choice:
                 return num
 
-        # 2단계: 모든 숫자 패턴 확인
-        all_patterns = [
-            r'정답[:\s]*([1-9])',
-            r'답[:\s]*([1-9])',
-            r'^([1-9])',
-            r'([1-9])\s*번',
-            r'([1-9])\s*\.', 
-            r'선택[:\s]*([1-9])',
-            r'([1-9])\s*\.',
-        ]
-        
-        for pattern in all_patterns:
-            matches = re.findall(pattern, response, re.MULTILINE)
-            for match in matches:
-                num = int(match)
-                if 1 <= num <= max_choice:
-                    return str(num)
+        # 강제 답변 생성
+        return self._force_valid_mc_answer_simple(response, question, max_choice)
 
-        # 3단계: 문맥 분석을 통한 추론
-        context_answer = self._infer_mc_answer_from_context_improved(question, response, max_choice)
-        if context_answer:
-            return context_answer
-
-        # 4단계: 강제 답변 생성
-        return self._force_valid_mc_answer_improved(response, question, max_choice)
-
-    def _infer_mc_answer_from_context_improved(self, question: str, response: str, max_choice: int) -> str:
-        """문맥에서 객관식 답변 추론 - 개선"""
-        question_lower = question.lower()
-        response_lower = response.lower()
-        
-        # 금융투자업 구분 문제 특별 처리
-        if ("금융투자업" in question_lower and 
-            "구분" in question_lower and 
-            "해당하지" in question_lower and 
-            "않는" in question_lower):
-            
-            # 선택지에서 금융투자업이 아닌 것 찾기
-            lines = question.split('\n')
-            for line in lines:
-                line_lower = line.lower()
-                if re.match(r'^\d+', line.strip()):
-                    choice_match = re.match(r'^(\d+)', line.strip())
-                    if choice_match:
-                        choice_num = choice_match.group(1)
-                        if ("보험중개업" in line_lower or 
-                            "소비자금융업" in line_lower):
-                            if 1 <= int(choice_num) <= max_choice:
-                                return choice_num
-            
-            # 기본적으로 5번 선택 (보통 보험중개업이 마지막에 위치)
-            return "5"
-        
-        # 부정 문제 처리
-        elif any(pattern in question_lower for pattern in ["해당하지 않는", "적절하지 않은", "옳지 않은"]):
-            # 부정적 표현이 있는 선택지 찾기
-            negative_indicators = ["아니", "없", "아님", "틀린", "잘못", "부적절"]
-            for i in range(1, max_choice + 1):
-                if any(indicator in response_lower for indicator in negative_indicators):
-                    return str(i)
-            # 기본적으로 마지막 선택지
-            return str(max_choice)
-        
-        # 긍정 문제 처리
-        elif any(pattern in question_lower for pattern in ["가장 적절한", "가장 옳은", "맞는"]):
-            # 긍정적 표현이 있는 선택지 찾기
-            positive_indicators = ["맞", "적절", "옳", "정확", "올바른"]
-            for i in range(1, max_choice + 1):
-                if any(indicator in response_lower for indicator in positive_indicators):
-                    return str(i)
-        
-        return None
-
-    def _force_valid_mc_answer_improved(self, response: str, question: str, max_choice: int) -> str:
-        """강제 객관식 답변 생성 - 개선"""
+    def _force_valid_mc_answer_simple(self, response: str, question: str, max_choice: int) -> str:
+        """강제 객관식 답변 생성 - 단순화"""
         if max_choice <= 0:
             max_choice = 5
 
-        # 도메인별 기본 답변 패턴
         question_lower = question.lower()
         
         # 금융투자업 구분 문제
@@ -975,93 +808,27 @@ class SimpleModelHandler:
             "해당하지" in question_lower):
             return "5"  # 보험중개업은 보통 5번
             
-        # 특정 패턴에 따른 기본값
-        elif "해당하지 않는" in question_lower:
-            # 부정 문제는 보통 마지막 선택지가 정답인 경우가 많음
-            if max_choice >= 5:
-                return "5"
-            else:
-                return str(max_choice)
-        elif "가장 적절한" in question_lower:
-            # 긍정 문제는 중간값을 선호
-            return str((max_choice + 1) // 2)
+        # 부정 문제는 보통 마지막 선택지
+        elif "해당하지 않는" in question_lower or "적절하지 않은" in question_lower:
+            return str(max_choice)
         
-        # 응답에서 숫자 패턴 재시도
-        all_numbers = re.findall(r'\d+', response)
-        for num_str in all_numbers:
-            try:
-                num = int(num_str)
-                if 1 <= num <= max_choice:
-                    return str(num)
-            except:
-                continue
-
-        # 최종 기본값
+        # 기본 중간값
         return str((max_choice + 1) // 2)
 
-    def _get_domain_specific_mc_hint(self, question: str, domain: str) -> str:
-        """도메인별 객관식 힌트"""
-        question_lower = question.lower()
-        
-        domain_hints = {
-            "금융투자": {
-                "keywords": ["금융투자업", "구분", "해당하지 않는"],
-                "hint": "금융투자업에는 투자자문업, 투자매매업, 투자중개업이 포함되며, 소비자금융업과 보험중개업은 금융투자업에 해당하지 않습니다."
-            },
-            "위험관리": {
-                "keywords": ["위험관리", "계획", "적절하지 않은"],
-                "hint": "위험관리 계획에는 수행인력, 대응전략, 대상, 기간이 고려되어야 합니다."
-            },
-            "개인정보보호": {
-                "keywords": ["만 14세", "미만", "동의"],
-                "hint": "만 14세 미만 아동의 경우 법정대리인의 동의가 필요합니다."
-            },
-            "전자금융": {
-                "keywords": ["한국은행", "자료제출"],
-                "hint": "한국은행은 통화신용정책 수행을 위해 자료제출을 요구할 수 있습니다."
-            },
-            "사이버보안": {
-                "keywords": ["SBOM", "활용"],
-                "hint": "SBOM은 소프트웨어 공급망 보안을 위해 활용됩니다."
-            }
-        }
-        
-        if domain in domain_hints:
-            domain_info = domain_hints[domain]
-            keyword_matches = sum(1 for keyword in domain_info["keywords"] 
-                                if keyword in question_lower)
-            if keyword_matches >= 2:
-                return domain_info["hint"]
-        
-        return ""
-
-    def _retry_generation_with_different_settings(
-        self,
-        prompt: str,
-        question_type: str,
-        max_choice: int,
-        intent_analysis: Dict = None,
-    ) -> str:
-        """다른 설정으로 재생성"""
+    def _retry_generation_simple(self, prompt: str, question_type: str, max_choice: int) -> str:
+        """다른 설정으로 재생성 - 단순화"""
         try:
-            inputs = self.tokenizer(
-                prompt,
-                return_tensors="pt",
-                truncation=True,
-                max_length=1500,
-                add_special_tokens=True,
-            )
+            inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1000)
 
             if self.device == "cuda":
                 inputs = inputs.to(self.model.device)
 
             retry_config = GenerationConfig(
-                max_new_tokens=400 if question_type == "subjective" else 10,
-                temperature=0.7,
+                max_new_tokens=200 if question_type == "subjective" else 5,
+                temperature=0.8,
                 top_p=0.95,
                 do_sample=True,
                 repetition_penalty=1.1,
-                no_repeat_ngram_size=2,
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=self.tokenizer.eos_token_id,
             )
@@ -1073,33 +840,15 @@ class SimpleModelHandler:
                 outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
             ).strip()
 
-            if self.detect_critical_repetitive_patterns(response):
-                return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
-
             return response
 
         except Exception:
-            return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
-
-    def _force_valid_mc_answer(self, response: str, max_choice: int) -> str:
-        """유효한 객관식 답변 강제 생성"""
-        if max_choice <= 0:
-            max_choice = 5
-
-        all_numbers = re.findall(r"\d+", response)
-
-        for num_str in all_numbers:
-            num = int(num_str)
-            if 1 <= num <= max_choice:
-                return str(num)
-
-        return str((max_choice + 1) // 2)
+            return None
 
     def generate_contextual_mc_answer(
         self, question: str, max_choice: int, domain: str
     ) -> str:
         """문맥 기반 객관식 답변 생성"""
-        context_hints = self._analyze_mc_context(question, domain)
         
         # 더 간단하고 직접적인 프롬프트
         simple_prompt = f"""다음 문제의 정답 번호를 선택하세요:
@@ -1122,7 +871,6 @@ class SimpleModelHandler:
                 top_p=0.5,
                 do_sample=True,
                 repetition_penalty=1.05,
-                no_repeat_ngram_size=2,
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=self.tokenizer.eos_token_id,
             )
@@ -1137,7 +885,7 @@ class SimpleModelHandler:
                 outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
             ).strip()
 
-            answer = self._process_mc_answer_improved(response, question, max_choice)
+            answer = self._process_mc_answer_simple(response, question, max_choice)
 
             if answer and answer.isdigit() and 1 <= int(answer) <= max_choice:
                 return answer
@@ -1147,7 +895,7 @@ class SimpleModelHandler:
                 print(f"컨텍스트 기반 답변 생성 오류: {e}")
 
         # 강제 답변 생성
-        return self._force_valid_mc_answer_improved(response if 'response' in locals() else "", question, max_choice)
+        return self._force_valid_mc_answer_simple(response if 'response' in locals() else "", question, max_choice)
 
     def generate_fallback_mc_answer(
         self, question: str, max_choice: int, domain: str
@@ -1213,30 +961,7 @@ class SimpleModelHandler:
             choice_numbers.sort()
             return max(choice_numbers)
 
-        for i in range(5, 2, -1):
-            pattern = r"1\s.*" + ".*".join([f"{j}\s" for j in range(2, i + 1)])
-            if re.search(pattern, question, re.DOTALL):
-                return i
-
         return 5
-
-    def _get_generation_config(self, question_type: str) -> GenerationConfig:
-        """생성 설정 가져오기"""
-        config_dict = GENERATION_CONFIG[question_type].copy()
-        config_dict["pad_token_id"] = self.tokenizer.pad_token_id
-        config_dict["eos_token_id"] = self.tokenizer.eos_token_id
-
-        if question_type == "subjective":
-            config_dict["repetition_penalty"] = 1.02
-            config_dict["no_repeat_ngram_size"] = 3
-            config_dict["temperature"] = 0.4
-            config_dict["top_p"] = 0.85
-            config_dict["max_new_tokens"] = 400
-        else:
-            config_dict["repetition_penalty"] = 1.1
-            config_dict["no_repeat_ngram_size"] = 2
-
-        return GenerationConfig(**config_dict)
 
     def _detect_domain(self, question: str) -> str:
         """도메인 탐지"""
@@ -1287,46 +1012,21 @@ class SimpleModelHandler:
 
         return korean_chars / total_chars
 
-    def _get_domain_keywords(self, question: str) -> List[str]:
-        """도메인 키워드 가져오기"""
-        question_lower = question.lower()
-
-        if "개인정보" in question_lower:
-            return ["개인정보보호법", "정보주체", "처리", "보호조치", "동의"]
-        elif "전자금융" in question_lower:
-            return ["전자금융거래법", "접근매체", "인증", "보안", "분쟁조정"]
-        elif "보안" in question_lower or "악성코드" in question_lower:
-            return ["보안정책", "탐지", "대응", "모니터링", "방어"]
-        elif "금융투자" in question_lower:
-            return ["자본시장법", "투자자보호", "적합성원칙", "내부통제"]
-        elif "위험관리" in question_lower:
-            return ["위험식별", "위험평가", "위험대응", "내부통제"]
-        else:
-            return ["법령", "규정", "관리", "조치", "절차"]
-
-    def _get_fallback_answer_with_llm(
+    def _get_fallback_answer_simple(
         self,
         question_type: str,
         question: str = "",
         max_choice: int = 5,
-        intent_analysis: Dict = None,
     ) -> str:
-        """LLM 기반 대체 답변"""
+        """간단한 대체 답변"""
         if question_type == "multiple_choice":
             if max_choice <= 0:
                 max_choice = 5
             domain = self._detect_domain(question)
             return self.generate_fallback_mc_answer(question, max_choice, domain)
         else:
-            # 주관식 대체 답변도 도메인별로 특화
-            domain = self._detect_domain(question)
-            
-            if domain == "사이버보안" and "트로이" in question:
-                return "트로이 목마 기반 원격제어 악성코드의 주요 특징과 탐지 지표를 체계적으로 분석하여 관리해야 합니다."
-            elif domain == "전자금융" and "분쟁조정" in question:
-                return "전자금융분쟁조정위원회에서 관련 업무를 담당하고 있습니다."
-            else:
-                return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
+            # 주관식 대체 답변은 None 반환하여 상위에서 처리
+            return None
 
     def _warmup(self):
         """모델 워밍업"""
