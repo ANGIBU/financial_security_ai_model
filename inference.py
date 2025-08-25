@@ -28,60 +28,7 @@ current_dir = Path(__file__).parent.absolute()
 from model_handler import ModelHandler
 from data_processor import DataProcessor
 from knowledge_base import KnowledgeBase
-
-
-class SimpleLogger:
-    """실행 통계를 파일에 저장하는 로거"""
-    
-    def __init__(self, log_type: str = "inference"):
-        LOG_DIR.mkdir(exist_ok=True)
-        if log_type == "test":
-            self.log_file = LOG_DIR / "test.txt"
-        else:
-            self.log_file = LOG_DIR / "inference.txt"
-        
-    def log_stats(self, stats_data: Dict):
-        """성능 통계만 로그 파일에 저장"""
-        try:
-            with open(self.log_file, 'a', encoding='utf-8') as f:
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                
-                # 기본 실행 통계
-                if 'total_questions' in stats_data:
-                    f.write(f"[{timestamp}] 문항 수: {stats_data['total_questions']}개\n")
-                
-                if 'total_time' in stats_data:
-                    minutes = stats_data['total_time'] / 60
-                    f.write(f"[{timestamp}] 총 처리 시간: {minutes:.1f}분\n")
-                
-                if 'avg_processing_time' in stats_data:
-                    f.write(f"[{timestamp}] 평균 문항 처리 시간: {stats_data['avg_processing_time']:.2f}초\n")
-                
-                # 도메인 분포
-                if 'domain_distribution' in stats_data:
-                    domain_stats = stats_data['domain_distribution']
-                    f.write(f"[{timestamp}] 도메인 분포: {domain_stats}\n")
-                
-                # 방법 분포
-                if 'method_distribution' in stats_data:
-                    method_stats = stats_data['method_distribution']
-                    f.write(f"[{timestamp}] 처리 방법 분포: {method_stats}\n")
-                
-                # 학습 데이터 통계
-                if 'learning_data' in stats_data:
-                    learning = stats_data['learning_data']
-                    f.write(f"[{timestamp}] 성공 답변 학습: {learning.get('successful_answers', 0)}개\n")
-                    f.write(f"[{timestamp}] 실패 답변 분석: {learning.get('failed_answers', 0)}개\n")
-                    f.write(f"[{timestamp}] 패턴 학습: {learning.get('question_patterns', 0)}개\n")
-                
-                # 메모리 사용률
-                if 'memory_usage' in stats_data:
-                    f.write(f"[{timestamp}] 메모리 사용률: {stats_data['memory_usage']}%\n")
-                
-                f.write(f"[{timestamp}] ---\n")
-                
-        except:
-            pass
+from statistics_manager import StatisticsManager
 
 
 class LearningSystem:
@@ -200,7 +147,7 @@ class FinancialAIInference:
         setup_environment()
 
         # 시스템 초기화
-        self.logger = SimpleLogger(log_type)
+        self.statistics_manager = StatisticsManager(log_type)
         self.learning = LearningSystem()
         
         self.model_handler = ModelHandler(verbose=False)
@@ -211,10 +158,6 @@ class FinancialAIInference:
         
         # 성능 추적 변수
         self.total_questions = 0
-        self.correct_predictions = 0
-        self.processing_times = []
-        self.domain_stats = {}
-        self.method_stats = {}
 
     def process_single_question(self, question: str, question_id: str) -> str:
         """단일 질문 처리"""
@@ -226,14 +169,13 @@ class FinancialAIInference:
             domain = self.data_processor.extract_domain(question)
             difficulty = self.data_processor.analyze_question_difficulty(question)
             
-            # 통계 업데이트
-            if domain not in self.domain_stats:
-                self.domain_stats[domain] = 0
-            self.domain_stats[domain] += 1
-            
             # 학습 데이터에서 유사한 성공 답변 찾기
             similar_answer = self.learning.get_similar_successful_answer(question, domain, question_type)
             if similar_answer and len(similar_answer) > 10:
+                processing_time = time.time() - start_time
+                self.statistics_manager.record_question_processing(
+                    processing_time, domain, "learning_match", question_type, True
+                )
                 self.learning.record_successful_answer(question_id, question, similar_answer, 
                                                      question_type, domain, "learning_match")
                 return similar_answer
@@ -252,20 +194,35 @@ class FinancialAIInference:
                 )
                 method = "subjective"
 
+            processing_time = time.time() - start_time
+            success = answer and len(answer.strip()) > 0
+
+            # 통계 기록
+            self.statistics_manager.record_question_processing(
+                processing_time, domain, method, question_type, success
+            )
+
             # 성공한 답변 기록
-            if answer and len(answer.strip()) > 0:
+            if success:
                 self.learning.record_successful_answer(question_id, question, answer, 
                                                      question_type, domain, method)
-                
-                # 통계 업데이트
-                if method not in self.method_stats:
-                    self.method_stats[method] = 0
-                self.method_stats[method] += 1
             
             return answer
 
         except Exception as e:
+            processing_time = time.time() - start_time
             error_msg = str(e)
+            
+            # 오류 통계 기록
+            self.statistics_manager.record_question_processing(
+                processing_time, 
+                domain if 'domain' in locals() else "unknown", 
+                "error_fallback", 
+                question_type if 'question_type' in locals() else "unknown", 
+                False, 
+                "processing_error"
+            )
+            
             self.learning.record_failed_answer(question_id, question, error_msg, 
                                              question_type if 'question_type' in locals() else "unknown",
                                              domain if 'domain' in locals() else "unknown")
@@ -676,15 +633,18 @@ class FinancialAIInference:
         """데이터를 이용한 추론 실행"""
 
         output_file = output_file or DEFAULT_FILES["output_file"]
-
+        
         answers = []
         self.total_questions = len(test_df)
+        
+        # 통계 세션 시작
+        self.statistics_manager.start_session()
 
         with tqdm(
             total=self.total_questions, 
             desc="처리 중", 
             unit="문항",
-            ncols=50,
+            ncols=100,
             bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}',
             leave=True,
             dynamic_ncols=False
@@ -693,12 +653,8 @@ class FinancialAIInference:
                 question = row["Question"]
                 question_id = row["ID"]
 
-                start_time = time.time()
                 answer = self.process_single_question(question, question_id)
-                processing_time = time.time() - start_time
-                
                 answers.append(answer)
-                self.processing_times.append(processing_time)
                 
                 pbar.update(1)
 
@@ -706,8 +662,9 @@ class FinancialAIInference:
                 if (question_idx + 1) % MEMORY_CONFIG["pkl_save_frequency"] == 0:
                     self.learning.save_all_data()
 
-                # 메모리 정리
+                # 메모리 정리 및 상태 기록
                 if (question_idx + 1) % MEMORY_CONFIG["gc_frequency"] == 0:
+                    self.statistics_manager.record_memory_snapshot()
                     gc.collect()
 
         # 최종 pkl 데이터 저장
@@ -717,11 +674,34 @@ class FinancialAIInference:
         submission_df["Answer"] = answers
         self._save_csv(submission_df, output_file)
 
-        # 통계 기록
-        results = self._get_results_summary()
-        self.logger.log_stats(results)
+        # 최종 통계 생성
+        learning_data = {
+            "successful_answers": len(self.learning.successful_answers),
+            "failed_answers": len(self.learning.failed_answers),
+            "question_patterns": sum(len(patterns) for patterns in self.learning.question_patterns.values()),
+        }
+        
+        final_stats = self.statistics_manager.generate_final_statistics(learning_data)
+        return self._format_results_for_compatibility(final_stats)
 
-        return results
+    def _format_results_for_compatibility(self, stats: Dict) -> Dict:
+        """호환성을 위한 결과 형식"""
+        exec_summary = stats.get("execution_summary", {})
+        learning_metrics = stats.get("learning_metrics", {})
+        
+        return {
+            "success": True,
+            "total_time": exec_summary.get("total_time_seconds", 0),
+            "total_questions": exec_summary.get("total_questions", 0),
+            "avg_processing_time": exec_summary.get("avg_processing_time", 0),
+            "domain_distribution": {k: v.get("question_count", 0) for k, v in stats.get("domain_analysis", {}).items()},
+            "method_distribution": {k: v.get("question_count", 0) for k, v in stats.get("method_analysis", {}).items()},
+            "learning_data": {
+                "successful_answers": learning_metrics.get("successful_answers", 0),
+                "failed_answers": learning_metrics.get("failed_answers", 0),
+                "question_patterns": learning_metrics.get("pattern_records", 0),
+            }
+        }
 
     def _save_csv(self, df: pd.DataFrame, filepath: str) -> bool:
         """CSV 저장"""
@@ -736,22 +716,6 @@ class FinancialAIInference:
 
         except Exception as e:
             return False
-
-    def _get_results_summary(self) -> Dict:
-        """결과 요약"""
-        return {
-            "success": True,
-            "total_time": time.time() - self.start_time,
-            "total_questions": self.total_questions,
-            "avg_processing_time": sum(self.processing_times) / len(self.processing_times) if self.processing_times else 0,
-            "domain_distribution": self.domain_stats,
-            "method_distribution": self.method_stats,
-            "learning_data": {
-                "successful_answers": len(self.learning.successful_answers),
-                "failed_answers": len(self.learning.failed_answers),
-                "question_patterns": sum(len(patterns) for patterns in self.learning.question_patterns.values()),
-            }
-        }
 
     def cleanup(self):
         """리소스 정리"""

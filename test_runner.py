@@ -341,48 +341,27 @@ def print_comprehensive_results(
     results: dict, output_file: str, test_count: int, question_ids: list
 ):
     """종합 테스트 결과 출력"""
-    print(f"\n=== 종합 테스트 완료 ({test_count}개 문항) ===")
     print(f"처리 시간: {results['total_time']:.1f}초")
     print(f"결과 파일: {output_file}")
-    print(f"처리된 문항: {len(question_ids)}개")
-    
-    # 학습 데이터 정보
-    if 'learning_data' in results:
-        learning_data = results['learning_data']
-        print(f"성공 답변 학습 데이터: {learning_data.get('successful_answers', 0)}개")
-        print(f"실패 답변 학습 데이터: {learning_data.get('failed_answers', 0)}개")
+    print("종합 테스트 완료")
 
 
 def print_multiple_choice_results(
     results: dict, output_file: str, test_count: int, question_ids: list
 ):
     """객관식 테스트 결과 출력"""
-    print(f"\n=== 객관식 테스트 완료 ({test_count}개 문항) ===")
     print(f"처리 시간: {results['total_time']:.1f}초")
     print(f"결과 파일: {output_file}")
-    print(f"처리된 문항: {len(question_ids)}개")
-    
-    if 'domain_distribution' in results:
-        print(f"도메인별 분포: {results['domain_distribution']}")
-    if 'method_distribution' in results:
-        print(f"방법별 분포: {results['method_distribution']}")
+    print("객관식 테스트 완료")
 
 
 def print_subjective_results(
     results: dict, output_file: str, test_count: int, question_ids: list
 ):
     """주관식 테스트 결과 출력"""
-    print(f"\n=== 주관식 테스트 완료 ({test_count}개 문항) ===")
     print(f"처리 시간: {results['total_time']:.1f}초")
     print(f"결과 파일: {output_file}")
-    print(f"처리된 문항: {len(question_ids)}개")
-    print(f"평균 처리 시간: {results.get('avg_processing_time', 0):.2f}초")
-    
-    if 'domain_distribution' in results:
-        print(f"도메인별 분포: {results['domain_distribution']}")
-    if 'learning_data' in results:
-        learning_data = results['learning_data']
-        print(f"성공 답변 학습: {learning_data.get('successful_answers', 0)}개")
+    print("주관식 테스트 완료")
 
 
 def print_results(results: dict, output_file: str, test_size: int):
@@ -484,20 +463,13 @@ def main():
         question_count = select_question_count(test_type)
         print(f"\n종합 {question_count}문항 테스트를 실행합니다...")
         success = run_comprehensive_test(question_count)
-        if success:
-            print(f"\n종합 테스트 완료")
-        else:
-            print("\n테스트 실패")
+        if not success:
             sys.exit(1)
     else:
         question_count = select_question_count(test_type)
         print(f"\n{test_type} {question_count}문항 테스트를 실행합니다...")
         success = run_question_type_test(test_type, question_count)
-
-        if success:
-            print(f"\n{test_type} 테스트 완료")
-        else:
-            print(f"\n{test_type} 테스트 실패")
+        if not success:
             sys.exit(1)
 
 
