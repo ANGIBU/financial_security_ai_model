@@ -9,7 +9,7 @@ from typing import Dict, List, Any
 from datetime import datetime
 import pandas as pd
 
-from config import PKL_DIR, LOG_DIR, MEMORY_CONFIG
+from config import PKL_DIR, LOG_DIR, BACKUP_DIR, MEMORY_CONFIG
 
 
 class LearningManager:
@@ -20,6 +20,9 @@ class LearningManager:
         
         self.log_dir = LOG_DIR
         self.log_dir.mkdir(exist_ok=True)
+        
+        self.backup_dir = BACKUP_DIR
+        self.backup_dir.mkdir(exist_ok=True)
         
         self.learning_data = {
             "question_analysis": {},
@@ -49,14 +52,18 @@ class LearningManager:
     def save_learning_data(self):
         """학습 데이터 저장"""
         try:
+            # 메인 학습 데이터 저장 (pkl)
             learning_file = self.pkl_dir / "learning_data.pkl"
             with open(learning_file, 'wb') as f:
                 pickle.dump(self.learning_data, f)
             
-            # JSON 백업도 저장
-            backup_file = self.pkl_dir / f"learning_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            # 통합 백업 저장 (JSON - 항상 덮어쓰기)
+            backup_file = self.backup_dir / "learning_backup.json"
+            backup_data = self._prepare_json_data()
+            backup_data["last_updated"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
             with open(backup_file, 'w', encoding='utf-8') as f:
-                json.dump(self._prepare_json_data(), f, ensure_ascii=False, indent=2)
+                json.dump(backup_data, f, ensure_ascii=False, indent=2)
                 
         except Exception as e:
             self.log_to_file(f"학습 데이터 저장 실패: {e}")
