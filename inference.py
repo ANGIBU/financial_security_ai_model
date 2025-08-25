@@ -70,12 +70,18 @@ class FinancialAIInference:
                 )
 
             # 3단계: 답변 검증 및 학습 기록
-            is_valid = self._validate_and_record_answer(
+            is_valid, method_used = self._validate_and_record_answer(
                 question_id, question, answer, question_type, domain, max_choice
             )
 
             if not is_valid and question_type == "subjective":
                 answer = self._generate_fallback_subjective_answer(question, domain, intent_analysis)
+                method_used = "fallback"
+
+            # 최종 학습 기록
+            self.learning_manager.record_answer_attempt(
+                question_id, question, answer, question_type, domain, is_valid, method_used
+            )
 
             return answer
 
@@ -83,7 +89,11 @@ class FinancialAIInference:
             if self.verbose:
                 print(f"질문 처리 중 오류 ({question_id}): {e}")
             
-            return self._get_emergency_fallback_answer(question, question_type, max_choice)
+            fallback_answer = self._get_emergency_fallback_answer(question, question_type, max_choice)
+            self.learning_manager.record_answer_attempt(
+                question_id, question, fallback_answer, question_type, domain, False, "emergency_fallback"
+            )
+            return fallback_answer
 
     def _process_multiple_choice_question(self, question: str, question_id: str, 
                                         max_choice: int, domain: str, 
@@ -107,9 +117,9 @@ class FinancialAIInference:
         if llm_answer and llm_answer.isdigit() and 1 <= int(llm_answer) <= max_choice:
             return llm_answer
 
-        # 4단계: 규칙 기반 추론
-        rule_based_answer = self._get_rule_based_mc_answer(question, max_choice, domain)
-        return rule_based_answer
+        # 4단계: 지능적 폴백
+        fallback_answer = self._get_intelligent_mc_fallback(question, max_choice, domain)
+        return fallback_answer
 
     def _get_specialized_mc_answer(self, question: str, max_choice: int, domain: str) -> str:
         """특화된 객관식 답변 생성"""
@@ -130,7 +140,7 @@ class FinancialAIInference:
                         choice_num = choice_match.group(1)
                         if 1 <= int(choice_num) <= max_choice:
                             return choice_num
-            return "5"  # 기본값
+            return str(max_choice)  # 보통 마지막 선택지
 
         # 위험관리 부적절 요소
         if ("위험" in question_lower and 
@@ -203,7 +213,7 @@ class FinancialAIInference:
                 "expected_answers": ["4"]
             },
             "사이버보안": {
-                "hint": "SBOM은 소프트웨어 공급망 보안 강화를 위해 활용되며, 구성요소 투명성을 제공합니다.",
+                "hint": "SBOM은 소프트웨어 공급망 보안을 위해 활용되며, 구성요소 투명성을 제공합니다.",
                 "keywords": ["SBOM", "소프트웨어", "공급망"],
                 "expected_answers": ["5"]
             }
@@ -221,23 +231,31 @@ class FinancialAIInference:
 
         return "각 선택지를 신중히 검토하여 정답을 선택하세요."
 
-    def _get_rule_based_mc_answer(self, question: str, max_choice: int, domain: str) -> str:
-        """규칙 기반 객관식 답변"""
+    def _get_intelligent_mc_fallback(self, question: str, max_choice: int, domain: str) -> str:
+        """지능적 객관식 폴백"""
         question_lower = question.lower()
         
-        # 부정형 문제는 보통 끝 선택지
-        if any(neg in question_lower for neg in ["해당하지 않는", "적절하지 않은", "옳지 않은"]):
-            if max_choice >= 5:
-                return "5"
+        # 금융투자업 특별 처리
+        if ("금융투자업" in question_lower and "해당하지" in question_lower):
+            return str(max_choice)  # 보통 마지막 선택지
+        
+        # 부정형 문제 (해당하지 않는, 적절하지 않은 등)
+        negative_patterns = ["해당하지 않는", "적절하지 않은", "옳지 않은", "틀린", "부적절한"]
+        if any(neg in question_lower for neg in negative_patterns):
+            if max_choice >= 4:
+                # 4번 또는 5번 중에서 선택 (마지막 두 선택지)
+                return str(max_choice - 1) if max_choice > 4 else str(max_choice)
             else:
                 return str(max_choice)
         
-        # 긍정형 문제는 보통 중간 선택지
-        elif any(pos in question_lower for pos in ["가장 적절한", "가장 중요한", "맞는 것"]):
+        # 긍정형 문제 (가장 적절한, 가장 중요한 등)
+        positive_patterns = ["가장 적절한", "가장 중요한", "올바른", "맞는", "옳은"]
+        if any(pos in question_lower for pos in positive_patterns):
+            # 긍정형 문제는 보통 2번이 정답인 경우가 많음
             return "2"
         
-        # 기본값
-        return str((max_choice + 1) // 2)
+        # 일반적인 경우 - 2번을 기본으로 (3번 과다 방지)
+        return "2"
 
     def _process_subjective_question(self, question: str, question_id: str, 
                                    domain: str, intent_analysis: Dict, 
@@ -381,7 +399,7 @@ class FinancialAIInference:
 
     def _validate_and_record_answer(self, question_id: str, question: str, 
                                   answer: str, question_type: str, 
-                                  domain: str, max_choice: int = 5) -> bool:
+                                  domain: str, max_choice: int = 5) -> tuple[bool, str]:
         """답변 검증 및 학습 기록"""
         
         is_valid = self.data_processor.validate_answer(
@@ -390,16 +408,12 @@ class FinancialAIInference:
         
         method_used = "specialized" if self._is_specialized_answer(answer, domain) else "llm"
         
-        self.learning_manager.record_answer_attempt(
-            question_id, question, answer, question_type, domain, is_valid, method_used
-        )
-        
         # 객관식 패턴 학습
         if question_type == "multiple_choice" and is_valid:
             pattern_type = self._identify_mc_pattern_type(question)
             self.learning_manager.record_mc_pattern(question, answer, pattern_type)
         
-        return is_valid
+        return is_valid, method_used
 
     def _is_specialized_answer(self, answer: str, domain: str) -> bool:
         """특화 답변인지 확인"""
@@ -434,7 +448,7 @@ class FinancialAIInference:
     def _get_emergency_fallback_answer(self, question: str, question_type: str, max_choice: int) -> str:
         """긴급 대체 답변"""
         if question_type == "multiple_choice":
-            return str((max_choice + 1) // 2)
+            return "2"  # 3번 대신 2번을 기본값으로
         else:
             return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
 

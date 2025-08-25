@@ -22,14 +22,17 @@ class SimpleDataProcessor:
     def _initialize_integrated_data(self):
         """JSON 데이터를 코드 내부로 통합하여 초기화"""
         
-        # 객관식 패턴
+        # 객관식 패턴 - 더 정확한 패턴 추가
         self.mc_patterns = [
             r"1\s+[가-힣\w].*\n2\s+[가-힣\w].*\n3\s+[가-힣\w]",
             r"①.*②.*③.*④.*⑤",
             r"1\s+[가-힣].*2\s+[가-힣].*3\s+[가-힣].*4\s+[가-힣].*5\s+[가-힣]",
             r"1\s+.*2\s+.*3\s+.*4\s+.*5\s+",
+            r"1\s+.*2\s+.*3\s+.*4\s+",
             r"1\.\s*.*2\.\s*.*3\.\s*.*4\.\s*.*5\.",
-            r"1\)\s*.*2\)\s*.*3\)\s*.*4\)\s*.*5\)"
+            r"1\.\s*.*2\.\s*.*3\.\s*.*4\.",
+            r"1\)\s*.*2\)\s*.*3\)\s*.*4\)\s*.*5\)",
+            r"1\)\s*.*2\)\s*.*3\)\s*.*4\)"
         ]
 
         # 객관식 키워드
@@ -53,7 +56,7 @@ class SimpleDataProcessor:
             r"몇.*개인가\?$"
         ]
 
-        # 질문 의도 패턴 - 정확도 향상
+        # 질문 의도 패턴
         self.question_intent_patterns = {
             "기관_묻기": [
                 r"기관.*기술하세요",
@@ -204,7 +207,7 @@ class SimpleDataProcessor:
             r"대응.*방안을.*기술하세요"
         ]
 
-        # 도메인 키워드 - 정확도 향상을 위해 가중치 적용
+        # 도메인 키워드
         self.domain_keywords = {
             "개인정보보호": {
                 "primary": ["개인정보보호법", "개인정보보호위원회", "개인정보침해신고센터"],
@@ -261,7 +264,7 @@ class SimpleDataProcessor:
         }
 
     def analyze_question_intent(self, question: str) -> Dict:
-        """질문 의도 분석 - 정확도 향상"""
+        """질문 의도 분석"""
         question_lower = question.lower()
 
         intent_analysis = {
@@ -358,7 +361,7 @@ class SimpleDataProcessor:
         return intent_analysis
 
     def extract_domain(self, question: str) -> str:
-        """도메인 추출 - 정확도 향상"""
+        """도메인 추출"""
         question_lower = question.lower()
 
         domain_scores = {}
@@ -388,7 +391,7 @@ class SimpleDataProcessor:
         # 최고 점수 도메인 선택
         best_domain = max(domain_scores.items(), key=lambda x: x[1])[0]
 
-        # 추가 검증 - 특정 패턴으로 재확인
+        # 추가 검증
         if best_domain == "사이버보안":
             if any(term in question_lower for term in ["트로이", "rat", "원격제어", "악성코드", "딥페이크", "sbom"]):
                 return "사이버보안"
@@ -402,13 +405,13 @@ class SimpleDataProcessor:
         return best_domain
 
     def extract_choice_range(self, question: str) -> Tuple[str, int]:
-        """선택지 범위 추출 - 정확도 향상"""
+        """선택지 범위 추출"""
         question_type = self.analyze_question_type(question)
 
         if question_type != "multiple_choice":
             return "subjective", 0
 
-        # 선택지 번호 추출
+        # 정확한 선택지 번호 추출
         lines = question.split("\n")
         choice_numbers = []
 
@@ -464,12 +467,20 @@ class SimpleDataProcessor:
                 # 실제 선택지 개수 확인
                 number_count = len(re.findall(r'\b[1-5]\b', question))
                 if number_count >= 3:
+                    # 4개/5개 구분을 위해 실제 선택지 확인
+                    actual_choices = []
+                    for line in question.split('\n'):
+                        match = re.match(r'^(\d+)\s+', line.strip())
+                        if match:
+                            actual_choices.append(int(match.group(1)))
+                    if actual_choices:
+                        return "multiple_choice", max(actual_choices)
                     return "multiple_choice", 5
 
         return "subjective", 0
 
     def analyze_question_type(self, question: str) -> str:
-        """질문 유형 분석 - 정확도 향상"""
+        """질문 유형 분석"""
         question = question.strip()
 
         # 1단계: 주관식 패턴 우선 확인
@@ -516,7 +527,7 @@ class SimpleDataProcessor:
 
     def validate_answer(self, answer: str, question_type: str, 
                        max_choice: int = 5, question: str = "") -> bool:
-        """답변 검증 - 기준 조정"""
+        """답변 검증"""
         if not answer:
             return False
 
@@ -532,7 +543,7 @@ class SimpleDataProcessor:
             return self.validate_subjective_answer(answer, question)
 
     def validate_subjective_answer(self, answer: str, question: str = "") -> bool:
-        """주관식 답변 검증 - 기준 조정"""
+        """주관식 답변 검증"""
         
         clean_answer = self.clean_korean_text(answer)
         
@@ -581,10 +592,10 @@ class SimpleDataProcessor:
 
     def validate_mc_answer_range(self, answer: str, max_choice: int) -> bool:
         """객관식 답변 범위 확인"""
-        if not answer or not answer.isdigit():
+        if not answer or not str(answer).strip().isdigit():
             return False
 
-        answer_num = int(answer)
+        answer_num = int(str(answer).strip())
         return 1 <= answer_num <= max_choice
 
     def detect_critical_repetitive_patterns(self, text: str) -> bool:

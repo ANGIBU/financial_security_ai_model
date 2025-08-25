@@ -109,7 +109,7 @@ def run_specific_id_test():
             results, output_file, len(specific_test_df), found_ids
         )
 
-        # 답변 분석 - 학습 통계 포함
+        # 답변 분석
         print_answer_analysis_with_learning_stats(engine, specific_test_df, output_file)
 
         return True
@@ -191,13 +191,13 @@ def run_question_type_test(question_type: str, test_size: int):
             print_subjective_results(
                 results, output_file, len(type_indices), type_questions
             )
-            # 주관식 상세 분석 - 학습 통계 포함
+            # 주관식 상세 분석
             print_subjective_answer_analysis_with_learning_stats(engine, type_test_df, output_file)
         else:
             print_multiple_choice_results(
                 results, output_file, len(type_indices), type_questions
             )
-            # 객관식 분석 - 학습 통계 포함
+            # 객관식 분석
             print_mc_answer_analysis_with_learning_stats(engine, type_test_df, output_file)
 
         return True
@@ -215,7 +215,7 @@ def run_question_type_test(question_type: str, test_size: int):
 
 
 def print_answer_analysis_with_learning_stats(engine, test_df, output_file):
-    """답변 분석 - 학습 통계 포함"""
+    """답변 분석"""
     try:
         import pandas as pd
         result_df = pd.read_csv(output_file, encoding=FILE_VALIDATION["encoding"])
@@ -262,7 +262,7 @@ def print_answer_analysis_with_learning_stats(engine, test_df, output_file):
 
 
 def print_subjective_answer_analysis_with_learning_stats(engine, test_df, output_file):
-    """주관식 답변 상세 분석 - 학습 통계 포함"""
+    """주관식 답변 상세 분석"""
     try:
         import pandas as pd
         result_df = pd.read_csv(output_file, encoding=FILE_VALIDATION["encoding"])
@@ -321,8 +321,8 @@ def print_subjective_answer_analysis_with_learning_stats(engine, test_df, output
         # 성공률 계산
         success_answers = len(template_answers) + len(llm_answers)
         success_rate = success_answers / total_answers * 100 if total_answers > 0 else 0
-        engine.learning_manager.log_to_file(f"주관식 성공률: {success_rate:.1f}%")
-        print(f"주관식 성공률: {success_rate:.1f}%")
+        engine.learning_manager.log_to_file(f"주관식 실제 성공률: {success_rate:.1f}%")
+        print(f"주관식 실제 성공률: {success_rate:.1f}%")
         
         # 도메인별 분석
         domain_counts = {}
@@ -346,7 +346,7 @@ def print_subjective_answer_analysis_with_learning_stats(engine, test_df, output
 
 
 def print_mc_answer_analysis_with_learning_stats(engine, test_df, output_file):
-    """객관식 답변 분석 - 학습 통계 포함"""
+    """객관식 답변 분석"""
     try:
         import pandas as pd
         result_df = pd.read_csv(output_file, encoding=FILE_VALIDATION["encoding"])
@@ -363,6 +363,7 @@ def print_mc_answer_analysis_with_learning_stats(engine, test_df, output_file):
         # 답변 분포 분석
         answer_distribution = {}
         pattern_matches = 0
+        fallback_3_count = 0  # 3번 폴백 카운트
         
         for idx, row in result_df.iterrows():
             question_id = row["ID"]
@@ -370,6 +371,9 @@ def print_mc_answer_analysis_with_learning_stats(engine, test_df, output_file):
             
             if answer.isdigit():
                 answer_distribution[answer] = answer_distribution.get(answer, 0) + 1
+                # 3번이 나온 경우 폴백 가능성 체크
+                if answer == "3":
+                    fallback_3_count += 1
             
             # 패턴 매칭 확인
             question_row = test_df[test_df["ID"] == question_id]
@@ -390,6 +394,11 @@ def print_mc_answer_analysis_with_learning_stats(engine, test_df, output_file):
             match_rate = pattern_matches/len(result_df)*100
             engine.learning_manager.log_to_file(f"학습 패턴 매칭률: {match_rate:.1f}%")
             print(f"학습 패턴 매칭률: {match_rate:.1f}%")
+            
+            # 3번 폴백 경고
+            if fallback_3_count > len(result_df) * 0.5:  # 50% 이상이 3번인 경우
+                engine.learning_manager.log_to_file(f"경고: 3번 답변이 {fallback_3_count}개 ({fallback_3_count/len(result_df)*100:.1f}%) - 폴백 가능성 높음")
+                print(f"경고: 3번 답변 과다 ({fallback_3_count/len(result_df)*100:.1f}%)")
         
         print("객관식 분석 완료!")
         

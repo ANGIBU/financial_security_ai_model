@@ -32,6 +32,7 @@ class LearningManager:
             "successful_answers": [],
             "failed_answers": [],
             "quality_scores": {},
+            "fallback_answers": [],  # 폴백 답변 추가
         }
         
         self.session_log = []
@@ -109,10 +110,17 @@ class LearningManager:
             "domain": domain,
             "method": method_used,
             "timestamp": time.time(),
-            "length": len(answer) if answer else 0
+            "length": len(answer) if answer else 0,
+            "is_fallback": self._is_fallback_answer(answer, question_type, method_used)
         }
 
-        if is_successful:
+        # 폴백 답변 체크
+        if attempt_data["is_fallback"]:
+            self.learning_data["fallback_answers"].append(attempt_data)
+            # 폴백 답변은 성공으로 카운트하지 않음
+            is_successful = False
+
+        if is_successful and not attempt_data["is_fallback"]:
             self.learning_data["successful_answers"].append(attempt_data)
             # 최대 개수 제한
             max_successful = MEMORY_CONFIG["max_learning_records"]["successful_answers"]
@@ -127,11 +135,46 @@ class LearningManager:
 
         # 도메인별 정확도 업데이트
         if domain not in self.learning_data["domain_accuracy"]:
-            self.learning_data["domain_accuracy"][domain] = {"success": 0, "total": 0}
+            self.learning_data["domain_accuracy"][domain] = {"success": 0, "total": 0, "fallback": 0}
         
         self.learning_data["domain_accuracy"][domain]["total"] += 1
-        if is_successful:
+        if attempt_data["is_fallback"]:
+            self.learning_data["domain_accuracy"][domain]["fallback"] += 1
+        elif is_successful:
             self.learning_data["domain_accuracy"][domain]["success"] += 1
+
+    def _is_fallback_answer(self, answer: str, question_type: str, method_used: str) -> bool:
+        """폴백 답변인지 확인"""
+        if not answer:
+            return True
+        
+        answer_str = str(answer).strip()
+        
+        if question_type == "multiple_choice":
+            # 객관식에서 3번이 너무 많이 나오는 경우 폴백으로 간주
+            if answer_str == "3":
+                return True
+            # 폴백 메서드로 생성된 경우
+            if method_used == "fallback":
+                return True
+        
+        if question_type == "subjective":
+            # 주관식 폴백 패턴
+            fallback_patterns = [
+                "관련 법령과 규정에 따라 체계적인 관리가 필요합니다",
+                "관련 법령과 규정에 따라 체계적인 관리를",
+                "체계적인 관리가 필요합니다",
+                "체계적이고 전문적인 관리",
+                "지속적으로 운영해야 합니다",
+                "답변 생성 중",
+                "답변 길이가 부족",
+                "텍스트 정리"
+            ]
+            
+            if any(pattern in answer_str for pattern in fallback_patterns):
+                return True
+        
+        return False
 
     def record_mc_pattern(self, question: str, correct_answer: str, pattern_type: str = ""):
         """객관식 패턴 학습"""
@@ -172,7 +215,7 @@ class LearningManager:
         domain_patterns = []
         
         for answer_data in self.learning_data["successful_answers"]:
-            if answer_data["domain"] == domain:
+            if answer_data["domain"] == domain and not answer_data.get("is_fallback", False):
                 domain_patterns.append({
                     "question": answer_data["question"],
                     "answer": answer_data["answer"],
@@ -207,7 +250,8 @@ class LearningManager:
         for answer_data in self.learning_data["successful_answers"]:
             if (answer_data["domain"] == domain and 
                 answer_data["type"] == "subjective" and
-                len(answer_data["answer"]) > 50):
+                len(answer_data["answer"]) > 50 and
+                not answer_data.get("is_fallback", False)):
                 matching_answers.append(answer_data["answer"])
         
         if matching_answers:
@@ -216,31 +260,54 @@ class LearningManager:
         
         return None
 
-    def calculate_domain_accuracy(self, domain: str) -> float:
+    def calculate_domain_accuracy(self, domain: str) -> Dict:
         """도메인별 정확도 계산"""
         if domain in self.learning_data["domain_accuracy"]:
             domain_data = self.learning_data["domain_accuracy"][domain]
-            if domain_data["total"] > 0:
-                return domain_data["success"] / domain_data["total"]
-        return 0.0
+            total = domain_data["total"]
+            success = domain_data["success"]
+            fallback = domain_data.get("fallback", 0)
+            
+            if total > 0:
+                return {
+                    "accuracy": success / total,
+                    "success_count": success,
+                    "total_count": total,
+                    "fallback_count": fallback,
+                    "fallback_rate": fallback / total if total > 0 else 0
+                }
+        
+        return {
+            "accuracy": 0.0,
+            "success_count": 0,
+            "total_count": 0,
+            "fallback_count": 0,
+            "fallback_rate": 0.0
+        }
 
     def get_learning_stats(self) -> Dict:
         """학습 통계 정보"""
-        total_successful = len(self.learning_data["successful_answers"])
+        total_successful = len([a for a in self.learning_data["successful_answers"] if not a.get("is_fallback", False)])
         total_failed = len(self.learning_data["failed_answers"])
-        total_attempts = total_successful + total_failed
+        total_fallback = len(self.learning_data["fallback_answers"])
+        total_attempts = total_successful + total_failed + total_fallback
         
         stats = {
             "total_attempts": total_attempts,
             "successful_attempts": total_successful,
             "failed_attempts": total_failed,
+            "fallback_attempts": total_fallback,
             "success_rate": total_successful / total_attempts if total_attempts > 0 else 0.0,
+            "fallback_rate": total_fallback / total_attempts if total_attempts > 0 else 0.0,
             "domain_accuracies": {}
         }
         
         for domain, data in self.learning_data["domain_accuracy"].items():
             if data["total"] > 0:
-                stats["domain_accuracies"][domain] = data["success"] / data["total"]
+                stats["domain_accuracies"][domain] = {
+                    "accuracy": data["success"] / data["total"],
+                    "fallback_rate": data.get("fallback", 0) / data["total"]
+                }
         
         return stats
 
@@ -269,6 +336,9 @@ class LearningManager:
         self.learning_data["failed_answers"] = filter_old_answers(
             self.learning_data["failed_answers"]
         )
+        self.learning_data["fallback_answers"] = filter_old_answers(
+            self.learning_data["fallback_answers"]
+        )
 
     def export_analysis(self, output_file: str = None):
         """학습 분석 결과 내보내기"""
@@ -294,13 +364,15 @@ class LearningManager:
 총 시도 횟수: {stats['total_attempts']}
 성공 횟수: {stats['successful_attempts']}
 실패 횟수: {stats['failed_attempts']}
-전체 성공률: {stats['success_rate']:.3f}
+폴백 횟수: {stats['fallback_attempts']}
+실제 성공률: {stats['success_rate']:.3f}
+폴백률: {stats['fallback_rate']:.3f}
 
 === 도메인별 정확도 ===
 """
         
-        for domain, accuracy in stats["domain_accuracies"].items():
-            analysis_text += f"{domain}: {accuracy:.3f}\n"
+        for domain, accuracy_data in stats["domain_accuracies"].items():
+            analysis_text += f"{domain}: {accuracy_data['accuracy']:.3f} (폴백률: {accuracy_data['fallback_rate']:.3f})\n"
         
         analysis_text += f"""
 === 객관식 패턴 ===
@@ -310,25 +382,53 @@ class LearningManager:
         for pattern, data in self.learning_data["mc_patterns"].items():
             analysis_text += f"{pattern}: {data['count']}회 학습\n"
             
-        # 최근 성공/실패 답변 샘플
+        # 최근 성공 답변 샘플 (주관식만)
         analysis_text += f"""
-=== 최근 성공 답변 샘플 (최근 5개) ===
+=== 최근 성공 답변 샘플 (주관식만, 최근 5개) ===
 """
-        for answer_data in self.learning_data["successful_answers"][-5:]:
+        subjective_successes = [
+            answer_data for answer_data in self.learning_data["successful_answers"]
+            if answer_data.get("type") == "subjective" and not answer_data.get("is_fallback", False)
+        ]
+        
+        for answer_data in subjective_successes[-5:]:
             analysis_text += f"ID: {answer_data.get('question_id', 'N/A')}\n"
             analysis_text += f"도메인: {answer_data.get('domain', 'N/A')}\n"
             analysis_text += f"방법: {answer_data.get('method', 'N/A')}\n"
             analysis_text += f"답변 길이: {answer_data.get('length', 0)}자\n"
+            analysis_text += f"답변 미리보기: {str(answer_data.get('answer', ''))[:100]}...\n"
             analysis_text += "---\n"
             
+        # 최근 실패 답변 샘플 (주관식만)
         analysis_text += f"""
-=== 최근 실패 답변 샘플 (최근 3개) ===
+=== 최근 실패 답변 샘플 (주관식만, 최근 3개) ===
 """
-        for answer_data in self.learning_data["failed_answers"][-3:]:
+        subjective_failures = [
+            answer_data for answer_data in self.learning_data["failed_answers"]
+            if answer_data.get("type") == "subjective"
+        ]
+        
+        for answer_data in subjective_failures[-3:]:
             analysis_text += f"ID: {answer_data.get('question_id', 'N/A')}\n"
             analysis_text += f"도메인: {answer_data.get('domain', 'N/A')}\n"
             analysis_text += f"방법: {answer_data.get('method', 'N/A')}\n"
+            analysis_text += f"실패 이유: {str(answer_data.get('answer', ''))[:50]}...\n"
             analysis_text += "---\n"
+
+        # 폴백 분석
+        analysis_text += f"""
+=== 폴백 답변 분석 ===
+총 폴백 답변: {len(self.learning_data['fallback_answers'])}개
+"""
+        
+        # 폴백 답변 유형별 분석
+        fallback_by_type = {}
+        for fallback_data in self.learning_data["fallback_answers"]:
+            q_type = fallback_data.get("type", "unknown")
+            fallback_by_type[q_type] = fallback_by_type.get(q_type, 0) + 1
+        
+        for q_type, count in fallback_by_type.items():
+            analysis_text += f"{q_type}: {count}개\n"
         
         try:
             with open(output_file, 'w', encoding='utf-8') as f:
@@ -344,11 +444,11 @@ class LearningManager:
     def log_learning_stats(self, context: str = ""):
         """학습 통계 로그"""
         stats = self.get_learning_stats()
-        self.log_to_file(f"{context} - 전체 시도: {stats['total_attempts']}, 성공률: {stats['success_rate']:.1%}")
+        self.log_to_file(f"{context} - 전체 시도: {stats['total_attempts']}, 실제 성공률: {stats['success_rate']:.1%}, 폴백률: {stats['fallback_rate']:.1%}")
         
         if stats['domain_accuracies']:
-            for domain, accuracy in stats['domain_accuracies'].items():
-                self.log_to_file(f"  {domain}: {accuracy:.1%}")
+            for domain, accuracy_data in stats['domain_accuracies'].items():
+                self.log_to_file(f"  {domain}: {accuracy_data['accuracy']:.1%} (폴백: {accuracy_data['fallback_rate']:.1%})")
 
     def cleanup(self):
         """리소스 정리"""
