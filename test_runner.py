@@ -107,9 +107,6 @@ def run_comprehensive_test(test_size: int):
             results, output_file, len(comprehensive_test_df), found_ids
         )
 
-        # 답변 분석
-        print_answer_analysis(engine, comprehensive_test_df, output_file)
-
         return True
 
     except Exception as e:
@@ -189,8 +186,6 @@ def run_question_type_test(question_type: str, test_size: int):
             print_subjective_results(
                 results, output_file, len(type_indices), type_questions
             )
-            # 주관식 상세 분석
-            print_subjective_answer_analysis(engine, type_test_df, output_file)
         else:
             print_multiple_choice_results(
                 results, output_file, len(type_indices), type_questions

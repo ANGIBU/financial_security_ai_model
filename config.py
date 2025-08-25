@@ -30,12 +30,6 @@ PKL_FILES = {
     "performance_data": PKL_DIR / "performance_data.pkl",
 }
 
-# 로그 파일 경로
-LOG_FILES = {
-    "inference": LOG_DIR / "inference.txt",
-    "test": LOG_DIR / "test.txt",
-}
-
 MODEL_CONFIG = {
     "torch_dtype": "bfloat16",
     "device_map": "auto",
@@ -131,24 +125,6 @@ FILE_VALIDATION = {
     "encoding": "utf-8-sig",
     "max_file_size_mb": 100,
 }
-
-# 성능 추적 설정
-PERFORMANCE_TRACKING = {
-    "track_accuracy": True,
-    "track_response_time": True,
-    "track_template_usage": True,
-    "track_domain_distribution": True,
-    "track_failure_reasons": True,
-}
-
-# 모니터링 설정
-MONITORING_CONFIG = {
-    "log_level": "INFO",
-    "log_format": "%(asctime)s - %(levelname)s - %(message)s",
-    "log_rotation": True,
-    "max_log_size": 10 * 1024 * 1024,  # 10MB
-}
-
 
 def setup_environment():
     """환경 설정"""
