@@ -109,8 +109,8 @@ def run_specific_id_test():
             results, output_file, len(specific_test_df), found_ids
         )
 
-        # 엔진을 재사용하여 답변 분석 (모델 재로딩 방지)
-        print_answer_analysis_optimized(engine, specific_test_df, output_file)
+        # 답변 분석 - 학습 통계 포함
+        print_answer_analysis_with_learning_stats(engine, specific_test_df, output_file)
 
         return True
 
@@ -191,12 +191,14 @@ def run_question_type_test(question_type: str, test_size: int):
             print_subjective_results(
                 results, output_file, len(type_indices), type_questions
             )
-            # 주관식의 경우 상세 분석
-            print_subjective_answer_analysis_optimized(engine, type_test_df, output_file)
+            # 주관식 상세 분석 - 학습 통계 포함
+            print_subjective_answer_analysis_with_learning_stats(engine, type_test_df, output_file)
         else:
             print_multiple_choice_results(
                 results, output_file, len(type_indices), type_questions
             )
+            # 객관식 분석 - 학습 통계 포함
+            print_mc_answer_analysis_with_learning_stats(engine, type_test_df, output_file)
 
         return True
 
@@ -212,19 +214,34 @@ def run_question_type_test(question_type: str, test_size: int):
             engine.cleanup()
 
 
-def print_answer_analysis_optimized(engine, test_df, output_file):
-    """최적화된 답변 분석 (모델 재로딩 없음)"""
+def print_answer_analysis_with_learning_stats(engine, test_df, output_file):
+    """답변 분석 - 학습 통계 포함"""
     try:
         import pandas as pd
         result_df = pd.read_csv(output_file, encoding=FILE_VALIDATION["encoding"])
         
-        print("\n=== 답변 분석 ===")
+        print("\n=== 답변 분석 (학습 통계 포함) ===")
         
+        # 학습 통계 출력
+        learning_stats = engine.learning_manager.get_learning_stats()
+        print(f"학습 데이터 현황:")
+        print(f"  - 총 시도: {learning_stats['total_attempts']}")
+        print(f"  - 성공: {learning_stats['successful_attempts']}")
+        print(f"  - 실패: {learning_stats['failed_attempts']}")
+        if learning_stats['total_attempts'] > 0:
+            print(f"  - 성공률: {learning_stats['success_rate']:.1%}")
+        
+        # 도메인별 정확도
+        if learning_stats['domain_accuracies']:
+            print(f"도메인별 정확도:")
+            for domain, accuracy in learning_stats['domain_accuracies'].items():
+                print(f"  - {domain}: {accuracy:.1%}")
+        
+        # 현재 테스트 결과 분석
         subjective_count = 0
         objective_count = 0
         fallback_count = 0
         
-        # 기존 엔진 재사용 (모델 재로딩 방지)
         for idx, row in result_df.iterrows():
             question_id = row["ID"]
             answer = str(row["Answer"])
@@ -246,28 +263,47 @@ def print_answer_analysis_optimized(engine, test_df, output_file):
                         fallback_count += 1
                 else:
                     objective_count += 1
-                    
-        if subjective_count > 0:
-            fallback_rate = fallback_count / subjective_count * 100
         
+        print(f"\n현재 테스트 결과:")
+        print(f"  - 주관식: {subjective_count}개")
+        print(f"  - 객관식: {objective_count}개")
+        if subjective_count > 0:
+            print(f"  - 폴백 답변: {fallback_count}개 ({fallback_count/subjective_count*100:.1f}%)")
+            
     except Exception as e:
         print(f"답변 분석 중 오류: {e}")
 
 
-def print_subjective_answer_analysis_optimized(engine, test_df, output_file):
-    """최적화된 주관식 답변 상세 분석"""
+def print_subjective_answer_analysis_with_learning_stats(engine, test_df, output_file):
+    """주관식 답변 상세 분석 - 학습 통계 포함"""
     try:
         import pandas as pd
         result_df = pd.read_csv(output_file, encoding=FILE_VALIDATION["encoding"])
         
         print("\n=== 주관식 답변 상세 분석 ===")
         
+        # 학습된 성공 패턴 확인
+        learning_stats = engine.learning_manager.get_learning_stats()
+        if learning_stats['total_attempts'] > 0:
+            print(f"학습 성공률: {learning_stats['success_rate']:.1%}")
+        
+        template_answers = []
+        llm_answers = []
         fallback_answers = []
-        good_answers = []
         
         for idx, row in result_df.iterrows():
             question_id = row["ID"]
             answer = str(row["Answer"])
+            
+            # 특화 템플릿 답변인지 확인
+            specialized_indicators = [
+                "트로이 목마 기반 원격제어 악성코드",
+                "전자금융분쟁조정위원회",
+                "개인정보보호위원회",
+                "개인정보침해신고센터"
+            ]
+            
+            is_specialized = any(indicator in answer for indicator in specialized_indicators)
             
             fallback_patterns = [
                 "관련 법령과 규정에 따라 체계적인 관리가 필요합니다",
@@ -281,32 +317,94 @@ def print_subjective_answer_analysis_optimized(engine, test_df, output_file):
             
             if is_fallback:
                 fallback_answers.append(question_id)
+            elif is_specialized:
+                template_answers.append(question_id)
             else:
-                good_answers.append(question_id)
-                
-        print(f"정상 답변: {len(good_answers)}개")
-        print(f"폴백 답변: {len(fallback_answers)}개")
+                llm_answers.append(question_id)
+        
+        total_answers = len(template_answers) + len(llm_answers) + len(fallback_answers)
+        
+        print(f"답변 유형 분석:")
+        print(f"  - 특화 템플릿 답변: {len(template_answers)}개 ({len(template_answers)/total_answers*100:.1f}%)")
+        print(f"  - LLM 생성 답변: {len(llm_answers)}개 ({len(llm_answers)/total_answers*100:.1f}%)")
+        print(f"  - 폴백 답변: {len(fallback_answers)}개 ({len(fallback_answers)/total_answers*100:.1f}%)")
         
         if fallback_answers:
-            print(f"폴백 답변 ID: {', '.join(fallback_answers)}")
-            
-        success_rate = len(good_answers) / (len(good_answers) + len(fallback_answers)) * 100 if (len(good_answers) + len(fallback_answers)) > 0 else 0
+            print(f"폴백 답변 ID: {', '.join(fallback_answers[:5])}{' 등' if len(fallback_answers) > 5 else ''}")
+        
+        # 성공률 계산 (폴백이 아닌 답변 기준)
+        success_answers = len(template_answers) + len(llm_answers)
+        success_rate = success_answers / total_answers * 100 if total_answers > 0 else 0
         print(f"주관식 성공률: {success_rate:.1f}%")
+        
+        # 도메인별 분석
+        domain_counts = {}
+        for idx, row in result_df.iterrows():
+            question_id = row["ID"]
+            question_row = test_df[test_df["ID"] == question_id]
+            if len(question_row) > 0:
+                question = question_row.iloc[0]["Question"]
+                domain = engine.data_processor.extract_domain(question)
+                domain_counts[domain] = domain_counts.get(domain, 0) + 1
+        
+        if domain_counts:
+            print(f"도메인별 문항 수:")
+            for domain, count in domain_counts.items():
+                print(f"  - {domain}: {count}개")
+        
         print("분석 완료!")
         
     except Exception as e:
         print(f"주관식 답변 분석 중 오류: {e}")
 
 
-# 기존 함수들은 제거하고 최적화된 버전만 사용
-def print_answer_analysis(test_df, output_file):
-    """사용 안 함 - 최적화된 버전으로 대체"""
-    pass
-
-
-def print_subjective_answer_analysis(test_df, output_file):
-    """사용 안 함 - 최적화된 버전으로 대체"""
-    pass
+def print_mc_answer_analysis_with_learning_stats(engine, test_df, output_file):
+    """객관식 답변 분석 - 학습 통계 포함"""
+    try:
+        import pandas as pd
+        result_df = pd.read_csv(output_file, encoding=FILE_VALIDATION["encoding"])
+        
+        print("\n=== 객관식 답변 분석 ===")
+        
+        # 학습된 객관식 패턴 통계
+        mc_patterns = engine.learning_manager.learning_data.get("mc_patterns", {})
+        if mc_patterns:
+            print(f"학습된 객관식 패턴: {len(mc_patterns)}개")
+            for pattern, data in list(mc_patterns.items())[:3]:
+                print(f"  - {pattern}: {data['count']}회 학습")
+        
+        # 답변 분포 분석
+        answer_distribution = {}
+        pattern_matches = 0
+        
+        for idx, row in result_df.iterrows():
+            question_id = row["ID"]
+            answer = str(row["Answer"])
+            
+            if answer.isdigit():
+                answer_distribution[answer] = answer_distribution.get(answer, 0) + 1
+            
+            # 패턴 매칭 확인
+            question_row = test_df[test_df["ID"] == question_id]
+            if len(question_row) > 0:
+                question = question_row.iloc[0]["Question"]
+                learned_prediction = engine.learning_manager.get_mc_prediction(question, 5)
+                if learned_prediction and learned_prediction == answer:
+                    pattern_matches += 1
+        
+        print(f"답변 분포:")
+        for answer_num in sorted(answer_distribution.keys()):
+            count = answer_distribution[answer_num]
+            percentage = count / len(result_df) * 100
+            print(f"  - {answer_num}번: {count}개 ({percentage:.1f}%)")
+        
+        if len(result_df) > 0:
+            print(f"학습 패턴 매칭률: {pattern_matches/len(result_df)*100:.1f}%")
+        
+        print("객관식 분석 완료!")
+        
+    except Exception as e:
+        print(f"객관식 답변 분석 중 오류: {e}")
 
 
 def print_specific_id_results(
@@ -316,6 +414,13 @@ def print_specific_id_results(
     print(f"처리 시간: {results['total_time']:.1f}초")
     print(f"결과 파일: {output_file}")
     print(f"처리된 문항: {len(question_ids)}개")
+    
+    # 학습 통계 출력
+    if "learning_stats" in results:
+        learning_stats = results["learning_stats"]
+        print(f"\n학습 통계:")
+        print(f"  - 총 시도: {learning_stats['total_attempts']}")
+        print(f"  - 성공률: {learning_stats['success_rate']:.1%}")
 
 
 def print_multiple_choice_results(
@@ -325,6 +430,13 @@ def print_multiple_choice_results(
     print(f"처리 시간: {results['total_time']:.1f}초")
     print(f"결과 파일: {output_file}")
     print(f"처리된 문항: {len(question_ids)}개")
+    
+    # 학습 통계 출력
+    if "learning_stats" in results:
+        learning_stats = results["learning_stats"]
+        print(f"\n학습 통계:")
+        print(f"  - 총 시도: {learning_stats['total_attempts']}")
+        print(f"  - 성공률: {learning_stats['success_rate']:.1%}")
 
 
 def print_subjective_results(
@@ -334,6 +446,19 @@ def print_subjective_results(
     print(f"처리 시간: {results['total_time']:.1f}초")
     print(f"결과 파일: {output_file}")
     print(f"처리된 문항: {len(question_ids)}개")
+    
+    # 학습 통계 출력
+    if "learning_stats" in results:
+        learning_stats = results["learning_stats"]
+        print(f"\n학습 통계:")
+        print(f"  - 총 시도: {learning_stats['total_attempts']}")
+        print(f"  - 성공률: {learning_stats['success_rate']:.1%}")
+        
+        # 도메인별 정확도
+        if learning_stats.get('domain_accuracies'):
+            print(f"  - 도메인별 정확도:")
+            for domain, accuracy in learning_stats['domain_accuracies'].items():
+                print(f"    {domain}: {accuracy:.1%}")
 
 
 def print_results(results: dict, output_file: str, test_size: int):
@@ -341,6 +466,18 @@ def print_results(results: dict, output_file: str, test_size: int):
     print(f"\n=== 테스트 완료 ({test_size}개 문항) ===")
     print(f"처리 시간: {total_time_minutes:.1f}분")
     print(f"결과 파일: {output_file}")
+    
+    # 학습 통계 출력
+    if "learning_stats" in results:
+        learning_stats = results["learning_stats"]
+        print(f"\n학습 통계:")
+        print(f"  - 총 학습 시도: {learning_stats['total_attempts']}")
+        print(f"  - 학습 성공률: {learning_stats['success_rate']:.1%}")
+        
+        if learning_stats.get('domain_accuracies'):
+            print(f"  - 도메인별 학습 정확도:")
+            for domain, accuracy in learning_stats['domain_accuracies'].items():
+                print(f"    {domain}: {accuracy:.1%}")
 
 
 def select_main_test_type():
@@ -349,11 +486,12 @@ def select_main_test_type():
     print("1. 객관식 테스트")
     print("2. 주관식 테스트")
     print("3. 특정 ID 테스트 (TEST_000 ~ TEST_007)")
+    print("4. 학습 통계 확인")
     print()
 
     while True:
         try:
-            choice = input("선택 (1-3): ").strip()
+            choice = input("선택 (1-4): ").strip()
 
             if choice == "1":
                 return "객관식"
@@ -361,14 +499,55 @@ def select_main_test_type():
                 return "주관식"
             elif choice == "3":
                 return "특정ID"
+            elif choice == "4":
+                return "학습통계"
             else:
-                print("잘못된 선택입니다. 1, 2, 3 중 하나를 입력하세요.")
+                print("잘못된 선택입니다. 1, 2, 3, 4 중 하나를 입력하세요.")
 
         except KeyboardInterrupt:
             print("\n프로그램을 종료합니다.")
             sys.exit(0)
         except Exception:
             print("잘못된 입력입니다. 다시 시도하세요.")
+
+
+def show_learning_statistics():
+    """학습 통계 표시"""
+    try:
+        engine = FinancialAIInference(verbose=False)
+        learning_stats = engine.learning_manager.get_learning_stats()
+        
+        print("\n=== 현재 학습 통계 ===")
+        print(f"총 학습 시도: {learning_stats['total_attempts']}")
+        print(f"성공한 시도: {learning_stats['successful_attempts']}")
+        print(f"실패한 시도: {learning_stats['failed_attempts']}")
+        if learning_stats['total_attempts'] > 0:
+            print(f"전체 성공률: {learning_stats['success_rate']:.1%}")
+        
+        print(f"\n도메인별 학습 정확도:")
+        if learning_stats['domain_accuracies']:
+            for domain, accuracy in learning_stats['domain_accuracies'].items():
+                print(f"  - {domain}: {accuracy:.1%}")
+        else:
+            print("  아직 도메인별 학습 데이터가 없습니다.")
+        
+        # 객관식 패턴 학습 현황
+        mc_patterns = engine.learning_manager.learning_data.get("mc_patterns", {})
+        if mc_patterns:
+            print(f"\n학습된 객관식 패턴:")
+            for pattern, data in mc_patterns.items():
+                print(f"  - {pattern}: {data['count']}회 학습")
+        else:
+            print("\n학습된 객관식 패턴이 없습니다.")
+        
+        # 학습 분석 리포트 생성
+        engine.learning_manager.export_analysis()
+        print("\n학습 분석 리포트가 pkl 폴더에 생성되었습니다.")
+        
+        engine.cleanup()
+        
+    except Exception as e:
+        print(f"학습 통계 확인 중 오류: {e}")
 
 
 def select_question_count(test_type: str):
@@ -409,7 +588,10 @@ def main():
 
     test_type = select_main_test_type()
 
-    if test_type == "특정ID":
+    if test_type == "학습통계":
+        show_learning_statistics()
+        return
+    elif test_type == "특정ID":
         print(f"\n특정 ID 테스트를 실행합니다...")
         success = run_specific_id_test()
         if success:
