@@ -8,20 +8,21 @@ from pathlib import Path
 from config import TEMPLATE_QUALITY_CRITERIA
 
 
-class FinancialSecurityKnowledgeBase:
+class KnowledgeBase:
+    """금융보안 지식베이스"""
 
     def __init__(self):
-        self._initialize_integrated_data()
+        self._initialize_data()
         self.template_quality_criteria = TEMPLATE_QUALITY_CRITERIA
 
-    def _initialize_integrated_data(self):
-        """JSON 데이터를 코드 내부로 통합하여 초기화"""
+    def _initialize_data(self):
+        """데이터 초기화"""
         
-        # 템플릿 데이터 - 더 구체적이고 전문적인 답변들로 구성
+        # 템플릿 데이터
         self.korean_subjective_templates = {
             "사이버보안": {
                 "특징_묻기": [
-                    "트로이 목마 기반 원격제어 악성코드(RAT)는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하며, 은밀성과 지속성을 특징으로 하여 장기간 시스템에 잠복하면서 악의적인 활동을 수행합니다. 주요 특성으로는 시스템 권한 탈취, 데이터 수집, 파일 조작, 원격 명령 실행 등이 있습니다.",
+                    "트로이 목마 기반 원격제어 악성코드(RAT)는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하며, 은밀성과 지속성을 특징으로 하여 장기간 시스템에 잠복하면서 데이터 수집, 파일 조작, 원격 명령 수행 등의 악의적인 활동을 수행합니다.",
                     "원격접근 트로이는 사용자를 속여 시스템에 침투한 후 외부 공격자가 원격으로 제어할 수 있는 특성을 가지며, 시스템 깊숙이 숨어서 지속적으로 활동하면서 정보 수집과 원격 제어 기능을 수행합니다. 정상 소프트웨어로 위장하여 탐지를 회피하고 시스템 권한을 탈취하는 특징을 보이며, 네트워크를 통해 외부 서버와 은밀한 통신을 수행합니다.",
                     "RAT 악성코드의 주요 특징은 은밀한 설치와 지속적인 시스템 제어 능력입니다. 트로이 목마 방식으로 배포되어 사용자가 직접 설치하도록 유도하며, 설치 후 외부 서버와 통신하여 원격 명령을 수행하고 시스템 정보를 수집합니다. 탐지 회피를 위한 다양한 은폐 기법을 사용하고 시스템 시작 시 자동 실행되도록 설정됩니다."
                 ],
@@ -268,7 +269,6 @@ class FinancialSecurityKnowledgeBase:
             score = 0
             for keyword in keywords:
                 if keyword.lower() in question_lower:
-                    # 핵심 키워드에 더 높은 점수
                     if keyword in [
                         "트로이", "RAT", "원격제어", "SBOM", "전자금융분쟁조정위원회", 
                         "개인정보보호위원회", "만 14세", "위험 관리", "금융투자업",
@@ -310,7 +310,7 @@ class FinancialSecurityKnowledgeBase:
         return analysis_result
 
     def get_template_examples(self, domain: str, intent_type: str = "일반") -> List[str]:
-        """도메인별 템플릿 예시 반환 - 정확성 향상"""
+        """도메인별 템플릿 예시 반환"""
         templates = []
         
         if domain in self.korean_subjective_templates:
@@ -320,21 +320,19 @@ class FinancialSecurityKnowledgeBase:
                 # 정확한 의도 타입 매칭
                 if intent_type in domain_templates:
                     templates = domain_templates[intent_type]
-                # 복합 질문 처리 (특징+지표)
+                # 복합 질문 처리
                 elif intent_type == "복합설명" and "복합설명" in domain_templates:
                     templates = domain_templates["복합설명"]
                 elif intent_type == "복합설명":
-                    # 특징과 지표 템플릿을 결합
                     feature_templates = domain_templates.get("특징_묻기", [])
                     indicator_templates = domain_templates.get("지표_묻기", [])
                     if feature_templates and indicator_templates:
-                        # 복합 답변 생성
                         combined = f"{feature_templates[0]} {indicator_templates[0]}"
                         templates = [combined] + feature_templates[:1] + indicator_templates[:1]
                 # 일반 템플릿 사용
                 elif "일반" in domain_templates:
                     templates = domain_templates["일반"]
-                # 다른 의도 타입에서 가져오기 (우선순위 적용)
+                # 다른 의도 타입에서 가져오기
                 else:
                     intent_priority = ["특징_묻기", "지표_묻기", "기관_묻기", "방안_묻기", "절차_묻기", "조치_묻기", "일반"]
                     for priority_intent in intent_priority:
@@ -344,28 +342,25 @@ class FinancialSecurityKnowledgeBase:
             else:
                 templates = domain_templates
 
-        # 템플릿이 부족한 경우 다른 도메인에서 보충하지 않고 기본 생성
+        # 템플릿이 부족한 경우 기본 생성
         if not templates or len(templates) == 0:
             templates = self._generate_fallback_templates(domain, intent_type)
 
         # 템플릿 품질 확인 및 반환
         if isinstance(templates, list) and len(templates) > 0:
-            # 품질 높은 템플릿 우선 선택
             quality_templates = []
             for template in templates:
                 if self._check_template_quality(template):
                     quality_templates.append(template)
             
             final_templates = quality_templates if quality_templates else templates
-            
-            # 최대 3개까지만 반환 (너무 많으면 혼란)
             return final_templates[:3]
 
         return []
 
     def _check_template_quality(self, template: str) -> bool:
         """템플릿 품질 확인"""
-        if not template or len(template) < 30:
+        if not template or len(template) < 40:
             return False
         
         # 한국어 비율 확인
@@ -376,7 +371,7 @@ class FinancialSecurityKnowledgeBase:
             return False
             
         korean_ratio = korean_chars / total_chars
-        if korean_ratio < 0.8:
+        if korean_ratio < 0.85:
             return False
         
         # 전문 용어 포함 확인
@@ -390,7 +385,7 @@ class FinancialSecurityKnowledgeBase:
         if any(term in template for term in professional_terms):
             return True
             
-        return len(template) >= 50
+        return len(template) >= 60
 
     def get_mc_pattern_hints(self, question: str) -> str:
         """객관식 패턴 힌트 제공"""
@@ -403,7 +398,7 @@ class FinancialSecurityKnowledgeBase:
             "않는" in question_lower):
             return "금융투자업에는 투자자문업, 투자매매업, 투자중개업이 포함됩니다. 소비자금융업과 보험중개업은 금융투자업에 해당하지 않으므로, 이 중에서 선택하세요."
         
-        # 1단계: 정확한 패턴 매칭
+        # 정확한 패턴 매칭
         best_match = None
         best_score = 0
         
@@ -414,7 +409,6 @@ class FinancialSecurityKnowledgeBase:
             for keyword in pattern_data["question_keywords"]:
                 if keyword in question_lower:
                     matched_keywords += 1
-                    # 키워드별 중요도 점수
                     if keyword in ["해당하지 않는", "적절하지 않은", "옳지 않은"]:
                         score += 3
                     elif keyword in ["가장 중요한", "가장 적절한"]:
@@ -430,7 +424,7 @@ class FinancialSecurityKnowledgeBase:
                 best_score = final_score
                 best_match = pattern_data
 
-        # 2단계: 최적 매치 힌트 제공
+        # 최적 매치 힌트 제공
         if best_match and best_score >= 2:
             hint_parts = []
             
@@ -442,7 +436,7 @@ class FinancialSecurityKnowledgeBase:
             
             return " ".join(hint_parts)
 
-        # 3단계: 일반적인 도메인 힌트
+        # 일반적인 도메인 힌트
         return self._get_general_mc_hint(question_lower)
 
     def _get_general_mc_hint(self, question_lower: str) -> str:
@@ -509,7 +503,7 @@ class FinancialSecurityKnowledgeBase:
     def _generate_fallback_templates(self, domain: str, intent_type: str) -> List[str]:
         """기본 템플릿 생성"""
         
-        # 도메인별 특화 기본 템플릿
+        # 도메인별 기본 템플릿
         domain_fallbacks = {
             "사이버보안": {
                 "특징_묻기": [
@@ -534,7 +528,7 @@ class FinancialSecurityKnowledgeBase:
             }
         }
 
-        # 도메인별 특화 템플릿이 있으면 사용
+        # 도메인별 템플릿이 있으면 사용
         if domain in domain_fallbacks and intent_type in domain_fallbacks[domain]:
             return domain_fallbacks[domain][intent_type]
 

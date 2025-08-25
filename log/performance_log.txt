@@ -1,0 +1,60 @@
+2025-08-25 19:37:18,898 - INFO - Answer TEST_000: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:37:18,899 - INFO - Answer TEST_001: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:37:21,866 - INFO - Answer TEST_002: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:37:24,812 - INFO - Answer TEST_003: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:37:27,816 - INFO - Answer TEST_005: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:37:30,779 - INFO - Answer TEST_006: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:37:33,747 - INFO - Answer TEST_008: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:37:36,642 - INFO - Answer TEST_009: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:37:39,529 - INFO - Answer TEST_010: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:37:42,445 - INFO - Answer TEST_011: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:37:45,344 - INFO - Answer TEST_012: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:37:48,307 - INFO - Answer TEST_013: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:37:51,211 - INFO - Answer TEST_014: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:37:54,157 - INFO - Answer TEST_015: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:37:57,205 - INFO - Answer TEST_016: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:00,205 - INFO - Answer TEST_017: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:03,201 - INFO - Answer TEST_018: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:06,158 - INFO - Answer TEST_019: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:09,067 - INFO - Answer TEST_020: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:12,010 - INFO - Answer TEST_021: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:14,966 - INFO - Answer TEST_022: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:17,890 - INFO - Answer TEST_023: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:20,953 - INFO - Answer TEST_024: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:24,056 - INFO - Answer TEST_025: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:27,112 - INFO - Answer TEST_026: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:30,095 - INFO - Answer TEST_027: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:33,025 - INFO - Answer TEST_028: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:35,976 - INFO - Answer TEST_029: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:39,096 - INFO - Answer TEST_030: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:42,046 - INFO - Answer TEST_031: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:45,078 - INFO - Answer TEST_032: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:48,147 - INFO - Answer TEST_033: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:51,344 - INFO - Answer TEST_034: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:54,572 - INFO - Answer TEST_035: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:38:57,814 - INFO - Answer TEST_036: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:39:00,945 - INFO - Answer TEST_037: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:39:04,110 - INFO - Answer TEST_038: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:39:07,194 - INFO - Answer TEST_039: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:39:10,297 - INFO - Answer TEST_040: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:39:13,589 - INFO - Answer TEST_041: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:39:16,726 - INFO - Answer TEST_042: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:39:19,856 - INFO - Answer TEST_043: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:39:23,079 - INFO - Answer TEST_044: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:39:26,218 - INFO - Answer TEST_045: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:39:29,273 - INFO - Answer TEST_046: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:39:32,430 - INFO - Answer TEST_047: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:39:35,644 - INFO - Answer TEST_048: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:39:38,711 - INFO - Answer TEST_049: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:39:41,865 - INFO - Answer TEST_050: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:39:44,922 - INFO - Answer TEST_051: Length=1, Template=True, Method=multiple_choice
+2025-08-25 19:39:44,929 - INFO - 
+=== 최종 처리 통계 ===
+총 처리 시간: 173.9초
+평균 문항 처리 시간: 2.92초
+총 문항 수: 50
+도메인별 분포: {'금융투자': 1, '위험관리': 1, '개인정보보호': 19, '정보보안': 6, '전자금융': 13, '사이버보안': 9, '일반': 1}
+방법별 분포: {'multiple_choice': 50}
+성공한 답변 수: 50
+실패한 답변 수: 0
+
