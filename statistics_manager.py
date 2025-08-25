@@ -75,8 +75,8 @@ class StatisticsManager:
                 "used_percent": memory_info.percent,
                 "available_mb": memory_info.available / 1024 / 1024
             })
-        except Exception as e:
-            print(f"메모리 스냅샷 기록 실패: {e}")
+        except:
+            pass
     
     def generate_final_statistics(self, learning_data: Dict) -> Dict:
         """최종 통계 생성"""
@@ -107,16 +107,13 @@ class StatisticsManager:
     def _log_system_info(self):
         """시스템 정보 기록"""
         try:
-            self.log_file.parent.mkdir(parents=True, exist_ok=True)
             with open(self.log_file, 'a', encoding='utf-8') as f:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 f.write(f"[{timestamp}] === 세션 시작 ===\n")
                 f.write(f"[{timestamp}] 시스템 메모리: {psutil.virtual_memory().total / 1024 / 1024 / 1024:.1f}GB\n")
                 f.write(f"[{timestamp}] CPU 코어: {psutil.cpu_count()}개\n")
-            print(f"로그 파일 생성됨: {self.log_file}")
-        except Exception as e:
-            print(f"로그 파일 생성 실패: {e}")
-            raise e
+        except:
+            pass
     
     def _analyze_domains(self) -> Dict:
         """도메인 분석"""
@@ -218,7 +215,7 @@ class StatisticsManager:
             
         avg_time = sum(self.processing_times) / len(self.processing_times)
         consistency = 1 - (self._calculate_std_deviation(self.processing_times) / avg_time) if avg_time > 0 else 0
-        speed_score = max(0, 1 - (avg_time / 10))
+        speed_score = max(0, 1 - (avg_time / 10))  # 10초를 기준으로 속도 점수
         
         return round((consistency * 0.6 + speed_score * 0.4) * 100, 1)
     
@@ -291,4 +288,4 @@ class StatisticsManager:
                 f.write(f"[{timestamp}] === 세션 종료 ===\n\n")
                 
         except Exception as e:
-            print(f"상세 로그 작성 실패: {e}")
+            pass

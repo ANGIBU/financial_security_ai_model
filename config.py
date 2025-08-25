@@ -7,7 +7,7 @@ DEFAULT_MODEL_NAME = "upstage/SOLAR-10.7B-Instruct-v1.0"
 DEVICE_AUTO_SELECT = True
 VERBOSE_MODE = False
 
-OFFLINE_MODE = {"TRANSFORMERS_OFFLINE": "1", "HF_DATASETS_OFFLINE": "1", "HF_HUB_OFFLINE": "1"}
+OFFLINE_MODE = {"TRANSFORMERS_OFFLINE": "1", "HF_DATASETS_OFFLINE": "1"}
 
 BASE_DIR = Path(__file__).parent.absolute()
 PKL_DIR = BASE_DIR / "pkl"
@@ -82,9 +82,9 @@ KOREAN_REQUIREMENTS = {
 }
 
 MEMORY_CONFIG = {
-    "gc_frequency": 20,
-    "save_interval": 25,
-    "pkl_save_frequency": 5,
+    "gc_frequency": 30,
+    "save_interval": 50,
+    "pkl_save_frequency": 10,
     "max_learning_records": {
         "successful_answers": 2000,
         "failed_answers": 1000,
@@ -130,9 +130,6 @@ def setup_environment():
     """환경 설정"""
     for key, value in OFFLINE_MODE.items():
         os.environ[key] = value
-    
-    # 디렉토리 생성
-    ensure_directories()
 
 
 def get_device():
@@ -147,7 +144,6 @@ def ensure_directories():
     """디렉토리 생성"""
     PKL_DIR.mkdir(exist_ok=True)
     LOG_DIR.mkdir(exist_ok=True)
-    print(f"디렉토리 생성됨: PKL={PKL_DIR.exists()}, LOG={LOG_DIR.exists()}")
 
 
 def validate_config():
@@ -172,6 +168,7 @@ def validate_config():
 def initialize_system():
     """시스템 초기화"""
     setup_environment()
+    ensure_directories()
     validate_config()
 
     if VERBOSE_MODE:
@@ -187,6 +184,7 @@ if __name__ != "__main__":
         print(f"설정 초기화 중 오류: {e}")
         try:
             setup_environment()
+            ensure_directories()
             print("기본 설정으로 시스템을 시작합니다.")
         except Exception as fallback_error:
             print(f"기본 설정 로드 실패: {fallback_error}")

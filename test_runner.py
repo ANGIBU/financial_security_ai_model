@@ -2,14 +2,13 @@
 
 import os
 import sys
-import psutil
 from pathlib import Path
 from datetime import datetime
 
 current_dir = Path(__file__).parent.absolute()
 sys.path.append(str(current_dir))
 
-from config import FILE_VALIDATION, DEFAULT_FILES, PKL_DIR, LOG_DIR
+from config import FILE_VALIDATION, DEFAULT_FILES
 from inference import FinancialAIInference
 
 
@@ -53,7 +52,6 @@ def run_test(test_size: int = None, verbose: bool = True):
             results = engine.execute_inference(test_file, submission_file, output_file)
 
         print_results(results, output_file, test_size)
-        print_answer_analysis(engine, test_df, output_file)
 
         return True
 
@@ -188,7 +186,6 @@ def run_question_type_test(question_type: str, test_size: int):
             print_subjective_results(
                 results, output_file, len(type_indices), type_questions
             )
-            print_subjective_answer_analysis(engine, type_test_df, output_file)
         else:
             print_multiple_choice_results(
                 results, output_file, len(type_indices), type_questions
@@ -208,7 +205,7 @@ def run_question_type_test(question_type: str, test_size: int):
 
 
 def print_answer_analysis(engine, test_df, output_file):
-    """답변 분석"""
+    """답변 분석 (엔진 재사용)"""
     try:
         import pandas as pd
         result_df = pd.read_csv(output_file, encoding=FILE_VALIDATION["encoding"])
@@ -278,7 +275,7 @@ def print_subjective_answer_analysis(engine, test_df, output_file):
         import pandas as pd
         result_df = pd.read_csv(output_file, encoding=FILE_VALIDATION["encoding"])
         
-        print("\n=== 주관식 답변 분석 ===")
+        print("\n=== 주관식 답변 상세 분석 ===")
         
         fallback_answers = []
         good_answers = []
@@ -329,7 +326,7 @@ def print_subjective_answer_analysis(engine, test_df, output_file):
             print(f"주관식 전체 성공률: {success_rate:.1f}%")
             print(f"템플릿 활용률: {template_rate:.1f}%")
         
-        print("주관식 분석 완료!")
+        print("상세 분석 완료!")
         
     except Exception as e:
         print(f"주관식 답변 분석 중 오류: {e}")
@@ -380,19 +377,6 @@ def print_results(results: dict, output_file: str, test_size: int):
         print(f"  - 성공 답변: {learning_data.get('successful_answers', 0)}개")
         print(f"  - 실패 답변: {learning_data.get('failed_answers', 0)}개")
         print(f"  - 질문 패턴: {learning_data.get('question_patterns', 0)}개")
-    
-    # 디버깅 정보 추가
-    print(f"\n=== 시스템 정보 ===")
-    print(f"PKL 디렉토리 존재: {PKL_DIR.exists()}")
-    print(f"LOG 디렉토리 존재: {LOG_DIR.exists()}")
-    print(f"메모리 사용량: {psutil.virtual_memory().percent:.1f}%")
-    
-    # 파일 존재 확인
-    if os.path.exists(output_file):
-        file_size = os.path.getsize(output_file) / 1024
-        print(f"출력 파일 크기: {file_size:.1f}KB")
-    else:
-        print("경고: 출력 파일이 생성되지 않았습니다")
 
 
 def select_main_test_type():

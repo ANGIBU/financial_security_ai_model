@@ -48,24 +48,19 @@ class LearningSystem:
         if file_path.exists():
             try:
                 with open(file_path, 'rb') as f:
-                    data = pickle.load(f)
-                print(f"PKL 데이터 로드 성공: {data_type} ({len(data)}개)")
-                return data
+                    return pickle.load(f)
             except Exception as e:
-                print(f"PKL 데이터 로드 실패: {data_type} - {e}")
+                pass
         return {}
     
     def save_pkl_data(self, data_type: str, data: Dict):
         """pkl 데이터 저장"""
         file_path = PKL_FILES[data_type]
         try:
-            file_path.parent.mkdir(parents=True, exist_ok=True)
             with open(file_path, 'wb') as f:
                 pickle.dump(data, f)
-            print(f"PKL 데이터 저장 성공: {data_type} ({len(data)}개)")
         except Exception as e:
-            print(f"PKL 데이터 저장 실패: {data_type} - {e}")
-            raise e
+            pass
     
     def record_successful_answer(self, question_id: str, question: str, answer: str, 
                                 question_type: str, domain: str, method: str):
