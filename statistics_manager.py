@@ -1,5 +1,3 @@
-# statistics_manager.py
-
 import time
 import gc
 import sys
@@ -39,11 +37,13 @@ class StatisticsManager:
         self.template_usage_stats = {}
         self.memory_snapshots = []
         self.memory_monitor_enabled = PSUTIL_AVAILABLE
+        self.session_started = False
         
     def start_session(self):
         """세션 시작"""
         self.start_time = time.time()
-        self._log_system_info()
+        self.session_started = True
+        self._clear_log_and_write_system_info()
         
     def record_question_processing(self, processing_time: float, domain: str, method: str, 
                                   question_type: str, success: bool, error_type: str = None):
@@ -154,12 +154,13 @@ class StatisticsManager:
             print(f"최종 통계 생성 오류: {e}")
             return self._generate_fallback_stats()
     
-    def _log_system_info(self):
-        """시스템 정보 기록"""
+    def _clear_log_and_write_system_info(self):
+        """로그 초기화 및 시스템 정보 기록"""
         try:
-            with open(self.log_file, 'a', encoding='utf-8') as f:
+            # 기존 로그 파일 내용 제거 (덮어쓰기 모드)
+            with open(self.log_file, 'w', encoding='utf-8') as f:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                f.write(f"[{timestamp}] === 세션 시작 ===\n")
+                f.write(f"[{timestamp}] === 새로운 세션 시작 ===\n")
                 
                 if self.memory_monitor_enabled:
                     f.write(f"[{timestamp}] 시스템 메모리: {psutil.virtual_memory().total / 1024 / 1024 / 1024:.1f}GB\n")
@@ -172,7 +173,7 @@ class StatisticsManager:
                 f.flush()
                 
         except Exception as e:
-            print(f"시스템 정보 로그 기록 오류: {e}")
+            print(f"로그 초기화 및 시스템 정보 기록 오류: {e}")
     
     def _log_error_details(self, error_type: str, domain: str, method: str, processing_time: float):
         """오류 상세 정보 로그 기록"""
