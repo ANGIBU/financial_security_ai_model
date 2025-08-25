@@ -11,12 +11,31 @@ OFFLINE_MODE = {"TRANSFORMERS_OFFLINE": "1", "HF_DATASETS_OFFLINE": "1"}
 
 BASE_DIR = Path(__file__).parent.absolute()
 PKL_DIR = BASE_DIR / "pkl"
+LOG_DIR = BASE_DIR / "log"
 
 DEFAULT_FILES = {
     "test_file": "./test.csv",
     "submission_file": "./sample_submission.csv",
     "output_file": "./final_submission.csv",
     "test_output_file": "./test_result.csv",
+}
+
+# pkl 학습 데이터 파일 경로
+PKL_FILES = {
+    "successful_answers": PKL_DIR / "successful_answers.pkl",
+    "failed_answers": PKL_DIR / "failed_answers.pkl",
+    "question_patterns": PKL_DIR / "question_patterns.pkl",
+    "domain_templates": PKL_DIR / "domain_templates.pkl",
+    "mc_patterns": PKL_DIR / "mc_patterns.pkl",
+    "performance_data": PKL_DIR / "performance_data.pkl",
+}
+
+# 로그 파일 경로
+LOG_FILES = {
+    "main_log": LOG_DIR / "inference_log.txt",
+    "performance_log": LOG_DIR / "performance_log.txt",
+    "error_log": LOG_DIR / "error_log.txt",
+    "monitoring_log": LOG_DIR / "monitoring_log.txt",
 }
 
 MODEL_CONFIG = {
@@ -29,66 +48,70 @@ MODEL_CONFIG = {
 GENERATION_CONFIG = {
     "multiple_choice": {
         "max_new_tokens": 15,
-        "temperature": 0.3,
-        "top_p": 0.8,
+        "temperature": 0.2,
+        "top_p": 0.7,
         "do_sample": True,
-        "repetition_penalty": 1.2,
+        "repetition_penalty": 1.15,
         "no_repeat_ngram_size": 3,
     },
     "subjective": {
-        "max_new_tokens": 300,
-        "temperature": 0.5,
-        "top_p": 0.85,
+        "max_new_tokens": 400,
+        "temperature": 0.4,
+        "top_p": 0.8,
         "do_sample": True,
-        "repetition_penalty": 1.3,
+        "repetition_penalty": 1.2,
         "no_repeat_ngram_size": 4,
-        "length_penalty": 1.1,
+        "length_penalty": 1.05,
     },
 }
 
 OPTIMIZATION_CONFIG = {
-    "intent_confidence_threshold": 0.6,
-    "quality_threshold": 0.7,
-    "korean_ratio_threshold": 0.8,
-    "max_retry_attempts": 2,
+    "intent_confidence_threshold": 0.7,
+    "quality_threshold": 0.8,
+    "korean_ratio_threshold": 0.85,
+    "max_retry_attempts": 3,
     "template_preference": True,
     "adaptive_prompt": True,
     "mc_pattern_priority": True,
     "domain_specific_optimization": True,
     "institution_question_priority": True,
     "mc_context_weighting": True,
+    "pkl_learning_enabled": True,
+    "performance_tracking": True,
 }
 
 KOREAN_REQUIREMENTS = {
-    "min_korean_ratio": 0.8,
-    "max_english_ratio": 0.1,
-    "min_length": 30,
-    "max_length": 500,
+    "min_korean_ratio": 0.85,
+    "max_english_ratio": 0.05,
+    "min_length": 40,
+    "max_length": 600,
     "repetition_tolerance": 2,
     "critical_repetition_limit": 3,
 }
 
 MEMORY_CONFIG = {
-    "gc_frequency": 50,
-    "save_interval": 1000,
+    "gc_frequency": 30,
+    "save_interval": 50,
+    "pkl_save_frequency": 10,
     "max_learning_records": {
-        "successful_answers": 1000,
-        "failed_answers": 500,
-        "quality_scores": 1000,
-        "choice_range_errors": 100,
-        "repetitive_answers": 200,
+        "successful_answers": 2000,
+        "failed_answers": 1000,
+        "question_patterns": 1500,
+        "domain_templates": 500,
+        "mc_patterns": 300,
+        "performance_data": 1000,
     },
 }
 
 TIME_LIMITS = {
     "total_inference_minutes": 270,
     "warmup_timeout": 30,
-    "single_question_timeout": 30,
-    "generation_timeout": 20,
+    "single_question_timeout": 25,
+    "generation_timeout": 15,
 }
 
 TEMPLATE_QUALITY_CRITERIA = {
-    "length_range": (50, 400),
+    "length_range": (60, 500),
     "korean_ratio_min": 0.9,
     "structure_keywords": ["법", "규정", "조치", "관리", "절차", "기준"],
     "intent_keywords": {
@@ -100,9 +123,6 @@ TEMPLATE_QUALITY_CRITERIA = {
         "조치_묻기": ["조치", "대응", "보안", "예방"],
     },
     "forbidden_patterns": [
-        "갈취 묻는 말",
-        "묻고 갈취",
-        "갈취",
         r"(.{2,8})\s*\1\s*\1\s*\1",
         r"(.{1,3})\s*(\1\s*){4,}",
     ],
@@ -112,6 +132,23 @@ FILE_VALIDATION = {
     "required_files": ["test.csv", "sample_submission.csv"],
     "encoding": "utf-8-sig",
     "max_file_size_mb": 100,
+}
+
+# 성능 추적 설정
+PERFORMANCE_TRACKING = {
+    "track_accuracy": True,
+    "track_response_time": True,
+    "track_template_usage": True,
+    "track_domain_distribution": True,
+    "track_failure_reasons": True,
+}
+
+# 모니터링 설정
+MONITORING_CONFIG = {
+    "log_level": "INFO",
+    "log_format": "%(asctime)s - %(levelname)s - %(message)s",
+    "log_rotation": True,
+    "max_log_size": 10 * 1024 * 1024,  # 10MB
 }
 
 
@@ -125,7 +162,6 @@ def get_device():
     """디바이스 설정"""
     if DEVICE_AUTO_SELECT:
         import torch
-
         return "cuda" if torch.cuda.is_available() else "cpu"
     return "cpu"
 
@@ -133,6 +169,7 @@ def get_device():
 def ensure_directories():
     """디렉토리 생성"""
     PKL_DIR.mkdir(exist_ok=True)
+    LOG_DIR.mkdir(exist_ok=True)
 
 
 def validate_config():
@@ -154,33 +191,6 @@ def validate_config():
     return True
 
 
-def adjust_generation_for_repetition_risk(
-    question_type: str, risk_level: str = "medium"
-):
-    """반복 위험에 따른 생성 설정 조정"""
-    risk_adjustments = {
-        "low": {
-            "repetition_penalty": 1.1,
-            "no_repeat_ngram_size": 2,
-            "temperature": 0.6,
-        },
-        "medium": {
-            "repetition_penalty": 1.3,
-            "no_repeat_ngram_size": 4,
-            "temperature": 0.5,
-        },
-        "high": {
-            "repetition_penalty": 1.5,
-            "no_repeat_ngram_size": 5,
-            "temperature": 0.4,
-        },
-    }
-
-    if risk_level in risk_adjustments and question_type in GENERATION_CONFIG:
-        for key, value in risk_adjustments[risk_level].items():
-            GENERATION_CONFIG[question_type][key] = value
-
-
 def initialize_system():
     """시스템 초기화"""
     setup_environment()
@@ -191,7 +201,6 @@ def initialize_system():
         print("시스템 설정 완료")
         print(f"기본 모델: {DEFAULT_MODEL_NAME}")
         print(f"디바이스: {get_device()}")
-        print(f"오프라인 모드: {OFFLINE_MODE}")
 
 
 if __name__ != "__main__":
