@@ -1,5 +1,3 @@
-# model_handler.py
-
 import torch
 import re
 import time
@@ -272,77 +270,72 @@ class ModelHandler:
         text = re.sub(r"\s+", " ", text).strip()
         return text
 
-    def _create_korean_prompt(self, question: str, question_type: str, 
-                             intent_analysis: Dict = None, domain_hints: Dict = None) -> str:
-        """한국어 프롬프트 생성"""
-        
-        if question_type == "multiple_choice":
-            return self._create_mc_prompt(question, self._extract_choice_count(question), 
-                                        domain_hints.get("domain", "일반") if domain_hints else "일반", 
-                                        domain_hints)
-
-        # 주관식 프롬프트
-        domain = domain_hints.get("domain", "일반") if domain_hints else "일반"
-        
-        # 단순 모드 처리
-        if domain_hints and domain_hints.get("simple_mode"):
-            return f"""질문: {question}
-
-위 질문에 대해 한국어로 전문적이고 구체적인 답변을 작성하세요.
-
-답변:"""
-
-        # 도메인별 지시문
-        domain_instructions = {
-            "사이버보안": "사이버보안 전문 용어를 사용하여 기술적으로 답변하세요.",
-            "전자금융": "전자금융거래법과 관련 기관을 포함하여 답변하세요.",
-            "개인정보보호": "개인정보보호법과 관련 기관을 포함하여 답변하세요.",
-            "정보보안": "정보보안관리체계 관련 내용을 포함하여 답변하세요.",
-            "위험관리": "위험관리 절차와 방법을 포함하여 답변하세요.",
-            "금융투자": "자본시장법과 금융투자업 관련 내용을 포함하여 답변하세요."
-        }
-        
-        instruction = domain_instructions.get(domain, "전문적이고 구체적으로 답변하세요.")
-        
-        return f"""질문: {question}
-
-{instruction}
-
-답변:"""
-
-    def _create_mc_prompt(self, question: str, max_choice: int, domain: str = "일반", 
-                         domain_hints: Dict = None) -> str:
-        """객관식 프롬프트 생성"""
-        if max_choice <= 0:
-            max_choice = 5
-
-        # 특별 패턴 힌트 추가
-        hint_text = ""
-        if domain_hints and domain_hints.get("pattern_hints"):
-            hint_text = f"\n참고: {domain_hints['pattern_hints']}\n"
-
-        return f"""{question}{hint_text}
-
-위 문제의 정답을 1부터 {max_choice} 중에서 선택하세요.
-
-정답 번호: """
-
     def generate_answer(self, question: str, question_type: str, max_choice: int = 5,
-                       intent_analysis: Dict = None, domain_hints: Dict = None) -> str:
+                       intent_analysis: Dict = None, domain_hints: Dict = None, 
+                       knowledge_base=None, prompt_enhancer=None) -> str:
         """답변 생성"""
 
-        # 도메인 힌트 설정
-        enhanced_domain_hints = domain_hints.copy() if domain_hints else {}
+        # 도메인 정보 추출
+        domain = domain_hints.get("domain", "일반") if domain_hints else "일반"
+        
+        # 프롬프트 구성에 필요한 컨텍스트 정보 준비
+        context_info = ""
+        institution_info = ""
+        
+        if knowledge_base:
+            # 도메인 컨텍스트 정보 가져오기
+            context_info = knowledge_base.get_domain_context(domain)
+            
+            # 기관 질문인 경우 기관 정보 추가
+            if "기관" in question.lower():
+                institution_info = knowledge_base.get_institution_info(question)
+            
+            # 객관식의 경우 패턴 힌트 추가
+            if question_type == "multiple_choice":
+                pattern_hints = knowledge_base.get_mc_pattern_hints(question)
+                if pattern_hints:
+                    context_info += f"\n힌트: {pattern_hints}"
 
-        # 프롬프트 생성
-        prompt = self._create_korean_prompt(question, question_type, intent_analysis, enhanced_domain_hints)
+        # PromptEnhancer 사용하여 프롬프트 구성
+        if prompt_enhancer:
+            prompt = prompt_enhancer.build_enhanced_prompt(
+                question=question,
+                question_type=question_type,
+                domain=domain,
+                context_info=context_info,
+                institution_info=institution_info
+            )
+        else:
+            # 기본 프롬프트 생성
+            if question_type == "multiple_choice":
+                prompt = f"""다음은 금융보안 관련 객관식 문제입니다. 주어진 선택지 중에서 가장 적절한 답을 선택하세요.
+
+참고 정보:
+{context_info}
+
+문제: {question}
+
+위 문제를 단계별로 분석하여 정답 번호를 선택하세요.
+
+정답 번호: """
+            else:
+                prompt = f"""다음은 금융보안 관련 주관식 문제입니다. 전문적이고 정확한 답변을 작성하세요.
+
+참고 정보:
+{context_info}
+
+문제: {question}
+
+위 문제에 대해 관련 법령과 규정을 근거로 구체적이고 전문적인 답변을 작성하세요.
+
+답변: """
 
         try:
             inputs = self.tokenizer(
                 prompt,
                 return_tensors="pt",
                 truncation=True,
-                max_length=1500,
+                max_length=2000,
                 add_special_tokens=True,
             )
 
@@ -353,7 +346,7 @@ class ModelHandler:
             if question_type == "multiple_choice":
                 gen_config = GenerationConfig(
                     max_new_tokens=8,
-                    temperature=0.2,
+                    temperature=0.1,
                     top_p=0.6,
                     do_sample=True,
                     repetition_penalty=1.1,
@@ -363,7 +356,7 @@ class ModelHandler:
             else:
                 gen_config = GenerationConfig(
                     max_new_tokens=450,
-                    temperature=0.5,
+                    temperature=0.3,
                     top_p=0.85,
                     do_sample=True,
                     repetition_penalty=1.1,
@@ -413,6 +406,8 @@ class ModelHandler:
         # 프롬프트 관련 텍스트 제거
         response = re.sub(r"답변[:：]\s*", "", response)
         response = re.sub(r"질문[:：].*?\n", "", response)
+        response = re.sub(r"문제[:：].*?\n", "", response)
+        response = re.sub(r"참고.*?정보[:：].*?\n", "", response)
 
         # 기본 정리
         response = re.sub(r"\s+", " ", response).strip()
@@ -494,7 +489,7 @@ class ModelHandler:
     def _retry_generation(self, prompt: str, question_type: str, max_choice: int) -> str:
         """다른 설정으로 재생성"""
         try:
-            inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1000)
+            inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1500)
 
             if self.device == "cuda" and torch.cuda.is_available():
                 inputs = inputs.to(self.model.device)
@@ -522,55 +517,6 @@ class ModelHandler:
             if self.verbose:
                 print(f"재생성 실패: {e}")
             return None
-
-    def generate_contextual_mc_answer(self, question: str, max_choice: int, domain: str) -> str:
-        """문맥 기반 객관식 답변 생성"""
-        
-        # 간단하고 직접적인 프롬프트
-        simple_prompt = f"""다음 문제의 정답 번호를 선택하세요:
-
-{question}
-
-1~{max_choice} 중 정답: """
-
-        try:
-            inputs = self.tokenizer(simple_prompt, return_tensors="pt", truncation=True, max_length=800)
-            
-            if self.device == "cuda" and torch.cuda.is_available():
-                inputs = inputs.to(self.model.device)
-
-            gen_config = GenerationConfig(
-                max_new_tokens=8,
-                temperature=0.1,
-                top_p=0.5,
-                do_sample=True,
-                repetition_penalty=1.05,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-            )
-
-            with torch.no_grad():
-                outputs = self.model.generate(**inputs, generation_config=gen_config)
-
-            response = self.tokenizer.decode(
-                outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
-            ).strip()
-
-            answer = self._process_mc_answer(response, question, max_choice)
-
-            if answer and answer.isdigit() and 1 <= int(answer) <= max_choice:
-                return answer
-
-        except Exception as e:
-            if self.verbose:
-                print(f"컨텍스트 기반 답변 생성 오류: {e}")
-
-        # 강제 답변 생성
-        return self._force_valid_mc_answer(response if 'response' in locals() else "", question, max_choice)
-
-    def generate_fallback_mc_answer(self, question: str, max_choice: int, domain: str) -> str:
-        """대체 객관식 답변 생성"""
-        return self.generate_contextual_mc_answer(question, max_choice, domain)
 
     def _analyze_mc_context(self, question: str, domain: str = "일반") -> Dict:
         """객관식 문맥 분석"""
@@ -648,9 +594,7 @@ class ModelHandler:
     def _get_fallback_answer(self, question_type: str, question: str = "", max_choice: int = 5) -> str:
         """대체 답변"""
         if question_type == "multiple_choice":
-            if max_choice <= 0:
-                max_choice = 5
-            return self.generate_fallback_mc_answer(question, max_choice, "일반")
+            return self._force_valid_mc_answer("", question, max_choice)
         else:
             return None
 

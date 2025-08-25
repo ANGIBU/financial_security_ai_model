@@ -30,6 +30,7 @@ from model_handler import ModelHandler
 from data_processor import DataProcessor
 from knowledge_base import KnowledgeBase
 from statistics_manager import StatisticsManager
+from prompt_enhancer import PromptEnhancer
 
 
 class LearningSystem:
@@ -256,6 +257,7 @@ class FinancialAIInference:
             self.model_handler = ModelHandler(verbose=False)
             self.data_processor = DataProcessor()
             self.knowledge_base = KnowledgeBase()
+            self.prompt_enhancer = PromptEnhancer()
 
             self.optimization_config = OPTIMIZATION_CONFIG.copy()
             
@@ -300,21 +302,21 @@ class FinancialAIInference:
                 print(f"지식베이스 분석 실패: {e}")
                 kb_analysis = {}
 
-            if question_type == "multiple_choice":
-                answer = self._process_multiple_choice_question(
-                    question, max_choice, domain, kb_analysis, question_id
-                )
-                method = "multiple_choice"
-            else:
-                answer = self._process_subjective_question(
-                    question, question_id, domain, difficulty, kb_analysis
-                )
-                method = "subjective"
+            # 의도 분석 (주관식만)
+            intent_analysis = None
+            if question_type == "subjective":
+                intent_analysis = self.data_processor.analyze_question_intent(question)
+
+            # LLM을 통한 답변 생성
+            answer = self._generate_answer_with_llm(
+                question, question_type, max_choice, domain, intent_analysis, kb_analysis, question_id
+            )
 
             processing_time = time.time() - start_time
             success = answer and len(str(answer).strip()) > 0
 
             # 통계 기록
+            method = "enhanced_llm"
             self.statistics_manager.record_question_processing(
                 processing_time, domain, method, question_type, success
             )
@@ -356,74 +358,113 @@ class FinancialAIInference:
                                                question, max_choice if 'max_choice' in locals() else 5)
             return fallback
 
-    def _process_multiple_choice_question(self, question: str, max_choice: int, domain: str, 
-                                        kb_analysis: Dict, question_id: str) -> str:
-        """객관식 질문 처리"""
+    def _generate_answer_with_llm(self, question: str, question_type: str, max_choice: int, 
+                                 domain: str, intent_analysis: Dict, kb_analysis: Dict, question_id: str) -> str:
+        """LLM을 통한 답변 생성"""
         
         try:
-            # 패턴 힌트 가져오기
-            pattern_hints = self.knowledge_base.get_mc_pattern_hints(question)
-            
             # 도메인 힌트 설정
-            domain_hints = {
-                "domain": domain, 
-                "pattern_hints": pattern_hints
-            }
+            domain_hints = {"domain": domain}
             
             # 특별 패턴 처리
-            if self._is_special_mc_pattern(question):
+            if question_type == "multiple_choice" and self._is_special_mc_pattern(question):
                 special_answer = self._handle_special_mc_pattern(question, max_choice, domain)
-                if special_answer:
+                if special_answer and special_answer.isdigit() and 1 <= int(special_answer) <= max_choice:
                     return special_answer
 
             # LLM 생성
             answer = self.model_handler.generate_answer(
-                question,
-                "multiple_choice",
-                max_choice,
-                intent_analysis=None,
+                question=question,
+                question_type=question_type,
+                max_choice=max_choice,
+                intent_analysis=intent_analysis,
                 domain_hints=domain_hints,
+                knowledge_base=self.knowledge_base,
+                prompt_enhancer=self.prompt_enhancer
             )
 
-            # 답변 검증 및 보정
-            if answer and str(answer).isdigit() and 1 <= int(answer) <= max_choice:
-                return str(answer)
-            
-            # 재시도
-            retry_answer = self._retry_mc_generation(question, max_choice, domain, kb_analysis)
-            return retry_answer
-        except Exception as e:
-            print(f"객관식 처리 오류: {e}")
-            return self._get_safe_mc_answer(question, max_choice, domain)
+            # 답변 검증 및 처리
+            if question_type == "multiple_choice":
+                if answer and str(answer).isdigit() and 1 <= int(answer) <= max_choice:
+                    return str(answer)
+                else:
+                    # 재시도
+                    retry_answer = self._retry_mc_generation(question, max_choice, domain)
+                    return retry_answer
+            else:
+                if answer and len(str(answer).strip()) > 15:
+                    return self._finalize_answer(answer, question, intent_analysis)
+                else:
+                    # 재시도
+                    retry_answer = self._retry_subjective_generation(question, domain, intent_analysis)
+                    return retry_answer if retry_answer else self._get_domain_fallback(question, domain, intent_analysis)
 
-    def _process_subjective_question(self, question: str, question_id: str, domain: str, 
-                                   difficulty: str, kb_analysis: Dict) -> str:
-        """주관식 질문 처리"""
+        except Exception as e:
+            print(f"LLM 답변 생성 오류: {e}")
+            return self._get_fallback_answer(question_type, question, max_choice)
+
+    def _retry_mc_generation(self, question: str, max_choice: int, domain: str) -> str:
+        """객관식 재시도"""
         
         try:
-            # 의도 분석
-            intent_analysis = self.data_processor.analyze_question_intent(question)
+            # 문맥 분석
+            context_hints = self.model_handler._analyze_mc_context(question, domain)
             
-            # 직접 답변 매칭
-            direct_answer = self._get_direct_answer_for_question(question, domain)
-            if direct_answer and len(direct_answer) > 30:
-                return direct_answer
-            
-            # 템플릿 우선 적용
-            template_answer = self._generate_from_template(question, domain, intent_analysis, kb_analysis)
-            if template_answer and len(template_answer) > 30:
-                return self._finalize_answer(template_answer, question, intent_analysis)
-            
-            # LLM 생성
-            llm_answer = self._generate_llm_answer(question, domain, intent_analysis)
-            if llm_answer and len(llm_answer) > 20:
-                return self._finalize_answer(llm_answer, question, intent_analysis)
-            
-            # 도메인별 폴백
-            return self._get_domain_fallback(question, domain, intent_analysis)
+            # 도메인 힌트
+            domain_hints = {
+                "domain": domain,
+                "context_hints": context_hints,
+                "retry_mode": True
+            }
+
+            # 재생성
+            retry_answer = self.model_handler.generate_answer(
+                question=question,
+                question_type="multiple_choice",
+                max_choice=max_choice,
+                intent_analysis=None,
+                domain_hints=domain_hints,
+                knowledge_base=self.knowledge_base,
+                prompt_enhancer=self.prompt_enhancer
+            )
+
+            if retry_answer and str(retry_answer).isdigit() and 1 <= int(retry_answer) <= max_choice:
+                return str(retry_answer)
+
+            # 최종 안전장치
+            return self._get_safe_mc_answer(question, max_choice, domain)
         except Exception as e:
-            print(f"주관식 처리 오류: {e}")
-            return self._get_domain_fallback(question, domain, None)
+            print(f"객관식 재시도 오류: {e}")
+            return self._get_safe_mc_answer(question, max_choice, domain)
+
+    def _retry_subjective_generation(self, question: str, domain: str, intent_analysis: Dict) -> str:
+        """주관식 재시도"""
+        
+        try:
+            # 다른 설정으로 재시도
+            domain_hints = {
+                "domain": domain,
+                "retry_mode": True,
+                "simple_mode": True
+            }
+
+            retry_answer = self.model_handler.generate_answer(
+                question=question,
+                question_type="subjective",
+                max_choice=5,
+                intent_analysis=intent_analysis,
+                domain_hints=domain_hints,
+                knowledge_base=self.knowledge_base,
+                prompt_enhancer=self.prompt_enhancer
+            )
+
+            if retry_answer and len(str(retry_answer).strip()) > 15:
+                return self._finalize_answer(retry_answer, question, intent_analysis)
+
+        except Exception as e:
+            print(f"주관식 재시도 오류: {e}")
+        
+        return None
 
     def _is_special_mc_pattern(self, question: str) -> bool:
         """특별 패턴 확인"""
@@ -476,100 +517,34 @@ class FinancialAIInference:
         except Exception:
             return None
 
-    def _generate_from_template(self, question: str, domain: str, intent_analysis: Dict, 
-                              kb_analysis: Dict) -> str:
-        """템플릿 기반 생성"""
-        try:
-            if not intent_analysis:
-                return None
-
-            primary_intent = intent_analysis.get("primary_intent", "일반")
-            intent_key = self._map_intent_to_key(primary_intent)
-            
-            # 템플릿 가져오기
-            template_examples = self.knowledge_base.get_template_examples(domain, intent_key)
-            
-            if template_examples and len(template_examples) > 0:
-                best_template = self._select_best_template(question, template_examples, intent_analysis)
-                if best_template and len(best_template) > 30:
-                    # 템플릿 사용 통계 기록
-                    self.statistics_manager.record_template_usage(f"{domain}_{intent_key}")
-                    return best_template
-
-            # 패턴 기반 템플릿 매칭
-            return self._get_pattern_based_template(question, domain, intent_analysis)
-        except Exception as e:
-            print(f"템플릿 생성 오류: {e}")
-            return None
-
-    def _get_direct_answer_for_question(self, question: str, domain: str) -> str:
-        """질문별 직접 답변"""
+    def _get_safe_mc_answer(self, question: str, max_choice: int, domain: str) -> str:
+        """안전한 객관식 답변"""
         try:
             question_lower = question.lower()
             
-            # 트로이 목마 관련 질문
-            if ("트로이" in question_lower and 
-                "원격제어" in question_lower and 
-                "악성코드" in question_lower):
-                
-                if "특징" in question_lower and "지표" in question_lower:
-                    return """트로이 목마 기반 원격제어 악성코드(RAT)는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하며, 은밀성과 지속성을 통해 장기간 시스템에 잠복하면서 악의적인 활동을 수행합니다. 주요 탐지 지표로는 네트워크 트래픽 모니터링에서 발견되는 비정상적인 외부 통신 패턴, 시스템 동작 분석을 통한 비인가 프로세스 실행 감지, 파일 생성 및 수정 패턴의 이상 징후, 레지스트리 변경 사항 모니터링, 시스템 성능 저하 및 의심스러운 네트워크 연결 등이 있으며, 이러한 지표들을 종합적으로 분석하여 실시간 탐지와 대응이 필요합니다."""
-                
-                elif "특징" in question_lower:
-                    return """트로이 목마 기반 원격제어 악성코드(RAT)는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하며, 은밀성과 지속성을 특징으로 하여 장기간 시스템에 잠복하면서 데이터 수집, 파일 조작, 원격 명령 수행 등의 악의적인 활동을 수행합니다."""
-                
-                elif "지표" in question_lower:
-                    return """RAT 악성코드의 주요 탐지 지표로는 네트워크 트래픽 모니터링에서 발견되는 비정상적인 외부 통신 패턴, 시스템 동작 분석을 통한 비인가 프로세스 실행 감지, 파일 생성 및 수정 패턴의 이상 징후, 레지스트리 변경 사항 모니터링, 시스템 성능 저하, 의심스러운 네트워크 연결, 백그라운드에서 실행되는 미상 서비스 등이 있으며, 이러한 지표들을 실시간으로 모니터링하여 종합적으로 분석해야 합니다."""
-
-            # 전자금융 분쟁조정 기관
-            elif ("전자금융" in question_lower and 
-                  "분쟁조정" in question_lower and 
-                  "기관" in question_lower):
-                return """전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 금융감독원 내에 설치되어 운영되며, 전자금융거래법 제28조에 근거하여 이용자와 전자금융업자 간의 분쟁을 공정하고 신속하게 해결하기 위한 업무를 수행합니다. 이용자는 전자금융거래와 관련된 피해나 분쟁이 발생했을 때 해당 위원회에 분쟁조정을 신청할 수 있으며, 위원회는 전문적이고 객관적인 조정 절차를 통해 분쟁을 해결합니다."""
-
-            # 개인정보 관련 기관
-            elif ("개인정보" in question_lower and 
-                  ("신고" in question_lower or "침해" in question_lower) and 
-                  "기관" in question_lower):
-                return """개인정보보호위원회에서 개인정보 보호에 관한 업무를 총괄하며, 개인정보침해신고센터에서 신고 접수 및 상담 업무를 담당합니다. 개인정보보호위원회는 개인정보보호법에 따라 설치된 중앙행정기관으로 개인정보 보호 정책 수립과 감시 업무를 수행하며, 개인정보침해신고센터는 개인정보 침해신고 및 상담을 위한 전문 기관입니다."""
-
-            return None
-        except Exception as e:
-            print(f"직접 답변 생성 오류: {e}")
-            return None
-
-    def _generate_llm_answer(self, question: str, domain: str, intent_analysis: Dict) -> str:
-        """LLM 답변 생성"""
-        
-        try:
-            domain_hints = {
-                "domain": domain,
-                "simple_mode": False,
-                "direct_answer": False
-            }
-
-            if intent_analysis:
-                primary_intent = intent_analysis.get("primary_intent", "일반")
-                domain_hints["intent"] = primary_intent
-
-            answer = self.model_handler.generate_answer(
-                question,
-                "subjective",
-                5,
-                intent_analysis,
-                domain_hints=domain_hints
-            )
+            # 부정 문제 패턴
+            if any(neg in question_lower for neg in ["해당하지 않는", "적절하지 않은", "옳지 않은"]):
+                if max_choice >= 5:
+                    return "5"
+                else:
+                    return str(max_choice)
             
-            if answer and len(str(answer).strip()) > 10:
-                answer = str(answer).strip()
-                if not answer.endswith(('.', '다', '요', '함')):
-                    answer += '.'
-                return answer
-                
-        except Exception as e:
-            print(f"LLM 답변 생성 오류: {e}")
-        
-        return None
+            # 도메인별 패턴
+            if domain == "금융투자" and "해당하지 않는" in question_lower:
+                return "5"
+            elif domain == "위험관리" and "적절하지 않은" in question_lower:
+                return "2"
+            elif domain == "개인정보보호" and "가장 중요한" in question_lower:
+                return "2"
+            elif domain == "전자금융" and "요구할 수 있는" in question_lower:
+                return "4"
+            elif domain == "사이버보안" and "활용" in question_lower:
+                return "5"
+            
+            # 기본 중간값
+            return str((max_choice + 1) // 2)
+        except Exception:
+            return "3"
 
     def _get_domain_fallback(self, question: str, domain: str, intent_analysis: Dict) -> str:
         """도메인별 폴백 답변"""
@@ -618,68 +593,6 @@ class FinancialAIInference:
             print(f"도메인 폴백 답변 생성 오류: {e}")
             return "관련 법령과 규정에 따라 체계적이고 전문적인 관리 방안을 수립하여 지속적으로 운영해야 합니다."
 
-    def _retry_mc_generation(self, question: str, max_choice: int, domain: str, kb_analysis: Dict) -> str:
-        """객관식 재시도"""
-        
-        try:
-            # 문맥 분석
-            context_hints = self.model_handler._analyze_mc_context(question, domain)
-            
-            # 도메인 힌트
-            domain_hints = {
-                "domain": domain,
-                "context_hints": context_hints,
-                "retry_mode": True,
-                "pattern_hints": self.knowledge_base.get_mc_pattern_hints(question)
-            }
-
-            # 재생성
-            retry_answer = self.model_handler.generate_answer(
-                question,
-                "multiple_choice",
-                max_choice,
-                intent_analysis=None,
-                domain_hints=domain_hints,
-            )
-
-            if retry_answer and str(retry_answer).isdigit() and 1 <= int(retry_answer) <= max_choice:
-                return str(retry_answer)
-
-            # 최종 안전장치
-            return self._get_safe_mc_answer(question, max_choice, domain)
-        except Exception as e:
-            print(f"객관식 재시도 오류: {e}")
-            return self._get_safe_mc_answer(question, max_choice, domain)
-
-    def _get_safe_mc_answer(self, question: str, max_choice: int, domain: str) -> str:
-        """안전한 객관식 답변"""
-        try:
-            question_lower = question.lower()
-            
-            # 부정 문제 패턴
-            if any(neg in question_lower for neg in ["해당하지 않는", "적절하지 않은", "옳지 않은"]):
-                if max_choice >= 5:
-                    return "5"
-                else:
-                    return str(max_choice)
-            
-            # 도메인별 패턴
-            if domain == "금융투자" and "해당하지 않는" in question_lower:
-                return "5"
-            elif domain == "위험관리" and "적절하지 않은" in question_lower:
-                return "2"
-            elif domain == "개인정보보호" and "가장 중요한" in question_lower:
-                return "2"
-            elif domain == "전자금융" and "요구할 수 있는" in question_lower:
-                return "4"
-            elif domain == "사이버보안" and "활용" in question_lower:
-                return "5"
-            
-            # 기본 중간값
-            return str((max_choice + 1) // 2)
-        except Exception:
-            return "3"
-
     def _get_fallback_answer(self, question_type: str, question: str, max_choice: int) -> str:
         """폴백 답변"""
         try:
@@ -692,81 +605,6 @@ class FinancialAIInference:
                 return "3"
             else:
                 return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
-
-    def _select_best_template(self, question: str, templates: List[str], intent_analysis: Dict) -> str:
-        """최적 템플릿 선택"""
-        try:
-            question_lower = question.lower()
-            
-            best_template = None
-            best_score = 0
-            
-            for template in templates:
-                score = 0
-                template_lower = template.lower()
-                
-                # 핵심 키워드 매칭
-                keywords = [
-                    ("트로이", 15), ("원격제어", 15), ("악성코드", 10), ("rat", 10),
-                    ("특징", 10), ("지표", 10), ("탐지", 8), ("전자금융", 15),
-                    ("분쟁조정", 15), ("기관", 10), ("위원회", 10)
-                ]
-                
-                for keyword, weight in keywords:
-                    if keyword in question_lower and keyword in template_lower:
-                        score += weight
-                
-                # 복합 질문 보너스
-                if ("특징" in question_lower and "지표" in question_lower):
-                    if ("특징" in template_lower and "지표" in template_lower):
-                        score += 20
-                        
-                if score > best_score:
-                    best_score = score
-                    best_template = template
-                    
-            return best_template if best_score > 8 else None
-        except Exception as e:
-            print(f"템플릿 선택 오류: {e}")
-            return templates[0] if templates else None
-
-    def _map_intent_to_key(self, primary_intent: str) -> str:
-        """의도 키 매핑"""
-        try:
-            if "기관" in primary_intent:
-                return "기관_묻기"
-            elif "특징" in primary_intent:
-                return "특징_묻기"
-            elif "지표" in primary_intent:
-                return "지표_묻기"
-            elif "방안" in primary_intent:
-                return "방안_묻기"
-            elif "절차" in primary_intent:
-                return "절차_묻기"
-            elif "조치" in primary_intent:
-                return "조치_묻기"
-            else:
-                return "일반"
-        except Exception:
-            return "일반"
-
-    def _get_pattern_based_template(self, question: str, domain: str, intent_analysis: Dict) -> str:
-        """패턴 기반 템플릿"""
-        try:
-            question_lower = question.lower()
-            
-            # 사이버보안 트로이 목마 특화
-            if domain == "사이버보안" and "트로이" in question_lower:
-                if "특징" in question_lower and "지표" in question_lower:
-                    return """트로이 목마 기반 원격제어 악성코드(RAT)는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하며, 은밀성과 지속성을 통해 장기간 시스템에 잠복하면서 악의적인 활동을 수행합니다. 주요 탐지 지표로는 네트워크 트래픽 모니터링에서 발견되는 비정상적인 외부 통신 패턴, 시스템 동작 분석을 통한 비인가 프로세스 실행 감지, 파일 생성 및 수정 패턴의 이상 징후, 레지스트리 변경 사항 모니터링, 시스템 성능 저하 및 의심스러운 네트워크 연결 등이 있으며, 이러한 지표들을 종합적으로 분석하여 실시간 탐지와 대응이 필요합니다."""
-                elif "특징" in question_lower:
-                    return """트로이 목마 기반 원격제어 악성코드(RAT)는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하며, 은밀성과 지속성을 특징으로 하여 장기간 시스템에 잠복하면서 데이터 수집, 파일 조작, 원격 명령 수행 등의 악의적인 활동을 수행합니다."""
-                elif "지표" in question_lower:
-                    return """RAT 악성코드의 주요 탐지 지표로는 네트워크 트래픽 모니터링에서 발견되는 비정상적인 외부 통신 패턴, 시스템 동작 분석을 통한 비인가 프로세스 실행 감지, 파일 생성 및 수정 패턴의 이상 징후, 레지스트리 변경 사항 모니터링, 시스템 성능 저하, 의심스러운 네트워크 연결, 백그라운드에서 실행되는 미상 서비스 등이 있으며, 이러한 지표들을 실시간으로 모니터링하여 종합적으로 분석해야 합니다."""
-
-            return None
-        except Exception:
-            return None
 
     def _finalize_answer(self, answer: str, question: str, intent_analysis: Dict = None) -> str:
         """답변 정리"""
@@ -955,6 +793,9 @@ class FinancialAIInference:
 
             if hasattr(self, "knowledge_base"):
                 self.knowledge_base.cleanup()
+                
+            if hasattr(self, "prompt_enhancer"):
+                self.prompt_enhancer.cleanup()
 
             gc.collect()
             print("리소스 정리 완료")
