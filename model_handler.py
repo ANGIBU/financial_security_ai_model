@@ -33,6 +33,11 @@ class ModelHandler:
         self.verbose = verbose
         self.device = get_device()
 
+        # 강력한 오프라인 모드 설정
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        os.environ["HF_DATASETS_OFFLINE"] = "1"
+        os.environ["HF_HUB_OFFLINE"] = "1"
+
         self._initialize_data()
         self.optimization_config = OPTIMIZATION_CONFIG
 
@@ -41,6 +46,7 @@ class ModelHandler:
             self.model_name,
             trust_remote_code=MODEL_CONFIG["trust_remote_code"],
             use_fast=MODEL_CONFIG["use_fast_tokenizer"],
+            local_files_only=True,
         )
 
         self._setup_korean_tokenizer()
@@ -54,6 +60,7 @@ class ModelHandler:
             torch_dtype=getattr(torch, MODEL_CONFIG["torch_dtype"]),
             device_map=MODEL_CONFIG["device_map"],
             trust_remote_code=MODEL_CONFIG["trust_remote_code"],
+            local_files_only=True,
         )
 
         self.model.eval()
@@ -642,10 +649,11 @@ class ModelHandler:
 
             with torch.no_grad():
                 _ = self.model.generate(**inputs, max_new_tokens=5, do_sample=False, repetition_penalty=1.1)
-                
+            
+            print("모델 워밍업 성공")
         except Exception as e:
-            if self.verbose:
-                print(f"워밍업 실패: {e}")
+            print(f"모델 워밍업 실패: {e}")
+            raise e
 
     def cleanup(self):
         """리소스 정리"""
