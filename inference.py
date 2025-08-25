@@ -1,5 +1,3 @@
-# inference.py
-
 import re
 import os
 import time
@@ -88,28 +86,9 @@ class LearningSystem:
                 print(f"잘못된 데이터 타입 ({data_type}): dict 타입이어야 함")
                 return False
                 
-            # 백업 생성
-            backup_path = file_path.with_suffix(f'.pkl.backup.{int(time.time())}')
-            if file_path.exists():
-                try:
-                    import shutil
-                    shutil.copy2(file_path, backup_path)
-                except Exception:
-                    pass
-                    
             # 원본 저장
             with open(file_path, 'wb') as f:
                 pickle.dump(data, f)
-                
-            # 백업 정리 (최근 3개만 유지)
-            try:
-                backups = list(file_path.parent.glob(f"{file_path.stem}.pkl.backup.*"))
-                if len(backups) > 3:
-                    backups.sort()
-                    for old_backup in backups[:-3]:
-                        old_backup.unlink()
-            except Exception:
-                pass
                 
             return True
         except Exception as e:
@@ -846,6 +825,7 @@ class FinancialAIInference:
             # 통계 세션 시작
             self.statistics_manager.start_session()
 
+            print("=" * 50)
             with tqdm(
                 total=self.total_questions, 
                 desc="처리 중", 
@@ -881,6 +861,7 @@ class FinancialAIInference:
                                 print(f"메모리 정리 수행 ({psutil.virtual_memory().percent:.1f}% 사용 중)")
                         except ImportError:
                             gc.collect()
+            print("=" * 50)
 
             # 최종 pkl 데이터 저장
             final_save_success = self.learning.save_all_data()
