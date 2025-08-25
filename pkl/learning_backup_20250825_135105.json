@@ -1,0 +1,317 @@
+{
+  "question_analysis": {
+    "TEST_004": {
+      "question": "트로이 목마(Trojan) 기반 원격제어 악성코드(RAT)의 특징과 주요 탐지 지표를 설명하세요.",
+      "type": "subjective",
+      "domain": "사이버보안",
+      "intent": {
+        "primary_intent": "복합설명",
+        "intent_confidence": 1.0,
+        "detected_patterns": [
+          "지표.*설명하세요",
+          "탐지.*지표",
+          "주요.*지표",
+          "주요.*탐지.*지표",
+          "악성코드.*탐지.*지표",
+          "원격제어.*탐지.*지표",
+          ".*탐지.*지표.*설명하세요",
+          ".*지표.*설명하세요",
+          "주요.*탐지.*지표"
+        ],
+        "answer_type_required": "복합설명",
+        "secondary_intents": [
+          {
+            "intent": "특징_묻기",
+            "score": 32.0
+          }
+        ],
+        "context_hints": [
+          "탐지 지표와 모니터링 방법",
+          "특징과 지표 모두 포함"
+        ],
+        "quality_risk": false
+      },
+      "timestamp": 1756097465.756819
+    },
+    "TEST_007": {
+      "question": "전자금융거래법에 따라 이용자가 금융 분쟁조정을 신청할 수 있는 기관을 기술하세요.",
+      "type": "subjective",
+      "domain": "전자금융",
+      "intent": {
+        "primary_intent": "기관_묻기",
+        "intent_confidence": 1.0,
+        "detected_patterns": [
+          "기관.*기술하세요",
+          "분쟁조정.*신청.*기관",
+          "조정.*신청.*기관",
+          "분쟁.*조정.*기관",
+          "신청.*수.*있는.*기관",
+          "전자금융.*분쟁.*기관",
+          "전자금융.*조정.*기관",
+          "기관을.*기술하세요",
+          ".*기관.*기술",
+          "분쟁조정.*기관",
+          "신청할.*수.*있는.*기관"
+        ],
+        "answer_type_required": "기관명",
+        "secondary_intents": [],
+        "context_hints": [
+          "구체적인 기관명과 업무"
+        ],
+        "quality_risk": false
+      },
+      "timestamp": 1756097465.7742772
+    },
+    "TEST_000": {
+      "question": "금융산업의 이해와 관련하여 금융투자업의 구분에 해당하지 않는 것은?\n1 소비자금융업\n2 투자자문업\n3 투자매매업\n4 투자중개업\n5 보험중개업",
+      "type": "multiple_choice",
+      "domain": "금융투자",
+      "intent": {
+        "primary_intent": "일반",
+        "intent_confidence": 0.0,
+        "detected_patterns": [],
+        "answer_type_required": "설명형",
+        "secondary_intents": [],
+        "context_hints": [],
+        "quality_risk": false
+      },
+      "timestamp": 1756097450.646555
+    },
+    "TEST_001": {
+      "question": "위험 관리 계획 수립 시 고려해야 할 요소로 적절하지 않은 것은?\n1 수행인력\n2 위험 수용\n3 위험 대응 전략 선정\n4 대상\n5 기간",
+      "type": "multiple_choice",
+      "domain": "일반",
+      "intent": {
+        "primary_intent": "일반",
+        "intent_confidence": 0.0,
+        "detected_patterns": [],
+        "answer_type_required": "설명형",
+        "secondary_intents": [],
+        "context_hints": [],
+        "quality_risk": false
+      },
+      "timestamp": 1756097450.646555
+    },
+    "TEST_002": {
+      "question": "관리체계 수립 및 운영'의 '정책 수립' 단계에서 가장 중요한 요소는 무엇인가?\n1 정보보호 및 개인정보보호 정책의 제·개정\n2 경영진의 참여\n3 최고책임자의 지정\n4 자원 할당\n5 내부 감사 절차의 수립",
+      "type": "multiple_choice",
+      "domain": "개인정보보호",
+      "intent": {
+        "primary_intent": "일반",
+        "intent_confidence": 0.0,
+        "detected_patterns": [],
+        "answer_type_required": "설명형",
+        "secondary_intents": [],
+        "context_hints": [],
+        "quality_risk": false
+      },
+      "timestamp": 1756097450.6475563
+    },
+    "TEST_003": {
+      "question": "재해 복구 계획 수립 시 고려해야 할 요소로 옳지 않은 것은?\n1 복구 절차 수립\n2 비상연락체계 구축\n3 개인정보 파기 절차\n4 복구 목표시간 정의",
+      "type": "multiple_choice",
+      "domain": "개인정보보호",
+      "intent": {
+        "primary_intent": "일반",
+        "intent_confidence": 0.0,
+        "detected_patterns": [],
+        "answer_type_required": "설명형",
+        "secondary_intents": [],
+        "context_hints": [],
+        "quality_risk": false
+      },
+      "timestamp": 1756097450.6475563
+    },
+    "TEST_005": {
+      "question": "한국은행이 금융통화위원회의 요청에 따라 금융회사 및 전자금융업자에게 자료제출을 요구할 수 있는 경우는?\n1 전자금융거래의 보안 강화를 위해\n2 전자금융거래의 통계조사를 위해\n3 금융회사의 경영 실적 분석을 위해\n4 통화신용정책의 수행 및 지급결제제도의 원활한 운영을 위해",
+      "type": "multiple_choice",
+      "domain": "전자금융",
+      "intent": {
+        "primary_intent": "일반",
+        "intent_confidence": 0.0,
+        "detected_patterns": [],
+        "answer_type_required": "설명형",
+        "secondary_intents": [],
+        "context_hints": [],
+        "quality_risk": false
+      },
+      "timestamp": 1756097465.7742772
+    },
+    "TEST_006": {
+      "question": "개인정보보호법 제22조의2에 따라 만 14세 미만 아동의 개인정보를 처리하기 위해 필요한 절차로 옳은 것은?\n1 아동의 학교의 동의를 받아야 한다.\n2 법정대리인의 동의를 받아야 한다.\n3 아동 본인의 동의만 받으면 된다.\n4 아동의 친구의 동의를 받아야 한다.",
+      "type": "multiple_choice",
+      "domain": "개인정보보호",
+      "intent": {
+        "primary_intent": "절차_묻기",
+        "intent_confidence": 0.375,
+        "detected_patterns": [
+          "처리.*절차"
+        ],
+        "answer_type_required": "설명형",
+        "secondary_intents": [],
+        "context_hints": [],
+        "quality_risk": false
+      },
+      "timestamp": 1756097465.7742772
+    }
+  },
+  "answer_patterns": {},
+  "domain_accuracy": {
+    "사이버보안": {
+      "success": 2,
+      "total": 2
+    },
+    "전자금융": {
+      "success": 3,
+      "total": 3
+    },
+    "금융투자": {
+      "success": 1,
+      "total": 1
+    },
+    "일반": {
+      "success": 1,
+      "total": 1
+    },
+    "개인정보보호": {
+      "success": 3,
+      "total": 3
+    }
+  },
+  "mc_patterns": {
+    "금융투자_해당하지않는": {
+      "answers": [
+        "1"
+      ],
+      "pattern_type": "금융투자업_분류",
+      "count": 1
+    },
+    "일반_적절하지않은": {
+      "answers": [
+        "2"
+      ],
+      "pattern_type": "일반_객관식",
+      "count": 1
+    },
+    "일반_중요한요소": {
+      "answers": [
+        "2"
+      ],
+      "pattern_type": "개인정보_중요요소",
+      "count": 1
+    },
+    "일반_객관식": {
+      "answers": [
+        "4",
+        "4",
+        "4"
+      ],
+      "pattern_type": "일반_객관식",
+      "count": 3
+    }
+  },
+  "successful_answers": [
+    {
+      "question_id": "TEST_004",
+      "question": "트로이 목마(Trojan) 기반 원격제어 악성코드(RAT)의 특징과 주요 탐지 지표를 설명하세요.",
+      "answer": "트로이 목마 기반 원격제어 악성코드(RAT)는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하며, 은밀성과 지속성을 통해 장기간 시스템에 잠복하면서 악의적인 활동을 수행합니다. 주요 탐지 지표로는 네트워크 트래픽 모니터링에서 발견되는 비정상적인 외부 통신 패턴, 시스템 동작 분석을 통한 비인가 프로세스 실행 감지, 파일 생성 및 수정 패턴의 이상 징후, 레지스트리 변경 사항 모니터링, 시스템 성능 저하 및 의심스러운 네트워크 연결 등이 있으며, 이러한 지표들을 종합적으로 분석하여 실시간 탐지와 대응이 필요합니다.",
+      "type": "subjective",
+      "domain": "사이버보안",
+      "method": "specialized",
+      "timestamp": 1756097147.5339336,
+      "length": 350
+    },
+    {
+      "question_id": "TEST_007",
+      "question": "전자금융거래법에 따라 이용자가 금융 분쟁조정을 신청할 수 있는 기관을 기술하세요.",
+      "answer": "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 금융감독원 내에 설치되어 운영되며, 전자금융거래법 제28조에 근거하여 이용자와 전자금융업자 간의 분쟁을 공정하고 신속하게 해결하기 위한 업무를 수행합니다. 이용자는 전자금융거래와 관련된 피해나 분쟁이 발생했을 때 해당 위원회에 분쟁조정을 신청할 수 있으며, 위원회는 전문적이고 객관적인 조정 절차를 통해 분쟁을 해결합니다.",
+      "type": "subjective",
+      "domain": "전자금융",
+      "method": "specialized",
+      "timestamp": 1756097147.5339336,
+      "length": 227
+    },
+    {
+      "question_id": "TEST_000",
+      "question": "금융산업의 이해와 관련하여 금융투자업의 구분에 해당하지 않는 것은?\n1 소비자금융업\n2 투자자문업\n3 투자매매업\n4 투자중개업\n5 보험중개업",
+      "answer": "1",
+      "type": "multiple_choice",
+      "domain": "금융투자",
+      "method": "llm",
+      "timestamp": 1756097450.646555,
+      "length": 1
+    },
+    {
+      "question_id": "TEST_001",
+      "question": "위험 관리 계획 수립 시 고려해야 할 요소로 적절하지 않은 것은?\n1 수행인력\n2 위험 수용\n3 위험 대응 전략 선정\n4 대상\n5 기간",
+      "answer": "2",
+      "type": "multiple_choice",
+      "domain": "일반",
+      "method": "llm",
+      "timestamp": 1756097450.646555,
+      "length": 1
+    },
+    {
+      "question_id": "TEST_002",
+      "question": "관리체계 수립 및 운영'의 '정책 수립' 단계에서 가장 중요한 요소는 무엇인가?\n1 정보보호 및 개인정보보호 정책의 제·개정\n2 경영진의 참여\n3 최고책임자의 지정\n4 자원 할당\n5 내부 감사 절차의 수립",
+      "answer": "2",
+      "type": "multiple_choice",
+      "domain": "개인정보보호",
+      "method": "llm",
+      "timestamp": 1756097450.6475563,
+      "length": 1
+    },
+    {
+      "question_id": "TEST_003",
+      "question": "재해 복구 계획 수립 시 고려해야 할 요소로 옳지 않은 것은?\n1 복구 절차 수립\n2 비상연락체계 구축\n3 개인정보 파기 절차\n4 복구 목표시간 정의",
+      "answer": "4",
+      "type": "multiple_choice",
+      "domain": "개인정보보호",
+      "method": "llm",
+      "timestamp": 1756097465.756819,
+      "length": 1
+    },
+    {
+      "question_id": "TEST_004",
+      "question": "트로이 목마(Trojan) 기반 원격제어 악성코드(RAT)의 특징과 주요 탐지 지표를 설명하세요.",
+      "answer": "트로이 목마 기반 원격제어 악성코드(RAT)는 정상 프로그램으로 위장하여 사용자가 자발적으로 설치하도록 유도하는 특징을 가집니다. 설치 후 외부 공격자가 원격으로 시스템을 제어할 수 있는 백도어를 생성하며, 은밀성과 지속성을 통해 장기간 시스템에 잠복하면서 악의적인 활동을 수행합니다. 주요 탐지 지표로는 네트워크 트래픽 모니터링에서 발견되는 비정상적인 외부 통신 패턴, 시스템 동작 분석을 통한 비인가 프로세스 실행 감지, 파일 생성 및 수정 패턴의 이상 징후, 레지스트리 변경 사항 모니터링, 시스템 성능 저하 및 의심스러운 네트워크 연결 등이 있으며, 이러한 지표들을 종합적으로 분석하여 실시간 탐지와 대응이 필요합니다.",
+      "type": "subjective",
+      "domain": "사이버보안",
+      "method": "specialized",
+      "timestamp": 1756097465.7742772,
+      "length": 350
+    },
+    {
+      "question_id": "TEST_005",
+      "question": "한국은행이 금융통화위원회의 요청에 따라 금융회사 및 전자금융업자에게 자료제출을 요구할 수 있는 경우는?\n1 전자금융거래의 보안 강화를 위해\n2 전자금융거래의 통계조사를 위해\n3 금융회사의 경영 실적 분석을 위해\n4 통화신용정책의 수행 및 지급결제제도의 원활한 운영을 위해",
+      "answer": "4",
+      "type": "multiple_choice",
+      "domain": "전자금융",
+      "method": "llm",
+      "timestamp": 1756097465.7742772,
+      "length": 1
+    },
+    {
+      "question_id": "TEST_006",
+      "question": "개인정보보호법 제22조의2에 따라 만 14세 미만 아동의 개인정보를 처리하기 위해 필요한 절차로 옳은 것은?\n1 아동의 학교의 동의를 받아야 한다.\n2 법정대리인의 동의를 받아야 한다.\n3 아동 본인의 동의만 받으면 된다.\n4 아동의 친구의 동의를 받아야 한다.",
+      "answer": "4",
+      "type": "multiple_choice",
+      "domain": "개인정보보호",
+      "method": "llm",
+      "timestamp": 1756097465.7742772,
+      "length": 1
+    },
+    {
+      "question_id": "TEST_007",
+      "question": "전자금융거래법에 따라 이용자가 금융 분쟁조정을 신청할 수 있는 기관을 기술하세요.",
+      "answer": "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당합니다. 이 위원회는 금융감독원 내에 설치되어 운영되며, 전자금융거래법 제28조에 근거하여 이용자와 전자금융업자 간의 분쟁을 공정하고 신속하게 해결하기 위한 업무를 수행합니다. 이용자는 전자금융거래와 관련된 피해나 분쟁이 발생했을 때 해당 위원회에 분쟁조정을 신청할 수 있으며, 위원회는 전문적이고 객관적인 조정 절차를 통해 분쟁을 해결합니다.",
+      "type": "subjective",
+      "domain": "전자금융",
+      "method": "specialized",
+      "timestamp": 1756097465.7742772,
+      "length": 227
+    }
+  ],
+  "failed_answers": [],
+  "quality_scores": {}
+}
