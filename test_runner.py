@@ -3,6 +3,7 @@
 import os
 import sys
 from pathlib import Path
+from datetime import datetime
 
 current_dir = Path(__file__).parent.absolute()
 sys.path.append(str(current_dir))
@@ -391,21 +392,56 @@ def print_subjective_results(
 def print_results(results: dict, output_file: str, test_size: int):
     """기본 결과 출력"""
     total_time_minutes = results["total_time"] / 60
-    print(f"\n=== 테스트 완료 ({test_size}개 문항) ===")
-    print(f"처리 시간: {total_time_minutes:.1f}분")
-    print(f"결과 파일: {output_file}")
+    msg1 = f"\n=== 테스트 완료 ({test_size}개 문항) ==="
+    msg2 = f"처리 시간: {total_time_minutes:.1f}분"
+    msg3 = f"결과 파일: {output_file}"
+    
+    print(msg1)
+    print(msg2)
+    print(msg3)
+    
+    # 로그 파일에도 저장
+    try:
+        from config import LOG_DIR
+        LOG_DIR.mkdir(exist_ok=True)
+        log_file = LOG_DIR / "terminal_output.txt"
+        with open(log_file, 'a', encoding='utf-8') as f:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"[{timestamp}] {msg1}\n")
+            f.write(f"[{timestamp}] {msg2}\n")
+            f.write(f"[{timestamp}] {msg3}\n")
+    except:
+        pass
     
     # 성능 정보
     if 'avg_processing_time' in results:
-        print(f"평균 문항 처리 시간: {results['avg_processing_time']:.2f}초")
+        msg4 = f"평균 문항 처리 시간: {results['avg_processing_time']:.2f}초"
+        print(msg4)
+        try:
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(f"[{timestamp}] {msg4}\n")
+        except:
+            pass
     
     # 학습 데이터 정보
     if 'learning_data' in results:
         learning_data = results['learning_data']
-        print(f"pkl 학습 데이터 저장:")
-        print(f"  - 성공 답변: {learning_data.get('successful_answers', 0)}개")
-        print(f"  - 실패 답변: {learning_data.get('failed_answers', 0)}개")
-        print(f"  - 질문 패턴: {learning_data.get('question_patterns', 0)}개")
+        msg5 = f"pkl 학습 데이터 저장:"
+        msg6 = f"  - 성공 답변: {learning_data.get('successful_answers', 0)}개"
+        msg7 = f"  - 실패 답변: {learning_data.get('failed_answers', 0)}개"
+        msg8 = f"  - 질문 패턴: {learning_data.get('question_patterns', 0)}개"
+        print(msg5)
+        print(msg6)
+        print(msg7)
+        print(msg8)
+        try:
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(f"[{timestamp}] {msg5}\n")
+                f.write(f"[{timestamp}] {msg6}\n")
+                f.write(f"[{timestamp}] {msg7}\n")
+                f.write(f"[{timestamp}] {msg8}\n")
+        except:
+            pass
 
 
 def select_main_test_type():
@@ -472,93 +508,6 @@ def select_question_count(test_type: str):
             print("잘못된 입력입니다. 다시 시도하세요.")
 
 
-def run_performance_monitoring_test(test_size: int = 20):
-    """성능 모니터링 테스트"""
-    print(f"\n=== 성능 모니터링 테스트 시작 ({test_size}개 문항) ===")
-    
-    test_file = DEFAULT_FILES["test_file"]
-    submission_file = DEFAULT_FILES["submission_file"]
-
-    for file_path in [test_file, submission_file]:
-        if not os.path.exists(file_path):
-            print(f"오류: {file_path} 파일이 없습니다")
-            return False
-
-    engine = None
-    try:
-        engine = FinancialAIInference(verbose=True)
-
-        import pandas as pd
-        import time
-
-        test_df = pd.read_csv(test_file, encoding=FILE_VALIDATION["encoding"])
-        submission_df = pd.read_csv(submission_file, encoding=FILE_VALIDATION["encoding"])
-
-        # 샘플 추출
-        if len(test_df) > test_size:
-            test_df = test_df.head(test_size)
-            submission_df = submission_df.head(test_size)
-
-        print(f"모니터링 대상: {len(test_df)}개 문항")
-
-        output_file = "./performance_monitoring_result.csv"
-        
-        # 시작 시간 기록
-        start_time = time.time()
-        
-        results = engine.execute_inference_with_data(test_df, submission_df, output_file)
-        
-        end_time = time.time()
-        total_time = end_time - start_time
-
-        # 성능 분석
-        print(f"\n=== 성능 분석 결과 ===")
-        print(f"총 처리 시간: {total_time:.1f}초")
-        print(f"평균 문항 처리 시간: {results.get('avg_processing_time', 0):.2f}초")
-        print(f"도메인별 분포: {results.get('domain_distribution', {})}")
-        print(f"방법별 분포: {results.get('method_distribution', {})}")
-        
-        # 학습 데이터 현황
-        learning_data = results.get('learning_data', {})
-        print(f"\n=== 학습 데이터 현황 ===")
-        print(f"성공 답변 데이터: {learning_data.get('successful_answers', 0)}개")
-        print(f"실패 답변 데이터: {learning_data.get('failed_answers', 0)}개")
-        print(f"질문 패턴 데이터: {learning_data.get('question_patterns', 0)}개")
-
-        # pkl 파일 확인
-        from config import PKL_FILES
-        print(f"\n=== pkl 파일 상태 ===")
-        for file_type, file_path in PKL_FILES.items():
-            if file_path.exists():
-                file_size = file_path.stat().st_size
-                print(f"{file_type}: {file_size} bytes")
-            else:
-                print(f"{file_type}: 파일 없음")
-
-        # 로그 파일 확인
-        from config import LOG_FILES
-        print(f"\n=== 로그 파일 상태 ===")
-        for log_type, log_path in LOG_FILES.items():
-            if log_path.exists():
-                log_size = log_path.stat().st_size
-                print(f"{log_type}: {log_size} bytes")
-            else:
-                print(f"{log_type}: 파일 없음")
-
-        print(f"\n성능 모니터링 테스트 완료!")
-        return True
-
-    except Exception as e:
-        print(f"성능 모니터링 테스트 오류: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-    finally:
-        if engine:
-            engine.cleanup()
-
-
 def main():
     """메인 함수"""
 
@@ -579,19 +528,9 @@ def main():
         success = run_question_type_test(test_type, question_count)
 
         if success:
-            print(f"\n테스트 완료! 결과를 확인해주세요.")
-            
-            # 성능 모니터링 테스트 제안
-            if question_count >= 10:
-                print("\n성능 모니터링 테스트를 추가로 실행하시겠습니까? (y/n)")
-                try:
-                    choice = input().strip().lower()
-                    if choice == 'y' or choice == 'yes':
-                        run_performance_monitoring_test(min(question_count, 20))
-                except:
-                    pass
+            print(f"\n✅ {test_type} 테스트 완료! 프로그램을 종료합니다.")
         else:
-            print(f"\n테스트 실패")
+            print(f"\n❌ {test_type} 테스트 실패")
             sys.exit(1)
 
 

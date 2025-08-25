@@ -5,7 +5,6 @@ import os
 import time
 import gc
 import pickle
-import logging
 import pandas as pd
 from typing import Dict, List, Tuple
 from pathlib import Path
@@ -21,9 +20,7 @@ from config import (
     DEFAULT_FILES,
     FILE_VALIDATION,
     PKL_FILES,
-    LOG_FILES,
-    PERFORMANCE_TRACKING,
-    MONITORING_CONFIG,
+    LOG_DIR,
 )
 
 current_dir = Path(__file__).parent.absolute()
@@ -33,59 +30,23 @@ from data_processor import DataProcessor
 from knowledge_base import KnowledgeBase
 
 
-class MonitoringSystem:
-    """모니터링 시스템"""
+class SimpleLogger:
+    """터미널 출력을 파일에도 저장하는 간단한 로거"""
     
     def __init__(self):
-        self.setup_logging()
-        self.performance_data = []
-        self.error_data = []
+        from config import LOG_DIR
+        LOG_DIR.mkdir(exist_ok=True)
+        self.log_file = LOG_DIR / "terminal_output.txt"
         
-    def setup_logging(self):
-        """로깅 설정"""
-        log_format = logging.Formatter(MONITORING_CONFIG["log_format"])
-        
-        # 메인 로거
-        self.main_logger = logging.getLogger("main")
-        self.main_logger.setLevel(logging.INFO)
-        main_handler = logging.FileHandler(LOG_FILES["main_log"], encoding='utf-8')
-        main_handler.setFormatter(log_format)
-        self.main_logger.addHandler(main_handler)
-        
-        # 성능 로거
-        self.perf_logger = logging.getLogger("performance")
-        self.perf_logger.setLevel(logging.INFO)
-        perf_handler = logging.FileHandler(LOG_FILES["performance_log"], encoding='utf-8')
-        perf_handler.setFormatter(log_format)
-        self.perf_logger.addHandler(perf_handler)
-        
-        # 에러 로거
-        self.error_logger = logging.getLogger("error")
-        self.error_logger.setLevel(logging.ERROR)
-        error_handler = logging.FileHandler(LOG_FILES["error_log"], encoding='utf-8')
-        error_handler.setFormatter(log_format)
-        self.error_logger.addHandler(error_handler)
-    
-    def log_question_processing(self, question_id: str, question_type: str, domain: str, processing_time: float):
-        """질문 처리 로그"""
-        self.main_logger.info(f"Question {question_id}: Type={question_type}, Domain={domain}, Time={processing_time:.2f}s")
-    
-    def log_answer_generation(self, question_id: str, answer_length: int, template_used: bool, method: str):
-        """답변 생성 로그"""
-        self.perf_logger.info(f"Answer {question_id}: Length={answer_length}, Template={template_used}, Method={method}")
-    
-    def log_error(self, question_id: str, error_type: str, error_msg: str):
-        """에러 로그"""
-        self.error_logger.error(f"Error {question_id}: Type={error_type}, Message={error_msg}")
-    
-    def add_performance_data(self, data: Dict):
-        """성능 데이터 추가"""
-        self.performance_data.append(data)
-        
-        # 모니터링 로그에 실시간 성능 데이터 기록
-        with open(LOG_FILES["monitoring_log"], 'a', encoding='utf-8') as f:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            f.write(f"[{timestamp}] Performance: {data}\n")
+    def print_and_log(self, message):
+        """터미널에 출력하고 파일에도 저장"""
+        print(message)
+        try:
+            with open(self.log_file, 'a', encoding='utf-8') as f:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                f.write(f"[{timestamp}] {message}\n")
+        except:
+            pass
 
 
 class LearningSystem:
@@ -204,7 +165,7 @@ class FinancialAIInference:
         setup_environment()
 
         # 시스템 초기화
-        self.monitoring = MonitoringSystem()
+        self.logger = SimpleLogger()
         self.learning = LearningSystem()
         
         self.model_handler = ModelHandler(verbose=False)
@@ -235,14 +196,9 @@ class FinancialAIInference:
                 self.domain_stats[domain] = 0
             self.domain_stats[domain] += 1
             
-            # 모니터링 로그
-            processing_time = time.time() - start_time
-            self.monitoring.log_question_processing(question_id, question_type, domain, processing_time)
-            
             # 학습 데이터에서 유사한 성공 답변 찾기
             similar_answer = self.learning.get_similar_successful_answer(question, domain, question_type)
             if similar_answer and len(similar_answer) > 10:
-                self.monitoring.log_answer_generation(question_id, len(similar_answer), False, "learning_match")
                 self.learning.record_successful_answer(question_id, question, similar_answer, 
                                                      question_type, domain, "learning_match")
                 return similar_answer
@@ -270,15 +226,11 @@ class FinancialAIInference:
                 if method not in self.method_stats:
                     self.method_stats[method] = 0
                 self.method_stats[method] += 1
-                
-                # 모니터링 로그
-                self.monitoring.log_answer_generation(question_id, len(answer), True, method)
             
             return answer
 
         except Exception as e:
             error_msg = str(e)
-            self.monitoring.log_error(question_id, "processing_error", error_msg)
             self.learning.record_failed_answer(question_id, question, error_msg, 
                                              question_type if 'question_type' in locals() else "unknown",
                                              domain if 'domain' in locals() else "unknown")
@@ -680,7 +632,6 @@ class FinancialAIInference:
             test_df = pd.read_csv(test_file)
             submission_df = pd.read_csv(submission_file)
         except Exception as e:
-            self.monitoring.log_error("system", "file_load_error", str(e))
             raise RuntimeError(f"데이터 로드 실패: {e}")
 
         return self.execute_inference_with_data(test_df, submission_df, output_file)
@@ -691,8 +642,7 @@ class FinancialAIInference:
 
         output_file = output_file or DEFAULT_FILES["output_file"]
         
-        print(f"데이터 로드 완료: {len(test_df)}개 문항")
-        self.monitoring.main_logger.info(f"추론 시작: {len(test_df)}개 문항")
+        self.logger.print_and_log(f"데이터 로드 완료: {len(test_df)}개 문항")
 
         answers = []
         self.total_questions = len(test_df)
@@ -717,16 +667,6 @@ class FinancialAIInference:
                 answers.append(answer)
                 self.processing_times.append(processing_time)
                 
-                # 성능 데이터 기록
-                perf_data = {
-                    "question_id": question_id,
-                    "processing_time": processing_time,
-                    "answer_length": len(answer) if answer else 0,
-                    "domain": self.data_processor.extract_domain(question),
-                    "question_type": self.data_processor.extract_choice_range(question)[0]
-                }
-                self.monitoring.add_performance_data(perf_data)
-                
                 pbar.update(1)
 
                 # pkl 데이터 주기적 저장
@@ -745,11 +685,7 @@ class FinancialAIInference:
         save_success = self._save_csv(submission_df, output_file)
 
         if not save_success:
-            self.monitoring.log_error("system", "save_error", f"파일 저장 실패: {output_file}")
-            print(f"지정된 파일로 저장에 실패했습니다: {output_file}")
-
-        # 최종 통계 로그
-        self._log_final_statistics()
+            self.logger.print_and_log(f"지정된 파일로 저장에 실패했습니다: {output_file}")
 
         return self._get_results_summary()
 
@@ -762,31 +698,12 @@ class FinancialAIInference:
             return True
 
         except PermissionError:
-            print(f"파일 저장 권한 오류: {filepath}")
+            self.logger.print_and_log(f"파일 저장 권한 오류: {filepath}")
             return False
 
         except Exception as e:
-            print(f"파일 저장 중 오류: {e}")
+            self.logger.print_and_log(f"파일 저장 중 오류: {e}")
             return False
-
-    def _log_final_statistics(self):
-        """최종 통계 로그"""
-        total_time = time.time() - self.start_time
-        avg_time = sum(self.processing_times) / len(self.processing_times) if self.processing_times else 0
-        
-        stats_msg = f"""
-=== 최종 처리 통계 ===
-총 처리 시간: {total_time:.1f}초
-평균 문항 처리 시간: {avg_time:.2f}초
-총 문항 수: {self.total_questions}
-도메인별 분포: {self.domain_stats}
-방법별 분포: {self.method_stats}
-성공한 답변 수: {len(self.learning.successful_answers)}
-실패한 답변 수: {len(self.learning.failed_answers)}
-"""
-        
-        self.monitoring.perf_logger.info(stats_msg)
-        print(stats_msg)
 
     def _get_results_summary(self) -> Dict:
         """결과 요약"""
@@ -820,11 +737,9 @@ class FinancialAIInference:
                 self.knowledge_base.cleanup()
 
             gc.collect()
-            
-            self.monitoring.main_logger.info("시스템 정리 완료")
 
         except Exception as e:
-            self.monitoring.log_error("system", "cleanup_error", str(e))
+            pass
 
 
 def main():
@@ -837,8 +752,8 @@ def main():
         results = engine.execute_inference()
 
         if results["success"]:
-            print(f"\n추론 완료 (처리시간: {results['total_time']:.1f}초)")
-            print(f"학습 데이터 저장: 성공 {results['learning_data']['successful_answers']}개, "
+            engine.logger.print_and_log(f"추론 완료 (처리시간: {results['total_time']:.1f}초)")
+            engine.logger.print_and_log(f"학습 데이터 저장: 성공 {results['learning_data']['successful_answers']}개, "
                   f"실패 {results['learning_data']['failed_answers']}개")
 
     except KeyboardInterrupt:
