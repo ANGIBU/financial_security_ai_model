@@ -32,7 +32,8 @@ PKL_FILES = {
 
 # 로그 파일 경로
 LOG_FILES = {
-    "terminal_output": LOG_DIR / "terminal_output.txt",
+    "inference": LOG_DIR / "inference.txt",
+    "test": LOG_DIR / "test.txt",
 }
 
 MODEL_CONFIG = {

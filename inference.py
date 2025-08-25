@@ -31,20 +31,55 @@ from knowledge_base import KnowledgeBase
 
 
 class SimpleLogger:
-    """터미널 출력을 파일에도 저장하는 간단한 로거"""
+    """실행 통계를 파일에 저장하는 로거"""
     
-    def __init__(self):
-        from config import LOG_DIR
+    def __init__(self, log_type: str = "inference"):
         LOG_DIR.mkdir(exist_ok=True)
-        self.log_file = LOG_DIR / "terminal_output.txt"
+        if log_type == "test":
+            self.log_file = LOG_DIR / "test.txt"
+        else:
+            self.log_file = LOG_DIR / "inference.txt"
         
-    def print_and_log(self, message):
-        """터미널에 출력하고 파일에도 저장"""
-        print(message)
+    def log_stats(self, stats_data: Dict):
+        """성능 통계만 로그 파일에 저장"""
         try:
             with open(self.log_file, 'a', encoding='utf-8') as f:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                f.write(f"[{timestamp}] {message}\n")
+                
+                # 기본 실행 통계
+                if 'total_questions' in stats_data:
+                    f.write(f"[{timestamp}] 문항 수: {stats_data['total_questions']}개\n")
+                
+                if 'total_time' in stats_data:
+                    minutes = stats_data['total_time'] / 60
+                    f.write(f"[{timestamp}] 총 처리 시간: {minutes:.1f}분\n")
+                
+                if 'avg_processing_time' in stats_data:
+                    f.write(f"[{timestamp}] 평균 문항 처리 시간: {stats_data['avg_processing_time']:.2f}초\n")
+                
+                # 도메인 분포
+                if 'domain_distribution' in stats_data:
+                    domain_stats = stats_data['domain_distribution']
+                    f.write(f"[{timestamp}] 도메인 분포: {domain_stats}\n")
+                
+                # 방법 분포
+                if 'method_distribution' in stats_data:
+                    method_stats = stats_data['method_distribution']
+                    f.write(f"[{timestamp}] 처리 방법 분포: {method_stats}\n")
+                
+                # 학습 데이터 통계
+                if 'learning_data' in stats_data:
+                    learning = stats_data['learning_data']
+                    f.write(f"[{timestamp}] 성공 답변 학습: {learning.get('successful_answers', 0)}개\n")
+                    f.write(f"[{timestamp}] 실패 답변 분석: {learning.get('failed_answers', 0)}개\n")
+                    f.write(f"[{timestamp}] 패턴 학습: {learning.get('question_patterns', 0)}개\n")
+                
+                # 메모리 사용률
+                if 'memory_usage' in stats_data:
+                    f.write(f"[{timestamp}] 메모리 사용률: {stats_data['memory_usage']}%\n")
+                
+                f.write(f"[{timestamp}] ---\n")
+                
         except:
             pass
 
@@ -68,7 +103,7 @@ class LearningSystem:
                 with open(file_path, 'rb') as f:
                     return pickle.load(f)
             except Exception as e:
-                print(f"pkl 데이터 로드 실패 {data_type}: {e}")
+                pass
         return {}
     
     def save_pkl_data(self, data_type: str, data: Dict):
@@ -78,7 +113,7 @@ class LearningSystem:
             with open(file_path, 'wb') as f:
                 pickle.dump(data, f)
         except Exception as e:
-            print(f"pkl 데이터 저장 실패 {data_type}: {e}")
+            pass
     
     def record_successful_answer(self, question_id: str, question: str, answer: str, 
                                 question_type: str, domain: str, method: str):
@@ -158,14 +193,14 @@ class LearningSystem:
 
 class FinancialAIInference:
 
-    def __init__(self, verbose: bool = False):
+    def __init__(self, verbose: bool = False, log_type: str = "inference"):
         self.verbose = verbose
         self.start_time = time.time()
 
         setup_environment()
 
         # 시스템 초기화
-        self.logger = SimpleLogger()
+        self.logger = SimpleLogger(log_type)
         self.learning = LearningSystem()
         
         self.model_handler = ModelHandler(verbose=False)
@@ -425,7 +460,7 @@ class FinancialAIInference:
                 return answer
                 
         except Exception as e:
-            self.monitoring.log_error("llm_generation", "generation_failed", str(e))
+            pass
         
         return None
 
@@ -641,8 +676,6 @@ class FinancialAIInference:
         """데이터를 이용한 추론 실행"""
 
         output_file = output_file or DEFAULT_FILES["output_file"]
-        
-        self.logger.print_and_log(f"데이터 로드 완료: {len(test_df)}개 문항")
 
         answers = []
         self.total_questions = len(test_df)
@@ -682,12 +715,13 @@ class FinancialAIInference:
         
         # 결과 저장
         submission_df["Answer"] = answers
-        save_success = self._save_csv(submission_df, output_file)
+        self._save_csv(submission_df, output_file)
 
-        if not save_success:
-            self.logger.print_and_log(f"지정된 파일로 저장에 실패했습니다: {output_file}")
+        # 통계 기록
+        results = self._get_results_summary()
+        self.logger.log_stats(results)
 
-        return self._get_results_summary()
+        return results
 
     def _save_csv(self, df: pd.DataFrame, filepath: str) -> bool:
         """CSV 저장"""
@@ -698,11 +732,9 @@ class FinancialAIInference:
             return True
 
         except PermissionError:
-            self.logger.print_and_log(f"파일 저장 권한 오류: {filepath}")
             return False
 
         except Exception as e:
-            self.logger.print_and_log(f"파일 저장 중 오류: {e}")
             return False
 
     def _get_results_summary(self) -> Dict:
@@ -752,9 +784,7 @@ def main():
         results = engine.execute_inference()
 
         if results["success"]:
-            engine.logger.print_and_log(f"추론 완료 (처리시간: {results['total_time']:.1f}초)")
-            engine.logger.print_and_log(f"학습 데이터 저장: 성공 {results['learning_data']['successful_answers']}개, "
-                  f"실패 {results['learning_data']['failed_answers']}개")
+            print(f"추론 완료 (처리시간: {results['total_time']:.1f}초)")
 
     except KeyboardInterrupt:
         print("\n추론 중단됨")
