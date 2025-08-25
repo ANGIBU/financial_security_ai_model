@@ -11,8 +11,6 @@ OFFLINE_MODE = {"TRANSFORMERS_OFFLINE": "1", "HF_DATASETS_OFFLINE": "1"}
 
 BASE_DIR = Path(__file__).parent.absolute()
 PKL_DIR = BASE_DIR / "pkl"
-LOG_DIR = BASE_DIR / "log"
-BACKUP_DIR = BASE_DIR / "backup"
 
 DEFAULT_FILES = {
     "test_file": "./test.csv",
@@ -135,8 +133,6 @@ def get_device():
 def ensure_directories():
     """디렉토리 생성"""
     PKL_DIR.mkdir(exist_ok=True)
-    LOG_DIR.mkdir(exist_ok=True)
-    BACKUP_DIR.mkdir(exist_ok=True)
 
 
 def validate_config():
