@@ -151,11 +151,8 @@ class LearningManager:
         answer_str = str(answer).strip()
         
         if question_type == "multiple_choice":
-            # 객관식에서 3번이 너무 많이 나오는 경우 폴백으로 간주
-            if answer_str == "3":
-                return True
-            # 폴백 메서드로 생성된 경우
-            if method_used == "fallback":
+            # 폴백 메서드로 생성된 경우만 폴백으로 간주
+            if method_used in ["fallback", "emergency_fallback", "rule_based"]:
                 return True
         
         if question_type == "subjective":

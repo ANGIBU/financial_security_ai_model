@@ -60,23 +60,33 @@ class FinancialAIInference:
             )
 
             # 2단계: 질문 유형별 처리
+            method_used = "llm"  # 기본값
             if question_type == "multiple_choice":
-                answer = self._process_multiple_choice_question(
+                answer, method_used = self._process_multiple_choice_question(
                     question, question_id, max_choice, domain, intent_analysis, kb_analysis
                 )
             else:
                 answer = self._process_subjective_question(
                     question, question_id, domain, intent_analysis, kb_analysis
                 )
+                method_used = "specialized" if self._is_specialized_answer(answer, domain) else "llm"
 
             # 3단계: 답변 검증 및 학습 기록
-            is_valid, method_used = self._validate_and_record_answer(
-                question_id, question, answer, question_type, domain, max_choice
-            )
+            is_valid = self._validate_answer(answer, question_type, max_choice, question)
+
+            # 폴백 답변인지 확인
+            if method_used in ["fallback", "emergency_fallback"]:
+                is_valid = False  # 폴백은 성공으로 카운트 안함
 
             if not is_valid and question_type == "subjective":
                 answer = self._generate_fallback_subjective_answer(question, domain, intent_analysis)
                 method_used = "fallback"
+                is_valid = False  # 폴백은 성공이 아님
+            
+            # 객관식 패턴 학습 (성공한 경우만)
+            if question_type == "multiple_choice" and is_valid:
+                pattern_type = self._identify_mc_pattern_type(question)
+                self.learning_manager.record_mc_pattern(question, answer, pattern_type)
 
             # 최종 학습 기록
             self.learning_manager.record_answer_attempt(
@@ -97,29 +107,29 @@ class FinancialAIInference:
 
     def _process_multiple_choice_question(self, question: str, question_id: str, 
                                         max_choice: int, domain: str, 
-                                        intent_analysis: Dict, kb_analysis: Dict) -> str:
+                                        intent_analysis: Dict, kb_analysis: Dict) -> tuple[str, str]:
         """객관식 질문 처리"""
         
         # 1단계: 학습된 패턴에서 예측
         learned_prediction = self.learning_manager.get_mc_prediction(question, max_choice)
         if learned_prediction:
-            return learned_prediction
+            return learned_prediction, "learned_pattern"
 
         # 2단계: 특화된 패턴 매칭
         specialized_answer = self._get_specialized_mc_answer(question, max_choice, domain)
         if specialized_answer:
-            return specialized_answer
+            return specialized_answer, "specialized"
 
         # 3단계: LLM 기반 추론
         llm_answer = self._generate_mc_answer_with_llm(
             question, max_choice, domain, intent_analysis, kb_analysis
         )
         if llm_answer and llm_answer.isdigit() and 1 <= int(llm_answer) <= max_choice:
-            return llm_answer
+            return llm_answer, "llm"
 
         # 4단계: 지능적 폴백
-        fallback_answer = self._get_intelligent_mc_fallback(question, max_choice, domain)
-        return fallback_answer
+        fallback_answer = self.model_handler.generate_fallback_mc_answer(question, max_choice, domain)
+        return fallback_answer, "fallback"
 
     def _get_specialized_mc_answer(self, question: str, max_choice: int, domain: str) -> str:
         """특화된 객관식 답변 생성"""
