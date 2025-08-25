@@ -2,6 +2,7 @@
 
 import re
 import unicodedata
+import sys
 from typing import Dict, List, Tuple
 from datetime import datetime
 from pathlib import Path
@@ -194,8 +195,8 @@ class DataProcessor:
             try:
                 actual_char = broken.encode().decode("unicode_escape")
                 self.korean_recovery_mapping[actual_char] = replacement
-            except:
-                pass
+            except Exception:
+                continue
 
         # 기타 매핑 추가
         self.korean_recovery_mapping.update(self.korean_recovery_config["spaced_korean_fixes"])
@@ -208,8 +209,11 @@ class DataProcessor:
         critical_patterns = [r"(.{1,3})\s*(\1\s*){12,}"]
 
         for pattern in critical_patterns:
-            if re.search(pattern, text):
-                return True
+            try:
+                if re.search(pattern, text):
+                    return True
+            except Exception:
+                continue
 
         # 단어 반복 검사
         words = text.split()
@@ -255,11 +259,15 @@ class DataProcessor:
             i += count
 
         text = " ".join(cleaned_words)
-        text = re.sub(r"(.{3,15})\s*\1\s*\1\s*\1\s*\1\s*\1+", r"\1", text)
-        text = re.sub(r"(.{1,5})\s*(\1\s*){10,}", r"\1", text)
-        text = re.sub(r"\(\s*\)", "", text)
-        text = re.sub(r"\s*\(\s*\)\s*", " ", text)
-        text = re.sub(r"\s+", " ", text).strip()
+        
+        try:
+            text = re.sub(r"(.{3,15})\s*\1\s*\1\s*\1\s*\1\s*\1+", r"\1", text)
+            text = re.sub(r"(.{1,5})\s*(\1\s*){10,}", r"\1", text)
+            text = re.sub(r"\(\s*\)", "", text)
+            text = re.sub(r"\s*\(\s*\)\s*", " ", text)
+            text = re.sub(r"\s+", " ", text).strip()
+        except Exception:
+            pass
 
         return text
 
@@ -272,16 +280,22 @@ class DataProcessor:
             text = self.remove_critical_repetitive_patterns(text)
 
         # 유니코드 정규화
-        text = unicodedata.normalize("NFC", text)
+        try:
+            text = unicodedata.normalize("NFC", text)
+        except Exception:
+            pass
 
         # 매핑 적용
         for broken, correct in self.korean_recovery_mapping.items():
             text = text.replace(broken, correct)
 
         # 기본 정리
-        text = re.sub(r"\(\s*\)", "", text)
-        text = re.sub(r"[.,!?]{3,}", ".", text)
-        text = re.sub(r"\s+[.,!?]\s+", ". ", text)
+        try:
+            text = re.sub(r"\(\s*\)", "", text)
+            text = re.sub(r"[.,!?]{3,}", ".", text)
+            text = re.sub(r"\s+[.,!?]\s+", ". ", text)
+        except Exception:
+            pass
 
         return text
 
@@ -307,13 +321,16 @@ class DataProcessor:
             matched_patterns = []
 
             for pattern in patterns:
-                matches = re.findall(pattern, question, re.IGNORECASE)
-                if matches:
-                    if len(matches) > 1:
-                        score += 3.0
-                    else:
-                        score += 2.0
-                    matched_patterns.append(pattern)
+                try:
+                    matches = re.findall(pattern, question, re.IGNORECASE)
+                    if matches:
+                        if len(matches) > 1:
+                            score += 3.0
+                        else:
+                            score += 2.0
+                        matched_patterns.append(pattern)
+                except Exception:
+                    continue
 
             # 키워드 보너스
             keyword_bonuses = {
@@ -440,10 +457,13 @@ class DataProcessor:
             line = line.strip()
             match = re.match(r"^(\d+)\s+(.+)", line)
             if match:
-                num = int(match.group(1))
-                content = match.group(2).strip()
-                if 1 <= num <= 5 and len(content) > 0:
-                    choice_numbers.append(num)
+                try:
+                    num = int(match.group(1))
+                    content = match.group(2).strip()
+                    if 1 <= num <= 5 and len(content) > 0:
+                        choice_numbers.append(num)
+                except ValueError:
+                    continue
 
         if choice_numbers:
             choice_numbers.sort()
@@ -459,13 +479,19 @@ class DataProcessor:
         for i in range(5, 2, -1):
             pattern_parts = [f"{j}\\s+[가-힣\\w]+" for j in range(1, i + 1)]
             pattern = ".*".join(pattern_parts)
-            if re.search(pattern, question, re.DOTALL):
-                return "multiple_choice", i
+            try:
+                if re.search(pattern, question, re.DOTALL):
+                    return "multiple_choice", i
+            except Exception:
+                continue
 
         # 키워드 기반 검사
         for pattern in self.mc_keywords:
-            if re.search(pattern, question, re.IGNORECASE):
-                return "multiple_choice", 5
+            try:
+                if re.search(pattern, question, re.IGNORECASE):
+                    return "multiple_choice", 5
+            except Exception:
+                continue
 
         return "subjective", 0
 
@@ -475,37 +501,52 @@ class DataProcessor:
 
         # 주관식 패턴 검사
         for pattern in self.subj_patterns:
-            if re.search(pattern, question, re.IGNORECASE):
-                return "subjective"
+            try:
+                if re.search(pattern, question, re.IGNORECASE):
+                    return "subjective"
+            except Exception:
+                continue
 
         # 선택지 패턴 검사
-        choice_pattern = r"\n(\d+)\s+[가-힣\w]"
-        choice_matches = re.findall(choice_pattern, question)
+        try:
+            choice_pattern = r"\n(\d+)\s+[가-힣\w]"
+            choice_matches = re.findall(choice_pattern, question)
 
-        if len(choice_matches) >= 3:
-            choice_nums = [int(match) for match in choice_matches]
-            choice_nums.sort()
-            if (choice_nums[0] == 1 and 
-                len(choice_nums) == choice_nums[-1] and 
-                choice_nums[-1] <= 5):
-                return "multiple_choice"
+            if len(choice_matches) >= 3:
+                choice_nums = [int(match) for match in choice_matches]
+                choice_nums.sort()
+                if (choice_nums[0] == 1 and 
+                    len(choice_nums) == choice_nums[-1] and 
+                    choice_nums[-1] <= 5):
+                    return "multiple_choice"
+        except Exception:
+            pass
 
         # 키워드 기반 검사
         for pattern in self.mc_keywords:
-            if re.search(pattern, question, re.IGNORECASE):
-                if any(f"{i} " in question for i in range(1, 6)):
-                    return "multiple_choice"
+            try:
+                if re.search(pattern, question, re.IGNORECASE):
+                    if any(f"{i} " in question for i in range(1, 6)):
+                        return "multiple_choice"
+            except Exception:
+                continue
 
         # 패턴 기반 검사
         for pattern in self.mc_patterns:
-            if re.search(pattern, question, re.DOTALL | re.MULTILINE):
-                return "multiple_choice"
+            try:
+                if re.search(pattern, question, re.DOTALL | re.MULTILINE):
+                    return "multiple_choice"
+            except Exception:
+                continue
 
         # 추가 검사
-        if (len(question) < 400 and 
-            re.search(r"것은\?|것\?|것은\s*$", question) and 
-            len(re.findall(r"\b[1-5]\b", question)) >= 3):
-            return "multiple_choice"
+        try:
+            if (len(question) < 400 and 
+                re.search(r"것은\?|것\?|것은\s*$", question) and 
+                len(re.findall(r"\b[1-5]\b", question)) >= 3):
+                return "multiple_choice"
+        except Exception:
+            pass
 
         return "subjective"
 
@@ -564,20 +605,29 @@ class DataProcessor:
 
         text = self.restore_korean_characters(text)
         text = self.fix_grammatical_structure(text)
-        text = re.sub(r"\s+", " ", text).strip()
-        text = re.sub(r"[^\w\s가-힣.,!?()[\]\-]", " ", text)
+        
+        try:
+            text = re.sub(r"\s+", " ", text).strip()
+            text = re.sub(r"[^\w\s가-힣.,!?()[\]\-]", " ", text)
+        except Exception:
+            pass
 
         # 영어 비율 체크
-        english_chars = len(re.findall(r"[a-zA-Z]", text))
-        total_chars = len(re.sub(r"[^\w가-힣]", "", text))
-        if total_chars > 0 and english_chars / total_chars > 0.5:
-            text = re.sub(r"[a-zA-Z]+", "", text)
+        try:
+            english_chars = len(re.findall(r"[a-zA-Z]", text))
+            total_chars = len(re.sub(r"[^\w가-힣]", "", text))
+            if total_chars > 0 and english_chars / total_chars > 0.5:
+                text = re.sub(r"[a-zA-Z]+", "", text)
+        except Exception:
+            pass
 
         # 중국어, 일본어 문자 제거
-        text = re.sub(r"[\u4e00-\u9fff]", "", text)
-        text = re.sub(r"[①②③④⑤➀➁➂➃➄]", "", text)
-
-        text = re.sub(r"\s+", " ", text).strip()
+        try:
+            text = re.sub(r"[\u4e00-\u9fff]", "", text)
+            text = re.sub(r"[①②③④⑤➀➁➂➃➄]", "", text)
+            text = re.sub(r"\s+", " ", text).strip()
+        except Exception:
+            pass
 
         if self.detect_critical_repetitive_patterns(text):
             text = self.remove_critical_repetitive_patterns(text)
@@ -620,7 +670,10 @@ class DataProcessor:
         ]
 
         for pattern, replacement in grammar_fixes:
-            text = re.sub(pattern, replacement, text)
+            try:
+                text = re.sub(pattern, replacement, text)
+            except Exception:
+                continue
 
         # 문장별 처리
         sentences = text.split(".")
@@ -636,15 +689,18 @@ class DataProcessor:
 
             # 긴 문장 분할
             if len(sentence) > 280:
-                parts = re.split(r"[,，]", sentence)
-                if len(parts) > 1:
-                    for part in parts:
-                        part = part.strip()
-                        if len(part) > 8 and not self.detect_critical_repetitive_patterns(part):
-                            processed_sentences.append(part)
-                else:
-                    if not self.detect_critical_repetitive_patterns(sentence):
-                        processed_sentences.append(sentence)
+                try:
+                    parts = re.split(r"[,，]", sentence)
+                    if len(parts) > 1:
+                        for part in parts:
+                            part = part.strip()
+                            if len(part) > 8 and not self.detect_critical_repetitive_patterns(part):
+                                processed_sentences.append(part)
+                    else:
+                        if not self.detect_critical_repetitive_patterns(sentence):
+                            processed_sentences.append(sentence)
+                except Exception:
+                    processed_sentences.append(sentence)
             else:
                 if not self.detect_critical_repetitive_patterns(sentence):
                     processed_sentences.append(sentence)
@@ -664,34 +720,43 @@ class DataProcessor:
         if not text:
             return 0.0
 
-        korean_chars = len(re.findall(r"[가-힣]", text))
-        total_chars = len(re.sub(r"[^\w가-힣]", "", text))
+        try:
+            korean_chars = len(re.findall(r"[가-힣]", text))
+            total_chars = len(re.sub(r"[^\w가-힣]", "", text))
 
-        if total_chars == 0:
+            if total_chars == 0:
+                return 0.0
+
+            return korean_chars / total_chars
+        except Exception:
             return 0.0
-
-        return korean_chars / total_chars
 
     def calculate_english_ratio(self, text: str) -> float:
         """영어 비율 계산"""
         if not text:
             return 0.0
 
-        english_chars = len(re.findall(r"[a-zA-Z]", text))
-        total_chars = len(re.sub(r"[^\w가-힣]", "", text))
+        try:
+            english_chars = len(re.findall(r"[a-zA-Z]", text))
+            total_chars = len(re.sub(r"[^\w가-힣]", "", text))
 
-        if total_chars == 0:
+            if total_chars == 0:
+                return 0.0
+
+            return english_chars / total_chars
+        except Exception:
             return 0.0
-
-        return english_chars / total_chars
 
     def validate_mc_answer_range(self, answer: str, max_choice: int) -> bool:
         """객관식 답변 범위 확인"""
         if not answer or not answer.isdigit():
             return False
 
-        answer_num = int(answer)
-        return 1 <= answer_num <= max_choice
+        try:
+            answer_num = int(answer)
+            return 1 <= answer_num <= max_choice
+        except ValueError:
+            return False
 
     def validate_answer_intent_match(self, answer: str, question: str, intent_analysis: Dict) -> bool:
         """답변과 의도 매칭 검증"""
@@ -783,8 +848,11 @@ class DataProcessor:
                 return False
 
             # 한국어 문자 개수 검증
-            korean_chars = len(re.findall(r"[가-힣]", clean_answer))
-            if korean_chars < 5:
+            try:
+                korean_chars = len(re.findall(r"[가-힣]", clean_answer))
+                if korean_chars < 5:
+                    return False
+            except Exception:
                 return False
 
             # 의미있는 키워드 검증
@@ -839,10 +907,13 @@ class DataProcessor:
             line = line.strip()
             match = re.match(r"^(\d+)\s+(.+)", line)
             if match:
-                choice_num = int(match.group(1))
-                choice_content = match.group(2).strip()
-                if 1 <= choice_num <= 5 and len(choice_content) > 0:
-                    choices.append(choice_content)
+                try:
+                    choice_num = int(match.group(1))
+                    choice_content = match.group(2).strip()
+                    if 1 <= choice_num <= 5 and len(choice_content) > 0:
+                        choices.append(choice_content)
+                except ValueError:
+                    continue
 
         if len(choices) >= 3:
             return choices
@@ -856,15 +927,18 @@ class DataProcessor:
             ]
 
             for pattern in patterns:
-                matches = re.findall(pattern, question, re.MULTILINE | re.DOTALL)
-                if matches:
-                    if isinstance(matches[0], tuple):
-                        choices = [match[1].strip() for match in matches]
-                    else:
-                        choices = [match.strip() for match in matches]
+                try:
+                    matches = re.findall(pattern, question, re.MULTILINE | re.DOTALL)
+                    if matches:
+                        if isinstance(matches[0], tuple):
+                            choices = [match[1].strip() for match in matches]
+                        else:
+                            choices = [match.strip() for match in matches]
 
-                    if len(choices) >= 3:
-                        break
+                        if len(choices) >= 3:
+                            break
+                except Exception:
+                    continue
 
         return choices[:5]
 
@@ -876,10 +950,13 @@ class DataProcessor:
         answer = str(answer).strip()
 
         if question_type == "multiple_choice":
-            numbers = re.findall(r"[1-9]", answer)
-            for num in numbers:
-                if 1 <= int(num) <= max_choice:
-                    return num
+            try:
+                numbers = re.findall(r"[1-9]", answer)
+                for num in numbers:
+                    if 1 <= int(num) <= max_choice:
+                        return num
+            except Exception:
+                pass
             return ""
 
         else:
@@ -898,21 +975,24 @@ class DataProcessor:
 
             # 길이 조정
             if len(answer) > 700:
-                sentences = answer.split(". ")
-                valid_sentences = []
+                try:
+                    sentences = answer.split(". ")
+                    valid_sentences = []
 
-                for sentence in sentences:
-                    if not self.detect_critical_repetitive_patterns(sentence):
-                        valid_sentences.append(sentence)
-                    if len(valid_sentences) >= 5:
-                        break
+                    for sentence in sentences:
+                        if not self.detect_critical_repetitive_patterns(sentence):
+                            valid_sentences.append(sentence)
+                        if len(valid_sentences) >= 5:
+                            break
 
-                if valid_sentences:
-                    answer = ". ".join(valid_sentences[:5])
-                else:
-                    return "답변 정규화 중 유효한 문장을 찾을 수 없습니다."
+                    if valid_sentences:
+                        answer = ". ".join(valid_sentences[:5])
+                    else:
+                        return "답변 정규화 중 유효한 문장을 찾을 수 없습니다."
 
-                if len(answer) > 700:
+                    if len(answer) > 700:
+                        answer = answer[:700]
+                except Exception:
                     answer = answer[:700]
 
             # 문장 끝 처리

@@ -1,23 +1,30 @@
 # config.py
 
 import os
+import sys
 from pathlib import Path
 
 DEFAULT_MODEL_NAME = "upstage/SOLAR-10.7B-Instruct-v1.0"
 DEVICE_AUTO_SELECT = True
 VERBOSE_MODE = False
 
-OFFLINE_MODE = {"TRANSFORMERS_OFFLINE": "1", "HF_DATASETS_OFFLINE": "1"}
+# 오프라인 모드 강화
+OFFLINE_MODE = {
+    "TRANSFORMERS_OFFLINE": "1", 
+    "HF_DATASETS_OFFLINE": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TOKENIZERS_PARALLELISM": "false"
+}
 
 BASE_DIR = Path(__file__).parent.absolute()
 PKL_DIR = BASE_DIR / "pkl"
 LOG_DIR = BASE_DIR / "log"
 
 DEFAULT_FILES = {
-    "test_file": "./test.csv",
-    "submission_file": "./sample_submission.csv",
-    "output_file": "./final_submission.csv",
-    "test_output_file": "./test_result.csv",
+    "test_file": BASE_DIR / "test.csv",
+    "submission_file": BASE_DIR / "sample_submission.csv",
+    "output_file": BASE_DIR / "final_submission.csv",
+    "test_output_file": BASE_DIR / "test_result.csv",
 }
 
 # pkl 학습 데이터 파일 경로
@@ -35,6 +42,7 @@ MODEL_CONFIG = {
     "device_map": "auto",
     "trust_remote_code": True,
     "use_fast_tokenizer": True,
+    "local_files_only": True,
 }
 
 GENERATION_CONFIG = {
@@ -130,21 +138,29 @@ def setup_environment():
     """환경 설정"""
     for key, value in OFFLINE_MODE.items():
         os.environ[key] = value
-
+    
+    # 오프라인 모드 강화
+    os.environ["CURL_CA_BUNDLE"] = ""
+    os.environ["REQUESTS_CA_BUNDLE"] = ""
 
 def get_device():
     """디바이스 설정"""
     if DEVICE_AUTO_SELECT:
-        import torch
-        return "cuda" if torch.cuda.is_available() else "cpu"
+        try:
+            import torch
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            return "cpu"
     return "cpu"
-
 
 def ensure_directories():
     """디렉토리 생성"""
-    PKL_DIR.mkdir(exist_ok=True)
-    LOG_DIR.mkdir(exist_ok=True)
-
+    try:
+        PKL_DIR.mkdir(exist_ok=True)
+        LOG_DIR.mkdir(exist_ok=True)
+    except Exception as e:
+        print(f"디렉토리 생성 오류: {e}")
+        sys.exit(1)
 
 def validate_config():
     """설정 검증"""
@@ -164,18 +180,20 @@ def validate_config():
 
     return True
 
-
 def initialize_system():
     """시스템 초기화"""
-    setup_environment()
-    ensure_directories()
-    validate_config()
+    try:
+        setup_environment()
+        ensure_directories()
+        validate_config()
 
-    if VERBOSE_MODE:
-        print("시스템 설정 완료")
-        print(f"기본 모델: {DEFAULT_MODEL_NAME}")
-        print(f"디바이스: {get_device()}")
-
+        if VERBOSE_MODE:
+            print("시스템 설정 완료")
+            print(f"기본 모델: {DEFAULT_MODEL_NAME}")
+            print(f"디바이스: {get_device()}")
+    except Exception as e:
+        print(f"시스템 초기화 실패: {e}")
+        sys.exit(1)
 
 if __name__ != "__main__":
     try:
@@ -188,3 +206,4 @@ if __name__ != "__main__":
             print("기본 설정으로 시스템을 시작합니다.")
         except Exception as fallback_error:
             print(f"기본 설정 로드 실패: {fallback_error}")
+            sys.exit(1)

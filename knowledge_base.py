@@ -2,6 +2,7 @@
 
 import re
 import random
+import sys
 from typing import Dict, List
 from pathlib import Path
 
@@ -291,11 +292,19 @@ class KnowledgeBase:
             detected_domains = ["일반"]
 
         # 기타 분석
-        complexity = self._calculate_complexity(question)
-        korean_terms = self._find_korean_technical_terms(question)
-        compliance_check = self._check_competition_compliance(question)
-        institution_info = self._check_institution_question(question)
-        mc_pattern_info = self._analyze_mc_pattern(question)
+        try:
+            complexity = self._calculate_complexity(question)
+            korean_terms = self._find_korean_technical_terms(question)
+            compliance_check = self._check_competition_compliance(question)
+            institution_info = self._check_institution_question(question)
+            mc_pattern_info = self._analyze_mc_pattern(question)
+        except Exception as e:
+            print(f"질문 분석 중 오류: {e}")
+            complexity = 0.5
+            korean_terms = []
+            compliance_check = {"korean_content": True, "appropriate_domain": True, "no_external_dependency": True}
+            institution_info = {"is_institution_question": False}
+            mc_pattern_info = {"is_mc_question": False}
 
         analysis_result = {
             "domain": detected_domains,
@@ -364,14 +373,17 @@ class KnowledgeBase:
             return False
         
         # 한국어 비율 확인
-        korean_chars = len(re.findall(r"[가-힣]", template))
-        total_chars = len(re.sub(r"[^\w가-힣]", "", template))
-        
-        if total_chars == 0:
-            return False
+        try:
+            korean_chars = len(re.findall(r"[가-힣]", template))
+            total_chars = len(re.sub(r"[^\w가-힣]", "", template))
             
-        korean_ratio = korean_chars / total_chars
-        if korean_ratio < 0.85:
+            if total_chars == 0:
+                return False
+                
+            korean_ratio = korean_chars / total_chars
+            if korean_ratio < 0.85:
+                return False
+        except Exception:
             return False
         
         # 전문 용어 포함 확인
@@ -417,12 +429,15 @@ class KnowledgeBase:
                         score += 1
             
             # 매칭 비율 계산
-            match_ratio = matched_keywords / len(pattern_data["question_keywords"])
-            final_score = score * match_ratio
-            
-            if final_score > best_score and matched_keywords >= 2:
-                best_score = final_score
-                best_match = pattern_data
+            try:
+                match_ratio = matched_keywords / len(pattern_data["question_keywords"])
+                final_score = score * match_ratio
+                
+                if final_score > best_score and matched_keywords >= 2:
+                    best_score = final_score
+                    best_match = pattern_data
+            except ZeroDivisionError:
+                continue
 
         # 최적 매치 힌트 제공
         if best_match and best_score >= 2:
@@ -567,19 +582,22 @@ class KnowledgeBase:
             "hint_available": False,
         }
 
-        for pattern_key, pattern_data in self.mc_answer_patterns.items():
-            keyword_matches = sum(
-                1 for keyword in pattern_data["question_keywords"]
-                if keyword in question_lower
-            )
+        try:
+            for pattern_key, pattern_data in self.mc_answer_patterns.items():
+                keyword_matches = sum(
+                    1 for keyword in pattern_data["question_keywords"]
+                    if keyword in question_lower
+                )
 
-            if keyword_matches >= 2:
-                pattern_info["is_mc_question"] = True
-                pattern_info["pattern_type"] = pattern_key
-                pattern_info["pattern_confidence"] = keyword_matches / len(pattern_data["question_keywords"])
-                pattern_info["pattern_key"] = pattern_key
-                pattern_info["hint_available"] = True
-                break
+                if keyword_matches >= 2:
+                    pattern_info["is_mc_question"] = True
+                    pattern_info["pattern_type"] = pattern_key
+                    pattern_info["pattern_confidence"] = keyword_matches / len(pattern_data["question_keywords"])
+                    pattern_info["pattern_key"] = pattern_key
+                    pattern_info["hint_available"] = True
+                    break
+        except Exception as e:
+            print(f"객관식 패턴 분석 오류: {e}")
 
         return pattern_info
 
@@ -610,10 +628,13 @@ class KnowledgeBase:
         pattern_matches = 0
         matched_patterns = []
         
-        for pattern in institution_patterns:
-            if re.search(pattern, question_lower):
-                pattern_matches += 1
-                matched_patterns.append(pattern)
+        try:
+            for pattern in institution_patterns:
+                if re.search(pattern, question_lower):
+                    pattern_matches += 1
+                    matched_patterns.append(pattern)
+        except Exception as e:
+            print(f"기관 질문 패턴 매칭 오류: {e}")
 
         # 기관 질문으로 판단되는 조건
         is_asking_institution = pattern_matches > 0
@@ -635,17 +656,20 @@ class KnowledgeBase:
             best_match_score = 0
             best_match_type = None
 
-            for inst_type, keywords in institution_mapping.items():
-                keyword_matches = sum(1 for keyword in keywords if keyword in question_lower)
-                match_score = keyword_matches / len(keywords)
-                
-                if match_score > best_match_score:
-                    best_match_score = match_score
-                    best_match_type = inst_type
+            try:
+                for inst_type, keywords in institution_mapping.items():
+                    keyword_matches = sum(1 for keyword in keywords if keyword in question_lower)
+                    match_score = keyword_matches / len(keywords)
+                    
+                    if match_score > best_match_score:
+                        best_match_score = match_score
+                        best_match_type = inst_type
 
-            if best_match_score > 0:
-                institution_info["institution_type"] = best_match_type
-                institution_info["confidence"] = best_match_score
+                if best_match_score > 0:
+                    institution_info["institution_type"] = best_match_type
+                    institution_info["confidence"] = best_match_score
+            except Exception as e:
+                print(f"기관 타입 매칭 오류: {e}")
 
         return institution_info
 
@@ -657,17 +681,23 @@ class KnowledgeBase:
             "no_external_dependency": True,
         }
 
-        korean_chars = len([c for c in question if ord(c) >= 0xAC00 and ord(c) <= 0xD7A3])
-        total_chars = len([c for c in question if c.isalpha()])
+        try:
+            korean_chars = len([c for c in question if ord(c) >= 0xAC00 and ord(c) <= 0xD7A3])
+            total_chars = len([c for c in question if c.isalpha()])
 
-        if total_chars > 0:
-            korean_ratio = korean_chars / total_chars
-            compliance["korean_content"] = korean_ratio > 0.7
+            if total_chars > 0:
+                korean_ratio = korean_chars / total_chars
+                compliance["korean_content"] = korean_ratio > 0.7
+        except Exception:
+            compliance["korean_content"] = True
 
         found_domains = []
-        for domain, keywords in self.domain_keywords.items():
-            if any(keyword in question.lower() for keyword in keywords):
-                found_domains.append(domain)
+        try:
+            for domain, keywords in self.domain_keywords.items():
+                if any(keyword in question.lower() for keyword in keywords):
+                    found_domains.append(domain)
+        except Exception:
+            pass
 
         compliance["appropriate_domain"] = len(found_domains) > 0
 
@@ -675,35 +705,44 @@ class KnowledgeBase:
 
     def _calculate_complexity(self, question: str) -> float:
         """질문 복잡도 계산"""
-        length_factor = min(len(question) / 200, 1.0)
+        try:
+            length_factor = min(len(question) / 200, 1.0)
 
-        korean_term_count = sum(1 for term in self.korean_financial_terms.keys() if term in question)
-        term_factor = min(korean_term_count / 3, 1.0)
+            korean_term_count = sum(1 for term in self.korean_financial_terms.keys() if term in question)
+            term_factor = min(korean_term_count / 3, 1.0)
 
-        domain_count = sum(
-            1 for keywords in self.domain_keywords.values()
-            if any(keyword in question.lower() for keyword in keywords)
-        )
-        domain_factor = min(domain_count / 2, 1.0)
+            domain_count = sum(
+                1 for keywords in self.domain_keywords.values()
+                if any(keyword in question.lower() for keyword in keywords)
+            )
+            domain_factor = min(domain_count / 2, 1.0)
 
-        return (length_factor + term_factor + domain_factor) / 3
+            return (length_factor + term_factor + domain_factor) / 3
+        except Exception:
+            return 0.5
 
     def _find_korean_technical_terms(self, question: str) -> List[str]:
         """한국어 기술용어 탐지"""
         found_terms = []
-        for term in self.korean_financial_terms.keys():
-            if term in question:
-                found_terms.append(term)
+        try:
+            for term in self.korean_financial_terms.keys():
+                if term in question:
+                    found_terms.append(term)
+        except Exception:
+            pass
         return found_terms
 
     def _determine_technical_level(self, complexity: float, korean_terms: List[str]) -> str:
         """기술 수준 결정"""
-        if complexity > 0.7 or len(korean_terms) >= 2:
-            return "고급"
-        elif complexity > 0.4 or len(korean_terms) >= 1:
+        try:
+            if complexity > 0.7 or len(korean_terms) >= 2:
+                return "고급"
+            elif complexity > 0.4 or len(korean_terms) >= 1:
+                return "중급"
+            else:
+                return "초급"
+        except Exception:
             return "중급"
-        else:
-            return "초급"
 
     def cleanup(self):
         """리소스 정리"""

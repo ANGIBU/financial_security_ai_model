@@ -7,6 +7,7 @@ import gc
 import random
 import os
 import unicodedata
+import sys
 from datetime import datetime
 from typing import Dict, Optional, Tuple, List
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
@@ -37,11 +38,16 @@ class ModelHandler:
         self.optimization_config = OPTIMIZATION_CONFIG
 
         # 토크나이저 로드
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_name,
-            trust_remote_code=MODEL_CONFIG["trust_remote_code"],
-            use_fast=MODEL_CONFIG["use_fast_tokenizer"],
-        )
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_name,
+                trust_remote_code=MODEL_CONFIG["trust_remote_code"],
+                use_fast=MODEL_CONFIG["use_fast_tokenizer"],
+                local_files_only=MODEL_CONFIG.get("local_files_only", False),
+            )
+        except Exception as e:
+            print(f"토크나이저 로드 실패: {e}")
+            sys.exit(1)
 
         self._setup_korean_tokenizer()
 
@@ -49,12 +55,17 @@ class ModelHandler:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
         # 모델 로드
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_name,
-            torch_dtype=getattr(torch, MODEL_CONFIG["torch_dtype"]),
-            device_map=MODEL_CONFIG["device_map"],
-            trust_remote_code=MODEL_CONFIG["trust_remote_code"],
-        )
+        try:
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_name,
+                torch_dtype=getattr(torch, MODEL_CONFIG["torch_dtype"]),
+                device_map=MODEL_CONFIG["device_map"],
+                trust_remote_code=MODEL_CONFIG["trust_remote_code"],
+                local_files_only=MODEL_CONFIG.get("local_files_only", False),
+            )
+        except Exception as e:
+            print(f"모델 로드 실패: {e}")
+            sys.exit(1)
 
         self.model.eval()
         self._warmup()
@@ -69,7 +80,11 @@ class ModelHandler:
 
         # 특수 토큰 추가
         special_tokens = ["<korean>", "</korean>"]
-        self.tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
+        try:
+            self.tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
+        except Exception as e:
+            if self.verbose:
+                print(f"특수 토큰 추가 실패: {e}")
 
     def _initialize_data(self):
         """데이터 초기화"""
@@ -161,8 +176,8 @@ class ModelHandler:
             try:
                 actual_char = broken.encode().decode("unicode_escape")
                 self.korean_recovery_mapping[actual_char] = replacement
-            except:
-                pass
+            except Exception:
+                continue
 
         # 기타 매핑 추가
         self.korean_recovery_mapping.update(self.korean_recovery_config["broken_korean_patterns"])
@@ -236,7 +251,10 @@ class ModelHandler:
             text = self.remove_repetitive_patterns(text)
 
         # 유니코드 정규화
-        text = unicodedata.normalize("NFC", text)
+        try:
+            text = unicodedata.normalize("NFC", text)
+        except Exception:
+            pass
 
         # 매핑 테이블 적용
         for broken, correct in self.korean_recovery_mapping.items():
@@ -246,7 +264,10 @@ class ModelHandler:
         for pattern_config in self.korean_quality_patterns:
             pattern = pattern_config["pattern"]
             replacement = pattern_config["replacement"]
-            text = re.sub(pattern, replacement, text)
+            try:
+                text = re.sub(pattern, replacement, text)
+            except Exception:
+                continue
 
         text = re.sub(r"\s+", " ", text).strip()
         return text
@@ -325,7 +346,7 @@ class ModelHandler:
                 add_special_tokens=True,
             )
 
-            if self.device == "cuda":
+            if self.device == "cuda" and torch.cuda.is_available():
                 inputs = inputs.to(self.model.device)
 
             # 생성 설정
@@ -372,8 +393,7 @@ class ModelHandler:
                 return answer
 
         except Exception as e:
-            if self.verbose:
-                print(f"모델 실행 오류: {e}")
+            print(f"모델 실행 오류: {e}")
             return self._get_fallback_answer(question_type, question, max_choice)
 
     def _process_subjective_answer(self, response: str, question: str) -> str:
@@ -476,7 +496,7 @@ class ModelHandler:
         try:
             inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1000)
 
-            if self.device == "cuda":
+            if self.device == "cuda" and torch.cuda.is_available():
                 inputs = inputs.to(self.model.device)
 
             retry_config = GenerationConfig(
@@ -498,7 +518,9 @@ class ModelHandler:
 
             return response
 
-        except Exception:
+        except Exception as e:
+            if self.verbose:
+                print(f"재생성 실패: {e}")
             return None
 
     def generate_contextual_mc_answer(self, question: str, max_choice: int, domain: str) -> str:
@@ -514,7 +536,7 @@ class ModelHandler:
         try:
             inputs = self.tokenizer(simple_prompt, return_tensors="pt", truncation=True, max_length=800)
             
-            if self.device == "cuda":
+            if self.device == "cuda" and torch.cuda.is_available():
                 inputs = inputs.to(self.model.device)
 
             gen_config = GenerationConfig(
@@ -637,15 +659,16 @@ class ModelHandler:
         try:
             test_prompt = "테스트"
             inputs = self.tokenizer(test_prompt, return_tensors="pt")
-            if self.device == "cuda":
+            if self.device == "cuda" and torch.cuda.is_available():
                 inputs = inputs.to(self.model.device)
 
             with torch.no_grad():
                 _ = self.model.generate(**inputs, max_new_tokens=5, do_sample=False, repetition_penalty=1.1)
                 
         except Exception as e:
-            if self.verbose:
-                print(f"워밍업 실패: {e}")
+            print(f"모델 워밍업 실패: {e}")
+            if not torch.cuda.is_available():
+                print("CUDA를 사용할 수 없습니다. CPU 모드로 실행됩니다.")
 
     def cleanup(self):
         """리소스 정리"""
