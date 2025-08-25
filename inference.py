@@ -17,6 +17,7 @@ from config import (
     TIME_LIMITS,
     DEFAULT_FILES,
     FILE_VALIDATION,
+    LOG_DIR,
 )
 
 current_dir = Path(__file__).parent.absolute()
@@ -41,8 +42,6 @@ class FinancialAIInference:
         self.learning_manager = LearningManager()
 
         self.optimization_config = OPTIMIZATION_CONFIG
-
-        print(f"학습 통계: {self.learning_manager.get_learning_stats()}")
 
     def process_single_question(self, question: str, question_id: str) -> str:
         """단일 질문 처리"""
@@ -447,10 +446,12 @@ class FinancialAIInference:
         output_file = output_file or DEFAULT_FILES["output_file"]
         
         print(f"데이터 로드 완료: {len(test_df)}개 문항")
-        print(f"초기 학습 통계: {self.learning_manager.get_learning_stats()}")
 
         answers = []
         total_questions = len(test_df)
+
+        # 학습 통계를 파일로 로그
+        self.learning_manager.log_learning_stats("추론 시작")
 
         with tqdm(total=total_questions, desc="처리 중", unit="문항", 
                  ncols=50, bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}') as pbar:
@@ -467,6 +468,7 @@ class FinancialAIInference:
                 # 주기적으로 학습 데이터 저장
                 if (question_idx + 1) % 100 == 0:
                     self.learning_manager.save_learning_data()
+                    self.learning_manager.log_learning_stats(f"{question_idx + 1}개 문항 처리 완료")
 
                 if (question_idx + 1) % MEMORY_CONFIG["gc_frequency"] == 0:
                     gc.collect()
@@ -478,7 +480,7 @@ class FinancialAIInference:
         self.learning_manager.save_learning_data()
         
         final_stats = self.learning_manager.get_learning_stats()
-        print(f"\n최종 학습 통계: {final_stats}")
+        self.learning_manager.log_learning_stats("추론 완료")
         
         # 학습 분석 보고서 생성
         self.learning_manager.export_analysis()

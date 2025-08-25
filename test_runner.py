@@ -220,22 +220,10 @@ def print_answer_analysis_with_learning_stats(engine, test_df, output_file):
         import pandas as pd
         result_df = pd.read_csv(output_file, encoding=FILE_VALIDATION["encoding"])
         
-        print("\n=== 답변 분석 (학습 통계 포함) ===")
+        print("\n=== 답변 분석 완료 ===")
         
-        # 학습 통계 출력
-        learning_stats = engine.learning_manager.get_learning_stats()
-        print(f"학습 데이터 현황:")
-        print(f"  - 총 시도: {learning_stats['total_attempts']}")
-        print(f"  - 성공: {learning_stats['successful_attempts']}")
-        print(f"  - 실패: {learning_stats['failed_attempts']}")
-        if learning_stats['total_attempts'] > 0:
-            print(f"  - 성공률: {learning_stats['success_rate']:.1%}")
-        
-        # 도메인별 정확도
-        if learning_stats['domain_accuracies']:
-            print(f"도메인별 정확도:")
-            for domain, accuracy in learning_stats['domain_accuracies'].items():
-                print(f"  - {domain}: {accuracy:.1%}")
+        # 학습 통계를 파일로 로그
+        engine.learning_manager.log_learning_stats("답변 분석")
         
         # 현재 테스트 결과 분석
         subjective_count = 0
@@ -264,11 +252,10 @@ def print_answer_analysis_with_learning_stats(engine, test_df, output_file):
                 else:
                     objective_count += 1
         
-        print(f"\n현재 테스트 결과:")
-        print(f"  - 주관식: {subjective_count}개")
-        print(f"  - 객관식: {objective_count}개")
+        # 결과를 파일로 로그
+        engine.learning_manager.log_to_file(f"테스트 결과 - 주관식: {subjective_count}개, 객관식: {objective_count}개")
         if subjective_count > 0:
-            print(f"  - 폴백 답변: {fallback_count}개 ({fallback_count/subjective_count*100:.1f}%)")
+            engine.learning_manager.log_to_file(f"폴백 답변: {fallback_count}개 ({fallback_count/subjective_count*100:.1f}%)")
             
     except Exception as e:
         print(f"답변 분석 중 오류: {e}")
@@ -282,10 +269,8 @@ def print_subjective_answer_analysis_with_learning_stats(engine, test_df, output
         
         print("\n=== 주관식 답변 상세 분석 ===")
         
-        # 학습된 성공 패턴 확인
-        learning_stats = engine.learning_manager.get_learning_stats()
-        if learning_stats['total_attempts'] > 0:
-            print(f"학습 성공률: {learning_stats['success_rate']:.1%}")
+        # 학습 통계를 파일로 로그
+        engine.learning_manager.log_learning_stats("주관식 분석")
         
         template_answers = []
         llm_answers = []
@@ -324,17 +309,19 @@ def print_subjective_answer_analysis_with_learning_stats(engine, test_df, output
         
         total_answers = len(template_answers) + len(llm_answers) + len(fallback_answers)
         
-        print(f"답변 유형 분석:")
-        print(f"  - 특화 템플릿 답변: {len(template_answers)}개 ({len(template_answers)/total_answers*100:.1f}%)")
-        print(f"  - LLM 생성 답변: {len(llm_answers)}개 ({len(llm_answers)/total_answers*100:.1f}%)")
-        print(f"  - 폴백 답변: {len(fallback_answers)}개 ({len(fallback_answers)/total_answers*100:.1f}%)")
+        # 결과를 파일로 로그
+        engine.learning_manager.log_to_file(f"답변 유형 분석:")
+        engine.learning_manager.log_to_file(f"  특화 템플릿: {len(template_answers)}개 ({len(template_answers)/total_answers*100:.1f}%)")
+        engine.learning_manager.log_to_file(f"  LLM 생성: {len(llm_answers)}개 ({len(llm_answers)/total_answers*100:.1f}%)")
+        engine.learning_manager.log_to_file(f"  폴백 답변: {len(fallback_answers)}개 ({len(fallback_answers)/total_answers*100:.1f}%)")
         
         if fallback_answers:
-            print(f"폴백 답변 ID: {', '.join(fallback_answers[:5])}{' 등' if len(fallback_answers) > 5 else ''}")
+            engine.learning_manager.log_to_file(f"폴백 답변 ID: {', '.join(fallback_answers[:5])}{' 등' if len(fallback_answers) > 5 else ''}")
         
-        # 성공률 계산 (폴백이 아닌 답변 기준)
+        # 성공률 계산
         success_answers = len(template_answers) + len(llm_answers)
         success_rate = success_answers / total_answers * 100 if total_answers > 0 else 0
+        engine.learning_manager.log_to_file(f"주관식 성공률: {success_rate:.1f}%")
         print(f"주관식 성공률: {success_rate:.1f}%")
         
         # 도메인별 분석
@@ -348,9 +335,9 @@ def print_subjective_answer_analysis_with_learning_stats(engine, test_df, output
                 domain_counts[domain] = domain_counts.get(domain, 0) + 1
         
         if domain_counts:
-            print(f"도메인별 문항 수:")
+            engine.learning_manager.log_to_file(f"도메인별 문항 수:")
             for domain, count in domain_counts.items():
-                print(f"  - {domain}: {count}개")
+                engine.learning_manager.log_to_file(f"  {domain}: {count}개")
         
         print("분석 완료!")
         
@@ -366,12 +353,12 @@ def print_mc_answer_analysis_with_learning_stats(engine, test_df, output_file):
         
         print("\n=== 객관식 답변 분석 ===")
         
-        # 학습된 객관식 패턴 통계
+        # 학습 통계를 파일로 로그
         mc_patterns = engine.learning_manager.learning_data.get("mc_patterns", {})
         if mc_patterns:
-            print(f"학습된 객관식 패턴: {len(mc_patterns)}개")
+            engine.learning_manager.log_to_file(f"학습된 객관식 패턴: {len(mc_patterns)}개")
             for pattern, data in list(mc_patterns.items())[:3]:
-                print(f"  - {pattern}: {data['count']}회 학습")
+                engine.learning_manager.log_to_file(f"  {pattern}: {data['count']}회 학습")
         
         # 답변 분포 분석
         answer_distribution = {}
@@ -392,14 +379,17 @@ def print_mc_answer_analysis_with_learning_stats(engine, test_df, output_file):
                 if learned_prediction and learned_prediction == answer:
                     pattern_matches += 1
         
-        print(f"답변 분포:")
+        # 결과를 파일로 로그
+        engine.learning_manager.log_to_file(f"답변 분포:")
         for answer_num in sorted(answer_distribution.keys()):
             count = answer_distribution[answer_num]
             percentage = count / len(result_df) * 100
-            print(f"  - {answer_num}번: {count}개 ({percentage:.1f}%)")
+            engine.learning_manager.log_to_file(f"  {answer_num}번: {count}개 ({percentage:.1f}%)")
         
         if len(result_df) > 0:
-            print(f"학습 패턴 매칭률: {pattern_matches/len(result_df)*100:.1f}%")
+            match_rate = pattern_matches/len(result_df)*100
+            engine.learning_manager.log_to_file(f"학습 패턴 매칭률: {match_rate:.1f}%")
+            print(f"학습 패턴 매칭률: {match_rate:.1f}%")
         
         print("객관식 분석 완료!")
         
@@ -414,13 +404,6 @@ def print_specific_id_results(
     print(f"처리 시간: {results['total_time']:.1f}초")
     print(f"결과 파일: {output_file}")
     print(f"처리된 문항: {len(question_ids)}개")
-    
-    # 학습 통계 출력
-    if "learning_stats" in results:
-        learning_stats = results["learning_stats"]
-        print(f"\n학습 통계:")
-        print(f"  - 총 시도: {learning_stats['total_attempts']}")
-        print(f"  - 성공률: {learning_stats['success_rate']:.1%}")
 
 
 def print_multiple_choice_results(
@@ -430,13 +413,6 @@ def print_multiple_choice_results(
     print(f"처리 시간: {results['total_time']:.1f}초")
     print(f"결과 파일: {output_file}")
     print(f"처리된 문항: {len(question_ids)}개")
-    
-    # 학습 통계 출력
-    if "learning_stats" in results:
-        learning_stats = results["learning_stats"]
-        print(f"\n학습 통계:")
-        print(f"  - 총 시도: {learning_stats['total_attempts']}")
-        print(f"  - 성공률: {learning_stats['success_rate']:.1%}")
 
 
 def print_subjective_results(
@@ -446,19 +422,6 @@ def print_subjective_results(
     print(f"처리 시간: {results['total_time']:.1f}초")
     print(f"결과 파일: {output_file}")
     print(f"처리된 문항: {len(question_ids)}개")
-    
-    # 학습 통계 출력
-    if "learning_stats" in results:
-        learning_stats = results["learning_stats"]
-        print(f"\n학습 통계:")
-        print(f"  - 총 시도: {learning_stats['total_attempts']}")
-        print(f"  - 성공률: {learning_stats['success_rate']:.1%}")
-        
-        # 도메인별 정확도
-        if learning_stats.get('domain_accuracies'):
-            print(f"  - 도메인별 정확도:")
-            for domain, accuracy in learning_stats['domain_accuracies'].items():
-                print(f"    {domain}: {accuracy:.1%}")
 
 
 def print_results(results: dict, output_file: str, test_size: int):
@@ -467,17 +430,8 @@ def print_results(results: dict, output_file: str, test_size: int):
     print(f"처리 시간: {total_time_minutes:.1f}분")
     print(f"결과 파일: {output_file}")
     
-    # 학습 통계 출력
     if "learning_stats" in results:
-        learning_stats = results["learning_stats"]
-        print(f"\n학습 통계:")
-        print(f"  - 총 학습 시도: {learning_stats['total_attempts']}")
-        print(f"  - 학습 성공률: {learning_stats['success_rate']:.1%}")
-        
-        if learning_stats.get('domain_accuracies'):
-            print(f"  - 도메인별 학습 정확도:")
-            for domain, accuracy in learning_stats['domain_accuracies'].items():
-                print(f"    {domain}: {accuracy:.1%}")
+        print("학습 통계가 log 폴더의 분석 리포트에 저장되었습니다.")
 
 
 def select_main_test_type():
@@ -515,34 +469,24 @@ def show_learning_statistics():
     """학습 통계 표시"""
     try:
         engine = FinancialAIInference(verbose=False)
-        learning_stats = engine.learning_manager.get_learning_stats()
         
         print("\n=== 현재 학습 통계 ===")
-        print(f"총 학습 시도: {learning_stats['total_attempts']}")
-        print(f"성공한 시도: {learning_stats['successful_attempts']}")
-        print(f"실패한 시도: {learning_stats['failed_attempts']}")
-        if learning_stats['total_attempts'] > 0:
-            print(f"전체 성공률: {learning_stats['success_rate']:.1%}")
         
-        print(f"\n도메인별 학습 정확도:")
-        if learning_stats['domain_accuracies']:
-            for domain, accuracy in learning_stats['domain_accuracies'].items():
-                print(f"  - {domain}: {accuracy:.1%}")
-        else:
-            print("  아직 도메인별 학습 데이터가 없습니다.")
+        # 모든 통계를 파일로 로그
+        engine.learning_manager.log_learning_stats("학습 통계 조회")
         
-        # 객관식 패턴 학습 현황
+        # 객관식 패턴 학습 현황을 파일로 로그
         mc_patterns = engine.learning_manager.learning_data.get("mc_patterns", {})
         if mc_patterns:
-            print(f"\n학습된 객관식 패턴:")
+            engine.learning_manager.log_to_file("학습된 객관식 패턴:")
             for pattern, data in mc_patterns.items():
-                print(f"  - {pattern}: {data['count']}회 학습")
+                engine.learning_manager.log_to_file(f"  {pattern}: {data['count']}회 학습")
         else:
-            print("\n학습된 객관식 패턴이 없습니다.")
+            engine.learning_manager.log_to_file("학습된 객관식 패턴이 없습니다.")
         
         # 학습 분석 리포트 생성
         engine.learning_manager.export_analysis()
-        print("\n학습 분석 리포트가 pkl 폴더에 생성되었습니다.")
+        print("학습 통계가 log 폴더의 분석 리포트에 저장되었습니다.")
         
         engine.cleanup()
         

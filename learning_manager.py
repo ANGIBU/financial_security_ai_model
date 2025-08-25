@@ -9,7 +9,7 @@ from typing import Dict, List, Any
 from datetime import datetime
 import pandas as pd
 
-from config import PKL_DIR, MEMORY_CONFIG
+from config import PKL_DIR, LOG_DIR, MEMORY_CONFIG
 
 
 class LearningManager:
@@ -17,6 +17,9 @@ class LearningManager:
     def __init__(self):
         self.pkl_dir = PKL_DIR
         self.pkl_dir.mkdir(exist_ok=True)
+        
+        self.log_dir = LOG_DIR
+        self.log_dir.mkdir(exist_ok=True)
         
         self.learning_data = {
             "question_analysis": {},
@@ -28,6 +31,7 @@ class LearningManager:
             "quality_scores": {},
         }
         
+        self.session_log = []
         self.load_existing_data()
 
     def load_existing_data(self):
@@ -38,9 +42,9 @@ class LearningManager:
                 with open(learning_file, 'rb') as f:
                     saved_data = pickle.load(f)
                     self.learning_data.update(saved_data)
-                    print(f"기존 학습 데이터 로드: {len(self.learning_data['successful_answers'])}개 성공 답변")
+                    self.log_to_file(f"기존 학습 데이터 로드: {len(self.learning_data['successful_answers'])}개 성공 답변")
         except Exception as e:
-            print(f"학습 데이터 로드 실패: {e}")
+            self.log_to_file(f"학습 데이터 로드 실패: {e}")
 
     def save_learning_data(self):
         """학습 데이터 저장"""
@@ -55,7 +59,13 @@ class LearningManager:
                 json.dump(self._prepare_json_data(), f, ensure_ascii=False, indent=2)
                 
         except Exception as e:
-            print(f"학습 데이터 저장 실패: {e}")
+            self.log_to_file(f"학습 데이터 저장 실패: {e}")
+
+    def log_to_file(self, message: str):
+        """세션 로그에 메시지 추가"""
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        log_entry = f"[{timestamp}] {message}"
+        self.session_log.append(log_entry)
 
     def _prepare_json_data(self) -> Dict:
         """JSON 저장을 위한 데이터 변환"""
@@ -256,14 +266,23 @@ class LearningManager:
     def export_analysis(self, output_file: str = None):
         """학습 분석 결과 내보내기"""
         if not output_file:
-            output_file = self.pkl_dir / f"learning_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            output_file = self.log_dir / f"learning_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         
         stats = self.get_learning_stats()
         
+        # 세션 로그와 통계를 함께 저장
         analysis_text = f"""
 학습 데이터 분석 보고서
 생성 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
+=== 세션 로그 ===
+"""
+        
+        # 세션 로그 추가
+        for log_entry in self.session_log[-50:]:  # 최근 50개 로그만
+            analysis_text += f"{log_entry}\n"
+        
+        analysis_text += f"""
 === 전체 통계 ===
 총 시도 횟수: {stats['total_attempts']}
 성공 횟수: {stats['successful_attempts']}
@@ -283,13 +302,46 @@ class LearningManager:
         
         for pattern, data in self.learning_data["mc_patterns"].items():
             analysis_text += f"{pattern}: {data['count']}회 학습\n"
+            
+        # 최근 성공/실패 답변 샘플
+        analysis_text += f"""
+=== 최근 성공 답변 샘플 (최근 5개) ===
+"""
+        for answer_data in self.learning_data["successful_answers"][-5:]:
+            analysis_text += f"ID: {answer_data.get('question_id', 'N/A')}\n"
+            analysis_text += f"도메인: {answer_data.get('domain', 'N/A')}\n"
+            analysis_text += f"방법: {answer_data.get('method', 'N/A')}\n"
+            analysis_text += f"답변 길이: {answer_data.get('length', 0)}자\n"
+            analysis_text += "---\n"
+            
+        analysis_text += f"""
+=== 최근 실패 답변 샘플 (최근 3개) ===
+"""
+        for answer_data in self.learning_data["failed_answers"][-3:]:
+            analysis_text += f"ID: {answer_data.get('question_id', 'N/A')}\n"
+            analysis_text += f"도메인: {answer_data.get('domain', 'N/A')}\n"
+            analysis_text += f"방법: {answer_data.get('method', 'N/A')}\n"
+            analysis_text += "---\n"
         
         try:
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(analysis_text)
-            print(f"분석 결과 저장: {output_file}")
+            self.log_to_file(f"분석 결과 저장: {output_file}")
         except Exception as e:
-            print(f"분석 결과 저장 실패: {e}")
+            self.log_to_file(f"분석 결과 저장 실패: {e}")
+
+    def log_question_processing(self, question_id: str, question_type: str, domain: str, method: str):
+        """질문 처리 로그"""
+        self.log_to_file(f"처리: {question_id} | 유형: {question_type} | 도메인: {domain} | 방법: {method}")
+        
+    def log_learning_stats(self, context: str = ""):
+        """학습 통계 로그"""
+        stats = self.get_learning_stats()
+        self.log_to_file(f"{context} - 전체 시도: {stats['total_attempts']}, 성공률: {stats['success_rate']:.1%}")
+        
+        if stats['domain_accuracies']:
+            for domain, accuracy in stats['domain_accuracies'].items():
+                self.log_to_file(f"  {domain}: {accuracy:.1%}")
 
     def cleanup(self):
         """리소스 정리"""
