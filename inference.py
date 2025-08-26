@@ -290,7 +290,7 @@ class FinancialAIInference:
             if self.optimization_config.get("pkl_learning_enabled", True):
                 similar_answer = self.learning.get_similar_successful_answer(question, domain, question_type)
                 if similar_answer and len(str(similar_answer).strip()) > 10:
-                    # 한국어 답변 검증 추가
+                    # 한국어 답변 검증
                     if not self.data_processor.detect_english_response(similar_answer):
                         processing_time = time.time() - start_time
                         self.statistics_manager.record_question_processing(
@@ -301,9 +301,7 @@ class FinancialAIInference:
                         self.successful_processing += 1
                         self._update_domain_performance(domain, True)
                         return similar_answer
-                    else:
-                        print(f"학습 데이터에서 영어 답변 발견, 재생성 진행")
-            
+
             # 지식베이스 분석
             try:
                 kb_analysis = self.knowledge_base.analyze_question(question)
@@ -328,15 +326,8 @@ class FinancialAIInference:
             processing_time = time.time() - start_time
             success = answer and len(str(answer).strip()) > 0
 
-            # 한국어 답변 검증 추가
-            if success and question_type == "subjective":
-                if self.data_processor.detect_english_response(answer):
-                    print(f"영어 답변 생성됨, 한국어 대체 답변 사용")
-                    answer = self._get_domain_fallback(question, domain, intent_analysis)
-                    success = answer and len(str(answer).strip()) > 0
-
             # 통계 기록
-            method = "few_shot_llm" if self.optimization_config.get("few_shot_enabled", True) else "enhanced_llm"
+            method = "few_shot_llm" if self.optimization_config.get("few_shot_enabled", True) else "llm_generation"
             self.statistics_manager.record_question_processing(
                 processing_time, domain, method, question_type, success
             )
@@ -400,17 +391,13 @@ class FinancialAIInference:
             # 도메인 힌트 설정
             domain_hints = {"domain": domain}
             
-            # 특별 패턴 처리
+            # 특별 패턴 처리 (객관식만)
             if question_type == "multiple_choice" and self._is_special_mc_pattern(question):
                 special_answer = self._handle_special_mc_pattern(question, max_choice, domain)
                 if special_answer and special_answer.isdigit() and 1 <= int(special_answer) <= max_choice:
                     return special_answer
 
-            # 주관식 영어 답변 방지를 위한 직접 처리
-            if question_type == "subjective":
-                return self._get_direct_korean_answer(question, domain, intent_analysis)
-
-            # LLM 생성 (객관식만)
+            # LLM 생성 호출
             answer = self.model_handler.generate_answer(
                 question=question,
                 question_type=question_type,
@@ -421,58 +408,41 @@ class FinancialAIInference:
                 prompt_enhancer=self.prompt_enhancer
             )
 
-            # 객관식 답변 검증 및 처리
-            if answer and str(answer).isdigit() and 1 <= int(answer) <= max_choice:
-                return str(answer)
+            # 답변 검증 및 처리
+            if question_type == "multiple_choice":
+                if answer and str(answer).isdigit() and 1 <= int(answer) <= max_choice:
+                    return str(answer)
+                else:
+                    return self._get_safe_mc_answer(question, max_choice, domain)
             else:
-                return self._get_safe_mc_answer(question, max_choice, domain)
+                # 주관식 답변 처리
+                if answer and len(str(answer).strip()) > 10:
+                    # 기본 검증만 수행
+                    if not self.data_processor.detect_english_response(answer):
+                        return self._finalize_answer(answer, question, intent_analysis, domain)
+                
+                # 재시도 로직
+                retry_answer = self._retry_subjective_generation(question, domain, intent_analysis)
+                if retry_answer:
+                    return retry_answer
+                
+                # 최종 폴백
+                return self._get_domain_fallback(question, domain, intent_analysis)
 
         except Exception as e:
+            print(f"LLM 답변 생성 오류: {e}")
             return self._get_fallback_answer(question_type, question, max_choice)
 
-    def _retry_mc_generation(self, question: str, max_choice: int, domain: str) -> str:
-        """객관식 재시도"""
-        
-        try:
-            # 문맥 분석
-            context_hints = self.model_handler._analyze_mc_context(question, domain)
-            
-            # 도메인 힌트
-            domain_hints = {
-                "domain": domain,
-                "context_hints": context_hints,
-                "retry_mode": True
-            }
-
-            # 재생성
-            retry_answer = self.model_handler.generate_answer(
-                question=question,
-                question_type="multiple_choice",
-                max_choice=max_choice,
-                intent_analysis=None,
-                domain_hints=domain_hints,
-                knowledge_base=self.knowledge_base,
-                prompt_enhancer=self.prompt_enhancer
-            )
-
-            if retry_answer and str(retry_answer).isdigit() and 1 <= int(retry_answer) <= max_choice:
-                return str(retry_answer)
-
-            # 최종 안전장치
-            return self._get_safe_mc_answer(question, max_choice, domain)
-        except Exception as e:
-            print(f"객관식 재시도 오류: {e}")
-            return self._get_safe_mc_answer(question, max_choice, domain)
-
     def _retry_subjective_generation(self, question: str, domain: str, intent_analysis: Dict) -> str:
-        """주관식 재시도"""
+        """주관식 재시도 생성"""
         
         try:
             # 다른 설정으로 재시도
             domain_hints = {
                 "domain": domain,
                 "retry_mode": True,
-                "simple_mode": True
+                "temperature": 0.4,
+                "top_p": 0.9
             }
 
             retry_answer = self.model_handler.generate_answer(
@@ -486,11 +456,8 @@ class FinancialAIInference:
             )
 
             if retry_answer and len(str(retry_answer).strip()) > 15:
-                # 영어 답변 검증 추가
-                if self.data_processor.detect_english_response(retry_answer):
-                    print(f"재시도에서도 영어 답변 생성됨")
-                    return None
-                else:
+                # 검증 수행
+                if not self.data_processor.detect_english_response(retry_answer):
                     return self._finalize_answer(retry_answer, question, intent_analysis, domain)
 
         except Exception as e:
@@ -529,19 +496,19 @@ class FinancialAIInference:
             
             # 패턴별 정확한 답변
             if "금융투자업" in question_lower and "구분" in question_lower and "해당하지" in question_lower:
-                return "1"  # 소비자금융업
+                return "1"
             elif "위험" in question_lower and "관리" in question_lower and "적절하지" in question_lower:
-                return "2"  # 위험 수용
+                return "2"
             elif "경영진" in question_lower and "중요한" in question_lower:
-                return "2"  # 경영진의 참여
+                return "2"
             elif "한국은행" in question_lower and "자료제출" in question_lower:
-                return "4"  # 통화신용정책
+                return "4"
             elif "만 14세" in question_lower and "개인정보" in question_lower:
-                return "2"  # 법정대리인의 동의
+                return "2"
             elif "SBOM" in question_lower and "활용" in question_lower:
-                return "5"  # 소프트웨어 공급망 보안
+                return "5"
             elif "재해" in question_lower and "복구" in question_lower and "옳지" in question_lower:
-                return "3"  # 개인정보 파기 절차
+                return "3"
             
             return None
         except Exception:
@@ -552,31 +519,31 @@ class FinancialAIInference:
         try:
             question_lower = question.lower()
             
-            # 부정 문제 패턴 (우선순위 적용)
+            # 부정 문제 패턴
             if "해당하지 않는" in question_lower:
                 if "금융투자업" in question_lower:
-                    return "1"  # 소비자금융업
+                    return "1"
                 else:
                     return str(max_choice)
             elif "적절하지 않은" in question_lower or "옳지 않은" in question_lower:
                 if "위험" in question_lower and "관리" in question_lower:
-                    return "2"  # 위험 수용
+                    return "2"
                 elif "재해" in question_lower and "복구" in question_lower:
-                    return "3"  # 개인정보 파기
+                    return "3"
                 else:
                     return str(max_choice)
             
             # 긍정 문제 패턴
             elif "가장 중요한" in question_lower:
                 if "경영진" in question_lower:
-                    return "2"  # 경영진의 참여
+                    return "2"
                 else:
                     return "2"
             elif "가장 적절한" in question_lower:
                 if "한국은행" in question_lower:
-                    return "4"  # 통화신용정책
+                    return "4"
                 elif "SBOM" in question_lower:
-                    return "5"  # 공급망 보안
+                    return "5"
                 else:
                     return "3"
             
@@ -599,7 +566,7 @@ class FinancialAIInference:
         try:
             question_lower = question.lower()
             
-            # 도메인별 맞춤 폴백 (실제 출제 패턴 반영)
+            # 도메인별 맞춤 폴백
             if domain == "사이버보안":
                 if "트로이" in question_lower or "악성코드" in question_lower:
                     return "트로이 목마 기반 원격제어 악성코드는 정상 프로그램으로 위장하여 시스템에 침투하고 외부에서 원격으로 제어하는 특성을 가집니다. 주요 탐지 지표로는 비정상적인 네트워크 통신 패턴, 비인가 프로세스 실행, 파일 시스템 변경 등이 있으며 실시간 모니터링을 통한 종합적 분석이 필요합니다."
@@ -701,9 +668,9 @@ class FinancialAIInference:
                 else:
                     answer = answer[:max_length]
             
-            # 한국어 비율 검증
+            # 한국어 비율 검증 (완화된 기준)
             korean_ratio = self.data_processor.calculate_korean_ratio(answer)
-            if korean_ratio < 0.5:
+            if korean_ratio < 0.3:
                 return self._get_domain_fallback(question, domain, intent_analysis)
             
             # 문장 끝 처리
