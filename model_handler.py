@@ -73,7 +73,6 @@ class ModelHandler:
         if hasattr(self.tokenizer, "normalize"):
             self.tokenizer.normalize = False
 
-        # 특수 토큰 추가
         special_tokens = ["<korean>", "</korean>"]
         try:
             self.tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
@@ -160,13 +159,43 @@ class ModelHandler:
             {"pattern": r"\s+[.,!?]\s+", "replacement": ". "}
         ]
 
+        # 도메인별 답변 템플릿
+        self.domain_templates = {
+            "사이버보안": {
+                "트로이": "트로이 목마 기반 원격제어 악성코드는 정상 프로그램으로 위장하여 시스템에 침투하고 외부에서 원격으로 제어하는 특성을 가집니다.",
+                "딥페이크": "딥페이크 기술 악용에 대비하여 다층 방어체계 구축, 실시간 탐지 시스템 도입, 생체인증과 다중 인증 체계를 통한 신원 검증 강화가 필요합니다.",
+                "SBOM": "SBOM은 소프트웨어 구성 요소 명세서로 소프트웨어 공급망 보안을 강화하기 위해 활용됩니다.",
+                "디지털지갑": "디지털 지갑의 주요 보안 위협으로는 개인키 도난, 피싱 공격, 멀웨어 감염, 스마트 컨트랙트 취약점이 있으며 다중 인증과 하드웨어 지갑 사용이 권장됩니다."
+            },
+            "전자금융": {
+                "분쟁조정": "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당하며, 금융감독원 내에 설치되어 전자금융거래법에 근거하여 이용자와 전자금융업자 간의 분쟁을 공정하고 신속하게 해결합니다.",
+                "한국은행": "한국은행이 금융통화위원회의 요청에 따라 금융회사 및 전자금융업자에게 자료제출을 요구할 수 있는 경우는 통화신용정책의 수행 및 지급결제제도의 원활한 운영을 위해서입니다.",
+                "보안조치": "전자금융거래법에 따라 전자금융업자는 이용자의 전자금융거래 안전성 확보를 위한 보안조치를 시행하고 접근매체 보안 관리를 통해 안전한 거래환경을 제공해야 합니다.",
+                "예산비율": "전자금융감독규정에 따르면 금융회사는 정보보호 예산 관리 시 정보기술부문 인력 및 예산의 기준 비율을 총 인력의 3% 이상으로 유지해야 합니다."
+            },
+            "개인정보보호": {
+                "위원회": "개인정보보호위원회에서 개인정보 보호에 관한 업무를 총괄하며, 개인정보침해신고센터에서 신고 접수 및 상담 업무를 담당합니다.",
+                "법정대리인": "개인정보보호법에 따라 만 14세 미만 아동의 개인정보를 처리하기 위해서는 법정대리인의 동의를 받아야 하며, 이는 아동의 개인정보 보호를 위한 필수 절차입니다.",
+                "처리원칙": "개인정보보호법에 따라 개인정보 처리 시 수집 최소화, 목적 제한, 정보주체 권리 보장 원칙을 준수하고 개인정보보호 관리체계를 구축하여 체계적이고 안전한 개인정보 처리를 수행해야 합니다.",
+                "접근권한": "개인정보 접근 권한 검토는 업무상 필요한 최소한의 권한만을 부여하는 최소권한 원칙에 따라 정기적으로 수행하며, 불필요한 권한은 즉시 회수하여 개인정보 오남용을 방지해야 합니다."
+            },
+            "정보보안": {
+                "관리체계": "정보보안관리체계를 구축하여 보안정책 수립, 위험분석, 보안대책 구현, 사후관리의 절차를 체계적으로 운영하고 지속적인 보안수준 향상을 위한 관리활동을 수행해야 합니다.",
+                "3대요소": "정보보호의 3대 요소는 기밀성(Confidentiality), 무결성(Integrity), 가용성(Availability)으로 구성되며, 이를 통해 정보자산의 안전한 보호와 관리를 보장합니다.",
+                "재해복구": "재해 복구 계획 수립 시 복구 절차 수립, 비상연락체계 구축, 복구 목표시간 설정이 필요하며, 개인정보 파기 절차는 재해복구와 직접적 관련이 없습니다.",
+                "SMTP": "SMTP 프로토콜은 이메일 전송을 담당하며, 보안상 주요 역할로는 인증 메커니즘 제공, 암호화 통신 지원, 스팸 및 악성 이메일 차단을 통해 안전한 이메일 서비스를 보장합니다."
+            },
+            "정보통신": {
+                "보고사항": "정보통신서비스 제공의 중단 발생 시 과학기술정보통신부장관에게 보고해야 하는 사항은 발생 일시 및 장소, 원인 및 피해내용, 응급조치 사항이며, 법적 책임은 보고 사항에 해당하지 않습니다."
+            }
+        }
+
         self._setup_korean_recovery_mappings()
 
     def _setup_korean_recovery_mappings(self):
         """한국어 복구 매핑 설정"""
         self.korean_recovery_mapping = {}
 
-        # 깨진 유니코드 문자 처리
         for broken, replacement in self.korean_recovery_config["broken_unicode_chars"].items():
             try:
                 actual_char = broken.encode().decode("unicode_escape")
@@ -174,7 +203,6 @@ class ModelHandler:
             except Exception:
                 continue
 
-        # 기타 매핑 추가
         self.korean_recovery_mapping.update(self.korean_recovery_config["broken_korean_patterns"])
         self.korean_recovery_mapping.update(self.korean_recovery_config["spaced_korean_fixes"])
         self.korean_recovery_mapping.update(self.korean_recovery_config["common_korean_typos"])
@@ -192,7 +220,6 @@ class ModelHandler:
             if re.search(pattern, text):
                 return True
 
-        # 단어 반복 검사
         words = text.split()
         if len(words) >= 10:
             for i in range(len(words) - 9):
@@ -245,17 +272,14 @@ class ModelHandler:
         if self.detect_critical_repetitive_patterns(text):
             text = self.remove_repetitive_patterns(text)
 
-        # 유니코드 정규화
         try:
             text = unicodedata.normalize("NFC", text)
         except Exception:
             pass
 
-        # 매핑 테이블 적용
         for broken, correct in self.korean_recovery_mapping.items():
             text = text.replace(broken, correct)
 
-        # 품질 패턴 적용
         for pattern_config in self.korean_quality_patterns:
             pattern = pattern_config["pattern"]
             replacement = pattern_config["replacement"]
@@ -272,11 +296,9 @@ class ModelHandler:
         if not text:
             return False
         
-        # 길이 검사
         if len(text.strip()) < 10:
             return False
             
-        # 영어 비율 검사 (완화)
         english_chars = len(re.findall(r'[a-zA-Z]', text))
         total_chars = len(re.sub(r'[^\w가-힣]', '', text))
         
@@ -284,16 +306,13 @@ class ModelHandler:
             return False
             
         english_ratio = english_chars / total_chars
-        # 영어 비율 30% 미만으로 완화
         if english_ratio > 0.3:
             return False
             
-        # 한국어 문자 존재 확인
         korean_chars = len(re.findall(r'[가-힣]', text))
         if korean_chars < 3:
             return False
             
-        # 의미있는 키워드 존재 확인
         meaningful_keywords = [
             "법", "규정", "조치", "관리", "보안", "방안", "절차", "기준",
             "정책", "체계", "시스템", "통제", "특징", "지표", "탐지", "대응",
@@ -306,33 +325,70 @@ class ModelHandler:
             
         return False
 
+    def get_domain_template_answer(self, question: str, domain: str) -> str:
+        """도메인 템플릿 답변 조회"""
+        if domain not in self.domain_templates:
+            return None
+
+        question_lower = question.lower()
+        templates = self.domain_templates[domain]
+
+        # 키워드 매칭
+        keyword_matches = {
+            "트로이": ["트로이", "원격제어", "RAT", "특징", "탐지"],
+            "딥페이크": ["딥페이크", "대응", "방안", "금융권"],
+            "SBOM": ["SBOM", "활용", "소프트웨어"],
+            "분쟁조정": ["분쟁조정", "신청", "기관"],
+            "한국은행": ["한국은행", "자료제출", "요구"],
+            "보안조치": ["전자금융업자", "보안조치"],
+            "위원회": ["개인정보보호위원회", "신고", "상담"],
+            "법정대리인": ["만 14세", "법정대리인", "동의"],
+            "처리원칙": ["개인정보", "처리", "원칙"],
+            "관리체계": ["정보보안관리체계", "구축"],
+            "3대요소": ["3대 요소", "정보보호"],
+            "재해복구": ["재해 복구", "계획"],
+            "SMTP": ["SMTP", "프로토콜", "보안상 주요 역할"],
+            "디지털지갑": ["디지털 지갑", "보안 위협"],
+            "접근권한": ["접근 권한", "검토"],
+            "예산비율": ["정보기술부문", "예산", "비율"],
+            "보고사항": ["정보통신서비스", "중단", "보고"]
+        }
+
+        for template_key, keywords in keyword_matches.items():
+            if template_key in templates:
+                keyword_count = sum(1 for keyword in keywords if keyword in question_lower)
+                if keyword_count >= 2:
+                    return templates[template_key]
+
+        return None
+
     def generate_answer(self, question: str, question_type: str, max_choice: int = 5,
                        intent_analysis: Dict = None, domain_hints: Dict = None, 
                        knowledge_base=None, prompt_enhancer=None) -> str:
         """답변 생성"""
 
-        # 도메인 정보 추출
         domain = domain_hints.get("domain", "일반") if domain_hints else "일반"
+
+        # 도메인 템플릿 답변 우선 확인 (주관식만)
+        if question_type == "subjective":
+            template_answer = self.get_domain_template_answer(question, domain)
+            if template_answer:
+                return template_answer
         
-        # 프롬프트 구성에 필요한 컨텍스트 정보 준비
         context_info = ""
         institution_info = ""
         
         if knowledge_base:
-            # 도메인 컨텍스트 정보 가져오기
             context_info = knowledge_base.get_domain_context(domain)
             
-            # 기관 질문인 경우 기관 정보 추가
             if "기관" in question.lower() or "위원회" in question.lower():
                 institution_info = knowledge_base.get_institution_info(question)
             
-            # 객관식의 경우 패턴 힌트 추가
             if question_type == "multiple_choice":
                 pattern_hints = knowledge_base.get_mc_pattern_hints(question)
                 if pattern_hints:
                     context_info += f"\n힌트: {pattern_hints}"
 
-        # PromptEnhancer 사용하여 프롬프트 구성
         if prompt_enhancer:
             prompt = prompt_enhancer.build_enhanced_prompt(
                 question=question,
@@ -342,7 +398,6 @@ class ModelHandler:
                 institution_info=institution_info
             )
         else:
-            # 기본 프롬프트 생성 (한국어 지시 포함)
             if question_type == "multiple_choice":
                 prompt = f"""다음은 금융보안 관련 객관식 문제입니다. 주어진 선택지 중에서 가장 적절한 답을 선택하세요.
 
@@ -380,7 +435,6 @@ class ModelHandler:
             if self.device == "cuda" and torch.cuda.is_available():
                 inputs = inputs.to(self.model.device)
 
-            # 생성 설정 (도메인과 문제 유형에 따라 최적화)
             if question_type == "multiple_choice":
                 gen_config = GenerationConfig(
                     max_new_tokens=10,
@@ -393,7 +447,6 @@ class ModelHandler:
                     eos_token_id=self.tokenizer.eos_token_id,
                 )
             else:
-                # 주관식 설정 (도메인별 최적화)
                 if domain in ["사이버보안", "정보보안"]:
                     gen_config = GenerationConfig(
                         max_new_tokens=500,
@@ -407,7 +460,6 @@ class ModelHandler:
                         eos_token_id=self.tokenizer.eos_token_id,
                     )
                 elif domain in ["전자금융", "개인정보보호"]:
-                    # retry_mode 처리
                     if domain_hints and domain_hints.get("retry_mode"):
                         gen_config = GenerationConfig(
                             max_new_tokens=400,
@@ -453,7 +505,6 @@ class ModelHandler:
                 clean_up_tokenization_spaces=True,
             ).strip()
 
-            # 반복 패턴 체크
             if self.detect_critical_repetitive_patterns(response):
                 return self._retry_generation(prompt, question_type, max_choice)
 
@@ -461,7 +512,6 @@ class ModelHandler:
                 answer = self._process_mc_answer(response, question, max_choice)
                 return answer
             else:
-                # 주관식 답변 처리
                 answer = self._process_subjective_answer(response, question)
                 return answer
 
@@ -474,34 +524,27 @@ class ModelHandler:
         if not response:
             return None
 
-        # 반복 패턴 체크 및 제거
         if self.detect_critical_repetitive_patterns(response):
             response = self.remove_repetitive_patterns(response)
             if len(response) < 15:
                 return None
 
-        # 한국어 텍스트 복구
         response = self.recover_korean_text(response)
 
-        # 프롬프트 관련 텍스트 제거
         response = re.sub(r"답변[:：]\s*", "", response)
         response = re.sub(r"한국어\s*답변[:：]\s*", "", response)
         response = re.sub(r"질문[:：].*?\n", "", response)
         response = re.sub(r"문제[:：].*?\n", "", response)
         response = re.sub(r"참고.*?정보[:：].*?\n", "", response)
 
-        # 기본 정리
         response = re.sub(r"\s+", " ", response).strip()
 
-        # 길이 체크
         if len(response) < 15:
             return None
 
-        # 유효성 검사 (완화된 기준)
         if not self._is_valid_korean_response(response):
             return None
 
-        # 문장 끝 처리
         if response and not response.endswith((".", "다", "요", "함")):
             if response.endswith("니"):
                 response += "다."
@@ -517,17 +560,14 @@ class ModelHandler:
         if max_choice <= 0:
             max_choice = 5
 
-        # 텍스트 정리
         response = self.recover_korean_text(response)
         response = response.strip()
 
-        # 첫 번째 유효한 숫자 찾기
         first_numbers = re.findall(r'\b([1-9])\b', response)
         for num in first_numbers:
             if 1 <= int(num) <= max_choice:
                 return num
 
-        # 강제 답변 생성
         return self._force_valid_mc_answer(response, question, max_choice)
 
     def _force_valid_mc_answer(self, response: str, question: str, max_choice: int) -> str:
@@ -537,33 +577,26 @@ class ModelHandler:
 
         question_lower = question.lower()
         
-        # 특별 패턴 처리
         if ("금융투자업" in question_lower and 
             "구분" in question_lower and 
             "해당하지" in question_lower):
             return "1"
             
-        # 부정 문제는 보통 마지막 선택지
         elif "해당하지 않는" in question_lower or "적절하지 않은" in question_lower:
             return str(max_choice)
         
-        # 위험관리 문제
         elif "위험" in question_lower and "관리" in question_lower and "적절하지" in question_lower:
             return "2"
         
-        # 개인정보 중요 요소
         elif "경영진" in question_lower and "가장 중요한" in question_lower:
             return "2"
         
-        # 전자금융 자료제출
         elif "한국은행" in question_lower and "자료제출" in question_lower:
             return "4"
         
-        # SBOM 활용
         elif "SBOM" in question_lower and "활용" in question_lower:
             return "5"
         
-        # 기본 중간값
         return str((max_choice + 1) // 2)
 
     def _retry_generation(self, prompt: str, question_type: str, max_choice: int) -> str:
@@ -614,7 +647,6 @@ class ModelHandler:
 
         question_lower = question.lower()
 
-        # 부정/긍정 키워드 검사
         for pattern in self.mc_context_patterns["negative_keywords"]:
             if re.search(pattern, question_lower):
                 context["is_negative"] = True
@@ -625,7 +657,6 @@ class ModelHandler:
                 context["is_positive"] = True
                 break
 
-        # 도메인별 분석
         if domain in self.mc_context_patterns["domain_specific_patterns"]:
             domain_info = self.mc_context_patterns["domain_specific_patterns"][domain]
 

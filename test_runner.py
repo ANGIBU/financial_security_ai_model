@@ -22,7 +22,6 @@ def run_test(test_size: int = None, verbose: bool = True):
         test_file = DEFAULT_FILES["test_file"]
         submission_file = DEFAULT_FILES["submission_file"]
 
-        # 파일 존재 확인
         missing_files = []
         for name, file_path in [("test", test_file), ("submission", submission_file)]:
             if not Path(file_path).exists():
@@ -40,7 +39,6 @@ def run_test(test_size: int = None, verbose: bool = True):
 
             import pandas as pd
 
-            # 데이터 로드
             try:
                 test_df = pd.read_csv(test_file, encoding=FILE_VALIDATION["encoding"])
                 submission_df = pd.read_csv(submission_file, encoding=FILE_VALIDATION["encoding"])
@@ -66,7 +64,6 @@ def run_test(test_size: int = None, verbose: bool = True):
                 output_file = DEFAULT_FILES["test_output_file"]
                 results = engine.execute_inference(test_file, submission_file, output_file)
 
-            # 간단 결과 출력
             print_results(results, output_file, test_size)
 
             return True
@@ -101,7 +98,6 @@ def run_comprehensive_test(test_size: int):
         test_file = DEFAULT_FILES["test_file"]
         submission_file = DEFAULT_FILES["submission_file"]
 
-        # 파일 존재 확인
         missing_files = []
         for name, file_path in [("test", test_file), ("submission", submission_file)]:
             if not Path(file_path).exists():
@@ -132,7 +128,6 @@ def run_comprehensive_test(test_size: int):
 
             print(f"데이터 로드 완료: {len(test_df)}개 문항")
 
-            # 지정된 문항 수만큼 처리
             if len(test_df) > test_size:
                 comprehensive_test_df = test_df.head(test_size).copy()
                 comprehensive_submission_df = submission_df.head(test_size).copy()
@@ -145,7 +140,6 @@ def run_comprehensive_test(test_size: int):
                 comprehensive_test_df, comprehensive_submission_df, output_file
             )
 
-            # 간단 결과 출력
             print_comprehensive_results(results, output_file, len(comprehensive_test_df))
 
             return True
@@ -177,7 +171,6 @@ def run_question_type_test(question_type: str, test_size: int):
         test_file = DEFAULT_FILES["test_file"]
         submission_file = DEFAULT_FILES["submission_file"]
 
-        # 파일 존재 확인
         missing_files = []
         for name, file_path in [("test", test_file), ("submission", submission_file)]:
             if not Path(file_path).exists():
@@ -220,7 +213,6 @@ def run_question_type_test(question_type: str, test_size: int):
                     detected_type, max_choice = engine.data_processor.extract_choice_range(question)
                     detected_domain = engine.data_processor.extract_domain(question)
                     
-                    # 도메인 카운트 추적
                     if detected_domain not in domain_counts:
                         domain_counts[detected_domain] = {"total": 0, "selected": 0}
                     domain_counts[detected_domain]["total"] += 1
@@ -234,22 +226,21 @@ def run_question_type_test(question_type: str, test_size: int):
                         type_questions.append(question_id)
                         domain_counts[detected_domain]["selected"] += 1
 
-                    if len(type_indices) >= test_size:
+                    if test_size != "전체" and len(type_indices) >= test_size:
                         break
                 except Exception as e:
                     print(f"질문 타입 분석 오류 ({question_id}): {e}")
                     continue
 
             if len(type_indices) == 0:
-                print(f"{question_type} 문항을 찾을 수 없어 처음 {test_size}개 문항으로 대체합니다.")
-                type_indices = list(range(min(test_size, len(test_df))))
+                print(f"{question_type} 문항을 찾을 수 없어 처음 {test_size if test_size != '전체' else 50}개 문항으로 대체합니다.")
+                type_indices = list(range(min(test_size if test_size != "전체" else 50, len(test_df))))
                 type_questions = test_df.iloc[type_indices]["ID"].tolist()
 
-            if len(type_indices) > test_size:
+            if test_size != "전체" and len(type_indices) > test_size:
                 type_indices = type_indices[:test_size]
                 type_questions = type_questions[:test_size]
 
-            # 도메인 분포 출력
             if domain_counts:
                 print(f"\n{question_type} 문항 도메인 분포:")
                 for domain, counts in domain_counts.items():
@@ -265,7 +256,6 @@ def run_question_type_test(question_type: str, test_size: int):
                 type_test_df, type_submission_df, output_file
             )
 
-            # 간단 결과 출력
             if question_type == "주관식":
                 print_subjective_results(results, output_file, len(type_indices))
             else:
@@ -300,7 +290,6 @@ def run_domain_test(domain_name: str, test_size: int):
         test_file = DEFAULT_FILES["test_file"]
         submission_file = DEFAULT_FILES["submission_file"]
 
-        # 파일 존재 확인
         missing_files = []
         for name, file_path in [("test", test_file), ("submission", submission_file)]:
             if not Path(file_path).exists():
@@ -549,11 +538,19 @@ def select_question_count(test_type: str):
     print(f"\n{test_type} 테스트 문항 수를 선택하세요:")
 
     if test_type == "주관식":
-        options = {"1": 1, "2": 2, "3": 4, "4": 10}
+        options = {"1": 1, "2": 2, "3": 4, "4": 10, "5": "전체"}
         print("1. 1문항")
         print("2. 2문항")
         print("3. 4문항")
         print("4. 10문항")
+        print("5. 전체 테스트")
+    elif test_type == "객관식":
+        options = {"1": 5, "2": 10, "3": 50, "4": 100, "5": "전체"}
+        print("1. 5문항")
+        print("2. 10문항")
+        print("3. 50문항")
+        print("4. 100문항")
+        print("5. 전체 테스트")
     elif test_type == "종합":
         options = {"1": 5, "2": 8, "3": 50, "4": 100}
         print("1. 5문항")
@@ -577,12 +574,15 @@ def select_question_count(test_type: str):
 
     while True:
         try:
-            choice = input("선택 (1-4): ").strip()
+            choice = input("선택 (1-5): ").strip()
 
             if choice in options:
                 return options[choice]
             else:
-                print("잘못된 선택입니다. 1, 2, 3, 4 중 하나를 입력하세요.")
+                if test_type in ["주관식", "객관식"]:
+                    print("잘못된 선택입니다. 1, 2, 3, 4, 5 중 하나를 입력하세요.")
+                else:
+                    print("잘못된 선택입니다. 1, 2, 3, 4 중 하나를 입력하세요.")
 
         except KeyboardInterrupt:
             print("\n프로그램을 종료합니다.")
@@ -612,7 +612,10 @@ def main():
                 sys.exit(1)
         else:
             question_count = select_question_count(test_type)
-            print(f"\n{test_type} {question_count}문항 테스트를 실행합니다...")
+            if question_count == "전체":
+                print(f"\n{test_type} 전체 테스트를 실행합니다...")
+            else:
+                print(f"\n{test_type} {question_count}문항 테스트를 실행합니다...")
             success = run_question_type_test(test_type, question_count)
             if not success:
                 sys.exit(1)
