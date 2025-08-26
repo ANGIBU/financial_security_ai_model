@@ -887,7 +887,6 @@ def main():
 
     engine = None
     try:
-        print("금융보안 AI 모델 시작")
         engine = FinancialAIInference(verbose=False)
 
         results = engine.execute_inference()
