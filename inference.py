@@ -478,7 +478,9 @@ class FinancialAIInference:
                 ("한국은행", "자료제출", "요구"),
                 ("만 14세", "개인정보", "동의"),
                 ("SBOM", "활용", "이유"),
-                ("재해", "복구", "옳지")
+                ("재해", "복구", "옳지"),
+                ("딥페이크", "대응", "적절한"),
+                ("정보통신서비스", "보고", "옳지")
             ]
             
             for pattern in special_patterns:
@@ -509,6 +511,10 @@ class FinancialAIInference:
                 return "5"
             elif "재해" in question_lower and "복구" in question_lower and "옳지" in question_lower:
                 return "3"
+            elif "딥페이크" in question_lower and "대응" in question_lower and "적절한" in question_lower:
+                return "2"
+            elif "정보통신서비스" in question_lower and "보고" in question_lower and "옳지" in question_lower:
+                return "2"
             
             return None
         except Exception:
@@ -530,6 +536,8 @@ class FinancialAIInference:
                     return "2"
                 elif "재해" in question_lower and "복구" in question_lower:
                     return "3"
+                elif "정보통신서비스" in question_lower and "보고" in question_lower:
+                    return "2"
                 else:
                     return str(max_choice)
             
@@ -544,6 +552,8 @@ class FinancialAIInference:
                     return "4"
                 elif "SBOM" in question_lower:
                     return "5"
+                elif "딥페이크" in question_lower:
+                    return "2"
                 else:
                     return "3"
             
@@ -554,7 +564,8 @@ class FinancialAIInference:
                 "개인정보보호": "2",
                 "전자금융": "4",
                 "사이버보안": "5",
-                "정보보안": "3"
+                "정보보안": "3",
+                "정보통신": "2"
             }
             
             return domain_defaults.get(domain, str((max_choice + 1) // 2))
@@ -582,6 +593,8 @@ class FinancialAIInference:
                     return "전자금융분쟁조정위원회에서 전자금융거래 관련 분쟁조정 업무를 담당하며, 금융감독원 내에 설치되어 전자금융거래법에 근거하여 이용자와 전자금융업자 간의 분쟁을 공정하고 신속하게 해결합니다."
                 elif "한국은행" in question_lower:
                     return "한국은행이 금융통화위원회의 요청에 따라 금융회사 및 전자금융업자에게 자료제출을 요구할 수 있는 경우는 통화신용정책의 수행 및 지급결제제도의 원활한 운영을 위해서입니다."
+                elif "비율" in question_lower and "정보기술부문" in question_lower:
+                    return "전자금융감독규정 제16조에 따라 금융회사는 정보기술부문 인력을 총 인력의 5% 이상, 정보기술부문 예산을 총 예산의 7% 이상 정보보호 업무에 배정해야 합니다. 다만 회사 규모, 업무 특성, 정보기술 위험수준 등에 따라 금융감독원장이 별도로 정할 수 있습니다."
                 else:
                     return "전자금융거래법에 따라 전자금융업자는 이용자의 전자금융거래 안전성 확보를 위한 보안조치를 시행하고 접근매체 보안 관리를 통해 안전한 거래환경을 제공해야 합니다."
                     
@@ -604,6 +617,12 @@ class FinancialAIInference:
                 
             elif domain == "위험관리":
                 return "위험관리 체계를 구축하여 위험식별, 위험평가, 위험대응, 위험모니터링의 단계별 절차를 수립하고 내부통제시스템을 통해 체계적인 위험관리를 수행해야 합니다."
+                
+            elif domain == "정보통신":
+                if "보고" in question_lower:
+                    return "정보통신서비스 제공의 중단 발생 시 과학기술정보통신부장관에게 보고해야 하는 사항은 발생 일시 및 장소, 원인 및 피해내용, 응급조치 사항이며, 법적 책임은 보고 사항에 해당하지 않습니다."
+                else:
+                    return "정보통신기반 보호법에 따라 체계적이고 전문적인 관리 방안을 수립하여 지속적으로 운영해야 합니다."
                 
             else:
                 return "관련 법령과 규정에 따라 체계적이고 전문적인 관리 방안을 수립하여 지속적으로 운영해야 합니다."
@@ -645,7 +664,8 @@ class FinancialAIInference:
                 "개인정보보호": 450,
                 "정보보안": 400,
                 "위험관리": 400,
-                "금융투자": 350
+                "금융투자": 350,
+                "정보통신": 350
             }
             
             max_length = max_lengths.get(domain, 500)

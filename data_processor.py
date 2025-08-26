@@ -16,14 +16,22 @@ class DataProcessor:
     def _initialize_data(self):
         """데이터 초기화"""
         
-        # 객관식 패턴
-        self.mc_patterns = [
-            r"1\s+[가-힣\w].*\n2\s+[가-힣\w].*\n3\s+[가-힣\w]",
-            r"①.*②.*③.*④.*⑤",
-            r"1\s+[가-힣].*2\s+[가-힣].*3\s+[가-힣].*4\s+[가-힣].*5\s+[가-힣]",
-            r"1\s+.*2\s+.*3\s+.*4\s+.*5\s+",
-            r"1\.\s*.*2\.\s*.*3\.\s*.*4\.\s*.*5\.",
-            r"1\)\s*.*2\)\s*.*3\)\s*.*4\)\s*.*5\)"
+        # 객관식 확실한 패턴
+        self.definitive_mc_patterns = [
+            r"1\s+[가-힣\w].*\n2\s+[가-힣\w].*\n3\s+[가-힣\w].*\n4\s+[가-힣\w].*\n5\s+[가-힣\w]",
+            r"1\s+[가-힣\w].*2\s+[가-힣\w].*3\s+[가-힣\w].*4\s+[가-힣\w].*5\s+[가-힣\w]",
+            r"1\)\s*[가-힣\w].*2\)\s*[가-힣\w].*3\)\s*[가-힣\w].*4\)\s*[가-힣\w].*5\)\s*[가-힣\w]",
+            r"1\.\s*[가-힣\w].*2\.\s*[가-힣\w].*3\.\s*[가-힣\w].*4\.\s*[가-힣\w].*5\.\s*[가-힣\w]",
+            r"①.*②.*③.*④.*⑤"
+        ]
+
+        # 주관식 확실한 패턴
+        self.definitive_subj_patterns = [
+            r"설명하세요$", r"기술하세요$", r"서술하세요$", r"작성하세요$",
+            r".*설명하세요\.$", r".*기술하세요\.$", r".*서술하세요\.$",
+            r".*을\s*설명하세요", r".*를\s*설명하세요", r".*을\s*기술하세요", r".*를\s*기술하세요",
+            r".*방안을\s*기술하세요", r".*절차를\s*설명하세요", r".*특징.*설명하세요",
+            r".*지표.*설명하세요", r".*기관.*기술하세요"
         ]
 
         # 객관식 키워드
@@ -99,7 +107,7 @@ class DataProcessor:
             ],
             "비율_묻기": [
                 "비율.*얼마", "기준.*비율", "비율.*무엇", "몇.*퍼센트", "어느.*정도",
-                "기준.*얼마"
+                "기준.*얼마", "비율은.*얼마인가요", "기준.*비율.*얼마", "정보기술부문.*비율"
             ]
         }
 
@@ -165,7 +173,7 @@ class DataProcessor:
                 "요청", "요구", "경우", "보안", "통계조사", "경영", "운영",
                 "전자금융업자", "보안시스템", "거래", "손해", "과실",
                 "접근매체", "부정거래", "이용", "승인", "기록", "정보보호", "예산",
-                "정보기술부문", "인력", "전자금융감독규정"
+                "정보기술부문", "인력", "전자금융감독규정", "비율"
             ],
             "사이버보안": [
                 "트로이", "악성코드", "멀웨어", "바이러스", "피싱", "스미싱", "랜섬웨어",
@@ -227,149 +235,135 @@ class DataProcessor:
 
     def extract_choice_range(self, question: str) -> Tuple[str, int]:
         """선택지 범위 추출"""
-        # 먼저 주관식 패턴으로 확실히 판별
-        question_type = self.analyze_question_type(question)
         
-        if question_type == "subjective":
+        # 1단계: 주관식 확실한 패턴 검사
+        for pattern in self.definitive_subj_patterns:
+            try:
+                if re.search(pattern, question, re.IGNORECASE):
+                    return "subjective", 0
+            except Exception:
+                continue
+        
+        # 2단계: 객관식 확실한 패턴 검사
+        for pattern in self.definitive_mc_patterns:
+            try:
+                if re.search(pattern, question, re.DOTALL | re.MULTILINE):
+                    return self._extract_mc_choice_count(question)
+            except Exception:
+                continue
+
+        # 3단계: 선택지 개수 기반 검사
+        choice_count = self._count_valid_choices(question)
+        if choice_count >= 4:
+            return "multiple_choice", choice_count
+
+        # 4단계: 키워드 기반 판별
+        question_type = self._analyze_by_keywords(question)
+        if question_type == "multiple_choice":
+            return "multiple_choice", max(choice_count, 5)
+        elif question_type == "subjective":
             return "subjective", 0
 
-        # 객관식인 경우 선택지 개수 파악
+        # 5단계: 최종 판별
+        return self._final_type_determination(question, choice_count)
+
+    def _extract_mc_choice_count(self, question: str) -> Tuple[str, int]:
+        """객관식 선택지 개수 추출"""
         lines = question.split("\n")
         choice_numbers = []
-        choice_contents = {}
 
-        # 선택지 패턴 검사
         for line in lines:
             line = line.strip()
             
             # 기본 숫자 패턴
-            match = re.match(r"^(\d+)\s+(.+)", line)
-            if match:
-                try:
-                    num = int(match.group(1))
-                    content = match.group(2).strip()
-                    if 1 <= num <= 5 and len(content) > 0:
-                        choice_numbers.append(num)
-                        choice_contents[num] = content
-                except ValueError:
-                    continue
+            patterns = [r"^(\d+)\s+(.+)", r"^(\d+)\)\s*(.+)", r"^(\d+)\.\s*(.+)"]
             
-            # 다른 패턴들도 검사
-            for pattern in [r"^(\d+)\)\s*(.+)", r"^(\d+)\.\s*(.+)"]:
+            for pattern in patterns:
                 match = re.match(pattern, line)
                 if match:
                     try:
                         num = int(match.group(1))
                         content = match.group(2).strip()
-                        if 1 <= num <= 5 and len(content) > 0:
+                        if 1 <= num <= 5 and len(content) >= 2:
                             choice_numbers.append(num)
-                            choice_contents[num] = content
+                            break
                     except ValueError:
                         continue
 
         if choice_numbers:
             choice_numbers.sort()
             max_choice = max(choice_numbers)
-            min_choice = min(choice_numbers)
-
-            # 연속성 검사
-            expected_count = max_choice - min_choice + 1
-            if (len(set(choice_numbers)) == expected_count and 
-                min_choice == 1 and max_choice >= 3):
-                
-                # 선택지 내용 품질 검사
-                valid_choices = 0
-                for num in choice_numbers:
-                    if num in choice_contents:
-                        content = choice_contents[num]
-                        if len(content) >= 3 and not content.isdigit():
-                            valid_choices += 1
-                
-                if valid_choices >= 3:
-                    return "multiple_choice", max_choice
-
-        # 패턴 기반 검사
-        for i in range(5, 2, -1):
-            pattern_parts = [f"{j}\\s+[가-힣\\w]{{2,}}" for j in range(1, i + 1)]
-            pattern = ".*".join(pattern_parts)
-            try:
-                if re.search(pattern, question, re.DOTALL):
-                    return "multiple_choice", i
-            except Exception:
-                continue
+            if len(set(choice_numbers)) >= 3 and max_choice <= 5:
+                return "multiple_choice", max_choice
 
         return "multiple_choice", 5
 
-    def analyze_question_type(self, question: str) -> str:
-        """질문 유형 분석"""
-        question = question.strip()
+    def _count_valid_choices(self, question: str) -> int:
+        """유효한 선택지 개수 계산"""
+        lines = question.split("\n")
+        valid_choices = 0
+        found_numbers = set()
 
-        # 주관식 패턴 확실한 검사
-        for pattern in self.subj_patterns:
-            try:
-                if re.search(pattern, question, re.IGNORECASE):
-                    return "subjective"
-            except Exception:
-                continue
-
-        # 명확한 주관식 키워드
-        subjective_keywords = ["설명하세요", "기술하세요", "서술하세요", "작성하세요"]
-        if any(keyword in question for keyword in subjective_keywords):
-            return "subjective"
-
-        # 선택지 패턴 검사 
-        try:
-            choice_patterns = [
-                r"\n(\d+)\s+[가-힣\w]{2,}",
-                r"\n(\d+)\)\s*[가-힣\w]{2,}",
-                r"\n(\d+)\.\s*[가-힣\w]{2,}"
-            ]
+        for line in lines:
+            line = line.strip()
             
-            for pattern in choice_patterns:
-                choice_matches = re.findall(pattern, question)
-                if len(choice_matches) >= 3:
-                    choice_nums = []
+            patterns = [r"^(\d+)\s+[가-힣\w]{2,}", r"^(\d+)\)\s*[가-힣\w]{2,}", r"^(\d+)\.\s*[가-힣\w]{2,}"]
+            
+            for pattern in patterns:
+                match = re.match(pattern, line)
+                if match:
                     try:
-                        choice_nums = [int(match) for match in choice_matches]
-                        choice_nums.sort()
-                        if (choice_nums[0] == 1 and 
-                            len(choice_nums) == choice_nums[-1] and 
-                            choice_nums[-1] <= 5):
-                            return "multiple_choice"
+                        num = int(match.group(1))
+                        if 1 <= num <= 5 and num not in found_numbers:
+                            valid_choices += 1
+                            found_numbers.add(num)
+                            break
                     except ValueError:
                         continue
-        except Exception:
-            pass
 
-        # 키워드 기반 검사
-        mc_score = 0
-        for pattern in self.mc_keywords:
-            try:
-                if re.search(pattern, question, re.IGNORECASE):
-                    mc_score += 1
-                    if mc_score >= 1 and len(re.findall(r'\b[1-5]\s+[가-힣\w]', question)) >= 3:
-                        return "multiple_choice"
-            except Exception:
-                continue
+        return valid_choices
 
-        # 패턴 기반 검사
-        for pattern in self.mc_patterns:
-            try:
-                if re.search(pattern, question, re.DOTALL | re.MULTILINE):
-                    return "multiple_choice"
-            except Exception:
-                continue
+    def _analyze_by_keywords(self, question: str) -> str:
+        """키워드 기반 분석"""
+        question_lower = question.lower()
 
-        # 문제 끝 패턴 기반 판별
-        try:
-            if (len(question) < 500 and 
-                re.search(r"것은\?|것\?|것은\s*$|무엇인가\?", question) and 
-                len(re.findall(r"\b[1-5]\s+[가-힣\w]{2,}", question)) >= 4):
-                return "multiple_choice"
-        except Exception:
-            pass
+        # 주관식 강한 키워드
+        strong_subj_keywords = ["설명하세요", "기술하세요", "서술하세요", "방안을 기술하세요"]
+        if any(keyword in question_lower for keyword in strong_subj_keywords):
+            return "subjective"
 
-        return "subjective"
+        # 객관식 강한 키워드
+        strong_mc_keywords = ["해당하지 않는 것", "적절하지 않은 것", "가장 적절한 것"]
+        if any(keyword in question_lower for keyword in strong_mc_keywords):
+            return "multiple_choice"
+
+        return "unknown"
+
+    def _final_type_determination(self, question: str, choice_count: int) -> Tuple[str, int]:
+        """최종 유형 결정"""
+        question_lower = question.lower()
+
+        # 질문 끝 패턴으로 판별
+        if re.search(r"것은\?$|것\?$|무엇인가\?$", question_lower):
+            if choice_count >= 3:
+                return "multiple_choice", max(choice_count, 5)
+        
+        # 길이 기반 추가 판별
+        if len(question) < 200 and choice_count >= 3:
+            return "multiple_choice", choice_count
+        elif len(question) > 300 and any(word in question_lower for word in ["설명", "기술", "서술"]):
+            return "subjective", 0
+
+        # 기본값
+        if choice_count >= 3:
+            return "multiple_choice", max(choice_count, 5)
+        else:
+            return "subjective", 0
+
+    def analyze_question_type(self, question: str) -> str:
+        """질문 유형 분석"""
+        question_type, _ = self.extract_choice_range(question)
+        return question_type
 
     def extract_domain(self, question: str) -> str:
         """도메인 추출"""
@@ -387,7 +381,8 @@ class DataProcessor:
                         "전자금융분쟁조정위원회", "개인정보보호위원회", 
                         "만 14세", "법정대리인", "위험 관리", "금융투자업",
                         "재해 복구", "접근통제", "암호화", "디지털 지갑",
-                        "SMTP", "정보보호", "3대 요소", "정보통신시설"
+                        "SMTP", "정보보호", "3대 요소", "정보통신시설",
+                        "정보기술부문", "비율"
                     ]:
                         score += 8
                     elif keyword in [
@@ -421,7 +416,7 @@ class DataProcessor:
             if any(keyword in question_lower for keyword in privacy_keywords):
                 return "개인정보보호"
         elif detected_domain == "전자금융":
-            finance_keywords = ["전자금융", "분쟁조정", "한국은행", "금융감독원", "자료제출", "통화신용정책", "정보기술부문", "예산"]
+            finance_keywords = ["전자금융", "분쟁조정", "한국은행", "금융감독원", "자료제출", "통화신용정책", "정보기술부문", "예산", "비율"]
             if any(keyword in question_lower for keyword in finance_keywords):
                 return "전자금융"
         elif detected_domain == "정보보안":
@@ -486,8 +481,8 @@ class DataProcessor:
                 "방안_묻기": ["방안", "대책", "해결", "대응", "어떻게", "조치", "예방", "보안"],
                 "절차_묻기": ["절차", "과정", "단계", "순서", "프로세스", "동의", "신고", "어떻게", "수행"],
                 "조치_묻기": ["조치", "대응", "예방", "보안", "기술적"],
-                "원칙_묣기": ["원칙", "기본", "준수", "적용", "관리"],
-                "비율_묻기": ["비율", "얼마", "기준", "퍼센트", "정도"]
+                "원칙_묻기": ["원칙", "기본", "준수", "적용", "관리"],
+                "비율_묻기": ["비율", "얼마", "기준", "퍼센트", "정도", "정보기술부문"]
             }
 
             if intent_type in keyword_bonuses:
@@ -544,8 +539,8 @@ class DataProcessor:
                     score += 5.0
 
             elif intent_type == "비율_묻기":
-                if "비율" in question_lower and "얼마" in question_lower:
-                    score += 6.0
+                if "비율" in question_lower and ("얼마" in question_lower or "정보기술부문" in question_lower):
+                    score += 8.0
 
             if score > 0:
                 intent_scores[intent_type] = {"score": score, "patterns": matched_patterns}
@@ -990,7 +985,7 @@ class DataProcessor:
             "apt", "ddos", "ids", "ips", "bcp", "drp", "isms-p",
             "분쟁조정", "금융투자업", "위험관리", "재해복구", "비상연락체계",
             "암호키관리", "최소권한원칙", "적합성원칙", "법정대리인", "디지털 지갑",
-            "smtp", "정보통신시설"
+            "smtp", "정보통신시설", "정보기술부문", "비율"
         ]
 
         term_count = sum(1 for term in technical_terms if term in question_lower)

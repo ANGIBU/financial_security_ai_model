@@ -61,7 +61,7 @@ class PromptEnhancer:
                     },
                     {
                         "question": "금융회사가 정보보호 예산을 관리할 때, 전자금융감독규정상 정보기술부문 인력 및 예산의 기준 비율은 얼마인가요?",
-                        "answer": "전자금융감독규정에 따르면 금융회사는 정보보호 예산 관리 시 정보기술부문 인력 및 예산의 기준 비율을 총 인력의 3% 이상으로 유지해야 합니다."
+                        "answer": "전자금융감독규정 제16조에 따라 금융회사는 정보기술부문 인력을 총 인력의 5% 이상, 정보기술부문 예산을 총 예산의 7% 이상 정보보호 업무에 배정해야 합니다. 다만 회사 규모, 업무 특성, 정보기술 위험수준 등에 따라 금융감독원장이 별도로 정할 수 있습니다."
                     }
                 ]
             },
@@ -186,6 +186,25 @@ class PromptEnhancer:
 
 한국어 답변: """,
 
+            "ratio_question": """다음은 금융보안 관련 비율에 대한 질문입니다. 반드시 구체적인 수치와 법적 근거를 포함하여 한국어로만 답변하세요.
+
+답변 작성 지침:
+- 정확한 수치와 퍼센트 명시
+- 해당 법령과 조항 인용
+- 예외 조건이나 특별 규정 포함
+
+{few_shot_examples}
+
+문제: {question}
+
+위 질문에 대해 다음 사항을 포함하여 한국어로 답변하세요:
+1. 정확한 비율과 수치
+2. 관련 법령과 조항 번호
+3. 적용 조건 및 예외사항
+4. 감독기관의 재량권
+
+한국어 답변: """,
+
             "domain_specific": {
                 "사이버보안": """다음은 사이버보안 관련 문제입니다. 기술적 특성과 보안 대응 방안에 중점을 두어 답변하세요.
 
@@ -278,6 +297,14 @@ class PromptEnhancer:
             example_count = 2 if domain in ["개인정보보호", "전자금융"] else 1
             few_shot_examples = self.build_few_shot_context(domain, question_type, count=example_count)
             
+            # 비율 관련 질문 특별 처리
+            if self._is_ratio_question(question, domain):
+                template = self.prompt_templates["ratio_question"]
+                return template.format(
+                    few_shot_examples=few_shot_examples,
+                    question=question
+                )
+            
             # 기관 질문 특별 처리
             if ("기관" in question.lower() or "위원회" in question.lower()) and institution_info:
                 template = self.prompt_templates["institution_question"]
@@ -325,6 +352,25 @@ class PromptEnhancer:
 문제: {question}
 
 한국어 답변: """
+
+    def _is_ratio_question(self, question: str, domain: str) -> bool:
+        """비율 관련 질문 확인"""
+        question_lower = question.lower()
+        
+        ratio_indicators = [
+            "비율", "얼마", "기준", "퍼센트", "%", 
+            "정보기술부문", "인력", "예산", "배정"
+        ]
+        
+        # 전자금융 도메인에서 정보기술부문 관련 질문
+        if domain == "전자금융":
+            if any(indicator in question_lower for indicator in ratio_indicators):
+                if "정보기술부문" in question_lower or "예산" in question_lower:
+                    return True
+        
+        # 일반적인 비율 질문
+        ratio_count = sum(1 for indicator in ratio_indicators if indicator in question_lower)
+        return ratio_count >= 2
     
     def get_context_hints(self, domain: str, intent_type: str) -> str:
         """도메인별 컨텍스트 힌트 제공"""
@@ -356,7 +402,7 @@ class PromptEnhancer:
                 "방안_묻기": "정보보안관리체계의 수립, 운영, 점검, 개선 사이클을 중심으로 설명하세요."
             },
             "정보통신": {
-                "방안_묣기": "정보통신기반 보호법에 따른 보고 요구사항과 절차를 명확히 설명하세요."
+                "방안_묻기": "정보통신기반 보호법에 따른 보고 요구사항과 절차를 명확히 설명하세요."
             }
         }
         
