@@ -720,7 +720,7 @@ class FinancialAIInference:
             # 단일 진행률 표시줄로 통합
             with tqdm(
                 total=self.total_questions, 
-                desc="금융보안 AI 추론 진행", 
+                desc="추론 진행", 
                 unit="문항",
                 ncols=80,
                 bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]'
