@@ -2,11 +2,7 @@
 
 import re
 import unicodedata
-import sys
 from typing import Dict, List, Tuple
-from datetime import datetime
-from pathlib import Path
-
 from config import KOREAN_REQUIREMENTS
 
 

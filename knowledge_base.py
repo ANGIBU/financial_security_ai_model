@@ -1,9 +1,7 @@
-import re
-import random
-import sys
-from typing import Dict, List
-from pathlib import Path
+# knowledge_base.py
 
+import re
+from typing import Dict, List
 from config import TEMPLATE_QUALITY_CRITERIA
 
 

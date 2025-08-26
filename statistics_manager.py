@@ -1,5 +1,6 @@
+# statistics_manager.py
+
 import time
-import gc
 import sys
 from typing import Dict, List
 from datetime import datetime

@@ -1,15 +1,12 @@
+# model_handler.py
+
 import torch
 import re
-import time
 import gc
-import random
-import os
 import unicodedata
 import sys
-from datetime import datetime
-from typing import Dict, Optional, Tuple, List
+from typing import Dict
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
-from pathlib import Path
 import warnings
 
 warnings.filterwarnings("ignore")

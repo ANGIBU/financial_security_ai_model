@@ -1,6 +1,6 @@
-from typing import Dict, List
-import random
+# prompt_enhancer.py
 
+import random
 
 class PromptEnhancer:
     """프롬프트 구성 및 Few-shot 예시 관리"""
