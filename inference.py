@@ -406,7 +406,11 @@ class FinancialAIInference:
                 if special_answer and special_answer.isdigit() and 1 <= int(special_answer) <= max_choice:
                     return special_answer
 
-            # LLM 생성 (Few-shot 프롬프트 적용)
+            # 주관식 영어 답변 방지를 위한 직접 처리
+            if question_type == "subjective":
+                return self._get_direct_korean_answer(question, domain, intent_analysis)
+
+            # LLM 생성 (객관식만)
             answer = self.model_handler.generate_answer(
                 question=question,
                 question_type=question_type,
@@ -417,33 +421,13 @@ class FinancialAIInference:
                 prompt_enhancer=self.prompt_enhancer
             )
 
-            # 답변 검증 및 처리
-            if question_type == "multiple_choice":
-                if answer and str(answer).isdigit() and 1 <= int(answer) <= max_choice:
-                    return str(answer)
-                else:
-                    # 재시도
-                    retry_answer = self._retry_mc_generation(question, max_choice, domain)
-                    return retry_answer
+            # 객관식 답변 검증 및 처리
+            if answer and str(answer).isdigit() and 1 <= int(answer) <= max_choice:
+                return str(answer)
             else:
-                if answer and len(str(answer).strip()) > 15:
-                    # 영어 답변 검증 추가
-                    if self.data_processor.detect_english_response(answer):
-                        print(f"영어 답변 감지, 한국어 답변으로 재생성")
-                        retry_answer = self._retry_subjective_generation(question, domain, intent_analysis)
-                        if retry_answer:
-                            return retry_answer
-                        else:
-                            return self._get_domain_fallback(question, domain, intent_analysis)
-                    else:
-                        return self._finalize_answer(answer, question, intent_analysis, domain)
-                else:
-                    # 재시도
-                    retry_answer = self._retry_subjective_generation(question, domain, intent_analysis)
-                    return retry_answer if retry_answer else self._get_domain_fallback(question, domain, intent_analysis)
+                return self._get_safe_mc_answer(question, max_choice, domain)
 
         except Exception as e:
-            print(f"LLM 답변 생성 오류: {e}")
             return self._get_fallback_answer(question_type, question, max_choice)
 
     def _retry_mc_generation(self, question: str, max_choice: int, domain: str) -> str:
@@ -763,20 +747,16 @@ class FinancialAIInference:
             answers = []
             self.total_questions = len(test_df)
             
-            print(f"추론 시작: {self.total_questions}개 문항")
-            
             # 통계 세션 시작
             self.statistics_manager.start_session()
 
-            print("=" * 50)
+            # 단일 진행률 표시줄로 통합
             with tqdm(
                 total=self.total_questions, 
-                desc="처리 중", 
+                desc="금융보안 AI 추론 진행", 
                 unit="문항",
-                ncols=100,
-                bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}',
-                leave=True,
-                dynamic_ncols=False
+                ncols=80,
+                bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]'
             ) as pbar:
                 for question_idx, (original_idx, row) in enumerate(test_df.iterrows()):
                     question = row["Question"]
@@ -789,33 +769,26 @@ class FinancialAIInference:
 
                     # pkl 데이터 주기적 저장
                     if (question_idx + 1) % MEMORY_CONFIG["pkl_save_frequency"] == 0:
-                        save_success = self.learning.save_all_data()
-                        if not save_success:
-                            print(f"PKL 데이터 저장 실패 (문항 {question_idx + 1})")
+                        self.learning.save_all_data()
 
-                    # 메모리 정리 및 상태 기록
+                    # 메모리 정리
                     if (question_idx + 1) % MEMORY_CONFIG["gc_frequency"] == 0:
                         self.statistics_manager.record_memory_snapshot()
                         try:
                             import psutil
                             if psutil.virtual_memory().percent > 85:
                                 gc.collect()
-                                print(f"메모리 정리 수행 ({psutil.virtual_memory().percent:.1f}% 사용 중)")
                         except ImportError:
                             gc.collect()
-            print("=" * 50)
 
             # 최종 pkl 데이터 저장
-            final_save_success = self.learning.save_all_data()
-            if not final_save_success:
-                print("최종 PKL 데이터 저장에서 일부 오류가 발생했습니다.")
+            self.learning.save_all_data()
             
             # 결과 저장
             submission_df["Answer"] = answers
             save_success = self._save_csv(submission_df, output_file)
             
             if not save_success:
-                print(f"결과 파일 저장 실패: {output_file}")
                 return {"success": False, "error": "파일 저장 실패"}
 
             # 최종 통계 생성
@@ -828,18 +801,13 @@ class FinancialAIInference:
             final_stats = self.statistics_manager.generate_final_statistics(learning_data)
             result = self._format_results_for_compatibility(final_stats)
             
-            # 도메인별 성능 출력
-            if self.domain_performance:
-                print("\n도메인별 성능:")
-                for domain, perf in self.domain_performance.items():
-                    success_rate = (perf["success"] / perf["total"]) * 100 if perf["total"] > 0 else 0
-                    print(f"  {domain}: {perf['success']}/{perf['total']} ({success_rate:.1f}%)")
-            
-            print(f"추론 완료: 성공 {self.successful_processing}, 실패 {self.failed_processing}")
+            # 간단한 결과 출력
+            print(f"\n추론 완료: {self.total_questions}개 문항")
+            print(f"성공: {self.successful_processing}개, 실패: {self.failed_processing}개")
+            print(f"성공률: {result.get('success_rate', 0)}%")
             
             return result
         except Exception as e:
-            print(f"추론 실행 오류: {e}")
             return {"success": False, "error": str(e)}
 
     def _format_results_for_compatibility(self, stats: Dict) -> Dict:
