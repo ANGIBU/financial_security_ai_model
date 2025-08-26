@@ -290,15 +290,19 @@ class FinancialAIInference:
             if self.optimization_config.get("pkl_learning_enabled", True):
                 similar_answer = self.learning.get_similar_successful_answer(question, domain, question_type)
                 if similar_answer and len(str(similar_answer).strip()) > 10:
-                    processing_time = time.time() - start_time
-                    self.statistics_manager.record_question_processing(
-                        processing_time, domain, "learning_match", question_type, True
-                    )
-                    self.learning.record_successful_answer(question_id, question, similar_answer, 
-                                                         question_type, domain, "learning_match")
-                    self.successful_processing += 1
-                    self._update_domain_performance(domain, True)
-                    return similar_answer
+                    # 한국어 답변 검증 추가
+                    if not self.data_processor.detect_english_response(similar_answer):
+                        processing_time = time.time() - start_time
+                        self.statistics_manager.record_question_processing(
+                            processing_time, domain, "learning_match", question_type, True
+                        )
+                        self.learning.record_successful_answer(question_id, question, similar_answer, 
+                                                             question_type, domain, "learning_match")
+                        self.successful_processing += 1
+                        self._update_domain_performance(domain, True)
+                        return similar_answer
+                    else:
+                        print(f"학습 데이터에서 영어 답변 발견, 재생성 진행")
             
             # 지식베이스 분석
             try:
@@ -323,6 +327,13 @@ class FinancialAIInference:
 
             processing_time = time.time() - start_time
             success = answer and len(str(answer).strip()) > 0
+
+            # 한국어 답변 검증 추가
+            if success and question_type == "subjective":
+                if self.data_processor.detect_english_response(answer):
+                    print(f"영어 답변 생성됨, 한국어 대체 답변 사용")
+                    answer = self._get_domain_fallback(question, domain, intent_analysis)
+                    success = answer and len(str(answer).strip()) > 0
 
             # 통계 기록
             method = "few_shot_llm" if self.optimization_config.get("few_shot_enabled", True) else "enhanced_llm"
@@ -389,7 +400,7 @@ class FinancialAIInference:
             # 도메인 힌트 설정
             domain_hints = {"domain": domain}
             
-            # 특별 패턴 처리 (개선된 패턴 매칭)
+            # 특별 패턴 처리
             if question_type == "multiple_choice" and self._is_special_mc_pattern(question):
                 special_answer = self._handle_special_mc_pattern(question, max_choice, domain)
                 if special_answer and special_answer.isdigit() and 1 <= int(special_answer) <= max_choice:
@@ -416,7 +427,16 @@ class FinancialAIInference:
                     return retry_answer
             else:
                 if answer and len(str(answer).strip()) > 15:
-                    return self._finalize_answer(answer, question, intent_analysis, domain)
+                    # 영어 답변 검증 추가
+                    if self.data_processor.detect_english_response(answer):
+                        print(f"영어 답변 감지, 한국어 답변으로 재생성")
+                        retry_answer = self._retry_subjective_generation(question, domain, intent_analysis)
+                        if retry_answer:
+                            return retry_answer
+                        else:
+                            return self._get_domain_fallback(question, domain, intent_analysis)
+                    else:
+                        return self._finalize_answer(answer, question, intent_analysis, domain)
                 else:
                     # 재시도
                     retry_answer = self._retry_subjective_generation(question, domain, intent_analysis)
@@ -482,7 +502,12 @@ class FinancialAIInference:
             )
 
             if retry_answer and len(str(retry_answer).strip()) > 15:
-                return self._finalize_answer(retry_answer, question, intent_analysis, domain)
+                # 영어 답변 검증 추가
+                if self.data_processor.detect_english_response(retry_answer):
+                    print(f"재시도에서도 영어 답변 생성됨")
+                    return None
+                else:
+                    return self._finalize_answer(retry_answer, question, intent_analysis, domain)
 
         except Exception as e:
             print(f"주관식 재시도 오류: {e}")
@@ -490,7 +515,7 @@ class FinancialAIInference:
         return None
 
     def _is_special_mc_pattern(self, question: str) -> bool:
-        """특별 패턴 확인 (개선)"""
+        """특별 패턴 확인"""
         try:
             question_lower = question.lower()
             
@@ -514,7 +539,7 @@ class FinancialAIInference:
             return False
 
     def _handle_special_mc_pattern(self, question: str, max_choice: int, domain: str) -> str:
-        """특별 패턴 처리 (개선)"""
+        """특별 패턴 처리"""
         try:
             question_lower = question.lower()
             
@@ -539,7 +564,7 @@ class FinancialAIInference:
             return None
 
     def _get_safe_mc_answer(self, question: str, max_choice: int, domain: str) -> str:
-        """안전한 객관식 답변 (개선)"""
+        """안전한 객관식 답변"""
         try:
             question_lower = question.lower()
             
@@ -586,7 +611,7 @@ class FinancialAIInference:
             return "3"
 
     def _get_domain_fallback(self, question: str, domain: str, intent_analysis: Dict) -> str:
-        """도메인별 폴백 답변 (개선)"""
+        """도메인별 폴백 답변"""
         try:
             question_lower = question.lower()
             
@@ -649,13 +674,18 @@ class FinancialAIInference:
                 return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
 
     def _finalize_answer(self, answer: str, question: str, intent_analysis: Dict = None, domain: str = "일반") -> str:
-        """답변 정리 (개선)"""
+        """답변 정리"""
         try:
             if not answer:
                 return self._get_domain_fallback(question, domain, intent_analysis)
 
             # 기본적인 정리
             answer = str(answer).strip()
+            
+            # 영어 답변 감지 및 처리
+            if self.data_processor.detect_english_response(answer):
+                print(f"영어 답변 감지됨, 한국어 대체 답변 제공")
+                return self._get_domain_fallback(question, domain, intent_analysis)
             
             # 도메인별 답변 길이 최적화
             max_lengths = {
@@ -686,6 +716,11 @@ class FinancialAIInference:
                     answer = ". ".join(truncated_sentences)
                 else:
                     answer = answer[:max_length]
+            
+            # 한국어 비율 검증
+            korean_ratio = self.data_processor.calculate_korean_ratio(answer)
+            if korean_ratio < 0.5:
+                return self._get_domain_fallback(question, domain, intent_analysis)
             
             # 문장 끝 처리
             if answer and not answer.endswith((".", "다", "요", "함")):

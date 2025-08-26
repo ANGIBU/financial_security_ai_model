@@ -238,7 +238,12 @@ class PromptEnhancer:
 
 정답 번호: """,
 
-            "subjective_base": """다음은 금융보안 관련 주관식 문제입니다. 전문적이고 정확한 답변을 작성하세요.
+            "subjective_base": """다음은 금융보안 관련 주관식 문제입니다. 반드시 한국어로만 전문적이고 정확한 답변을 작성하세요.
+
+중요 지침:
+- 모든 답변은 한국어로만 작성하고 절대 영어를 사용하지 마세요
+- 관련 법령과 규정에 근거한 전문적 답변 작성
+- 구체적이고 실무적인 내용 포함
 
 {few_shot_examples}
 
@@ -247,15 +252,18 @@ class PromptEnhancer:
 
 문제: {question}
 
-위 문제에 대해 다음 관점에서 체계적으로 답변하세요:
+위 문제에 대해 다음 관점에서 체계적으로 한국어 답변하세요:
 1. 관련 법령과 규정의 근거 제시
 2. 핵심 개념과 원리 설명
 3. 구체적인 절차나 방법론 기술
 4. 실무 적용 시 고려사항 포함
 
-답변: """,
+한국어 답변: """,
 
-            "institution_question": """다음은 금융보안 관련 기관에 대한 질문입니다.
+            "institution_question": """다음은 금융보안 관련 기관에 대한 질문입니다. 반드시 한국어로만 답변하세요.
+
+중요 지침:
+- 모든 답변은 한국어로만 작성하고 절대 영어를 사용하지 마세요
 
 {few_shot_examples}
 
@@ -264,13 +272,13 @@ class PromptEnhancer:
 
 문제: {question}
 
-위 질문에 대해 다음 요소를 포함하여 답변하세요:
+위 질문에 대해 다음 요소를 포함하여 한국어로 답변하세요:
 1. 정확한 기관명과 소속 조직
 2. 법적 근거와 설립 배경
 3. 주요 업무와 권한 범위
 4. 관련 절차와 연락 방법
 
-답변: """
+한국어 답변: """
         }
     
     def build_few_shot_context(self, domain: str, question_type: str, count: int = 3) -> str:
@@ -333,7 +341,13 @@ class PromptEnhancer:
                 
         except Exception as e:
             print(f"프롬프트 구성 오류: {e}")
-            return f"문제: {question}\n\n위 문제에 대해 전문적이고 정확한 답변을 작성하세요.\n\n답변: "
+            return f"""다음 문제에 대해 반드시 한국어로만 전문적이고 정확한 답변을 작성하세요.
+
+중요: 모든 답변은 한국어로만 작성하고 절대 영어를 사용하지 마세요.
+
+문제: {question}
+
+한국어 답변: """
     
     def get_context_hints(self, domain: str, intent_type: str) -> str:
         """도메인별 컨텍스트 힌트 제공"""

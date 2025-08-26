@@ -146,7 +146,8 @@ class DataProcessor:
                 "개인정보처리시스템", "개인정보보호책임자", "개인정보취급자",
                 "개인정보침해신고센터", "PIMS", "관리체계 수립", "정책 수립",
                 "만 14세", "미만 아동", "중요한 요소", "경영진", "최고책임자",
-                "자원 할당", "내부 감사", "위탁", "수탁자", "처리방침"
+                "자원 할당", "내부 감사", "처리 위탁", "수탁자", "위탁자",
+                "개인정보 처리 현황", "처리방침", "고지", "공개", "통지"
             ],
             "전자금융": [
                 "전자금융", "전자적", "접근매체", "전자금융거래법", "전자서명",
@@ -155,7 +156,8 @@ class DataProcessor:
                 "전자금융거래", "전자금융업무", "전자금융서비스", "전자금융거래기록",
                 "이용자", "금융통화위원회", "자료제출", "통화신용정책", "지급결제제도",
                 "요청", "요구", "경우", "보안 강화", "통계조사", "경영 실적", "원활한 운영",
-                "전자금융업자", "거래 기록", "암호화 조치", "위조 변조"
+                "전자금융업자", "보안시스템", "거래 안전성", "손해 배상", "과실 책임",
+                "접근매체 분실", "부정거래", "이용 한도", "거래 승인", "거래 기록 보존"
             ],
             "사이버보안": [
                 "트로이", "악성코드", "멀웨어", "바이러스", "피싱", "스미싱", "랜섬웨어",
@@ -164,7 +166,8 @@ class DataProcessor:
                 "침입방지", "보안관제", "SBOM", "소프트웨어 구성 요소", "Trojan",
                 "원격제어 악성코드", "탐지 지표", "보안 위협", "특징", "주요 탐지",
                 "금융권", "활용", "이유", "적절한", "소프트웨어", "접근 제어",
-                "투명성", "다양성", "공급망 보안", "SIEM", "행동 분석"
+                "투명성", "다양성", "공급망 보안", "행동 분석", "네트워크 모니터링",
+                "실시간 탐지", "SIEM", "보안 이벤트", "위협 인텔리전스"
             ],
             "정보보안": [
                 "정보보안", "보안관리", "ISMS", "보안정책", "접근통제", "암호화",
@@ -173,20 +176,22 @@ class DataProcessor:
                 "정보보호", "관리체계 수립", "정책 수립", "최고책임자", "경영진",
                 "자원 할당", "내부 감사", "절차 수립", "복구 절차", "비상연락체계",
                 "개인정보 파기", "복구 목표시간", "옳지 않은", "고려", "요소",
-                "보안 감사", "최소권한 원칙", "암호키 관리"
+                "보안 감사", "취약점 점검", "보안 교육", "사고 대응", "보안 운영"
             ],
             "금융투자": [
                 "금융투자업", "투자자문업", "투자매매업", "투자중개업", "소비자금융업",
                 "보험중개업", "자본시장법", "집합투자업", "신탁업", "펀드", "파생상품",
                 "투자자보호", "적합성원칙", "설명의무", "금융산업", "구분",
-                "해당하지 않는", "금융산업의 이해", "내부통제"
+                "해당하지 않는", "금융산업의 이해", "내부통제", "리스크 관리",
+                "투자 권유", "투자 위험", "고객 적합성"
             ],
             "위험관리": [
                 "위험관리", "위험평가", "위험대응", "위험수용", "리스크", "내부통제",
                 "컴플라이언스", "위험식별", "위험분석", "위험모니터링", "위험회피",
                 "위험전가", "위험감소", "잔여위험", "위험성향", "위험 관리 계획",
                 "수행인력", "위험 대응 전략", "재해 복구", "복구 절차", "비상연락체계",
-                "복구 목표시간", "계획 수립", "고려", "요소", "적절하지 않은", "대상", "기간"
+                "복구 목표시간", "계획 수립", "고려", "요소", "적절하지 않은", "대상", "기간",
+                "위험 허용 수준", "위험 보고", "위험 통제", "위험 지표"
             ]
         }
 
@@ -206,6 +211,52 @@ class DataProcessor:
 
         # 기타 매핑 추가
         self.korean_recovery_mapping.update(self.korean_recovery_config["spaced_korean_fixes"])
+
+    def detect_english_response(self, text: str) -> bool:
+        """영어 답변 감지"""
+        if not text:
+            return False
+        
+        try:
+            # 영어 단어 패턴 감지
+            english_words = re.findall(r'\b[a-zA-Z]+\b', text)
+            
+            # 영어 단어 수가 많은 경우
+            if len(english_words) > 8:
+                return True
+            
+            # 긴 영어 문장 패턴
+            english_sentences = re.findall(r'[A-Z][a-zA-Z\s,\.]{20,}', text)
+            if len(english_sentences) > 0:
+                return True
+                
+            # 영어 전문 용어가 연속으로 나오는 패턴
+            english_terms = ['Relation', 'relevant', 'laws', 'regulations', 'Trojans', 'Remote', 'Access', 'Tools', 'RATs', 'malware', 'computer', 'systems', 'networks', 'subjected', 'various', 'legal', 'frameworks', 'jurisdictions', 'worldwide']
+            english_term_count = sum(1 for term in english_terms if term in text)
+            if english_term_count > 3:
+                return True
+                
+            # 영어 문장 구조 패턴
+            english_patterns = [
+                r'\b[A-Z][a-z]+\s+to\s+[a-z]+',
+                r'\b[A-Z][a-z]+\s+and\s+[A-Z][a-z]+',
+                r'\b[A-Z][a-z]+\s+are\s+[a-z]+',
+                r'\b[A-Z][a-z]+\s+in\s+[a-z]+',
+                r'as forms of',
+                r'that can',
+                r'are subjected to',
+                r'in different'
+            ]
+            
+            for pattern in english_patterns:
+                if re.search(pattern, text):
+                    return True
+                    
+            return False
+            
+        except Exception as e:
+            print(f"영어 답변 감지 오류: {e}")
+            return False
 
     def detect_critical_repetitive_patterns(self, text: str) -> bool:
         """문제 패턴 감지"""
@@ -478,7 +529,7 @@ class DataProcessor:
             intent_analysis["context_hints"].append("법적 근거와 조항 포함")
 
     def extract_choice_range(self, question: str) -> Tuple[str, int]:
-        """선택지 범위 추출 (개선)"""
+        """선택지 범위 추출"""
         question_type = self.analyze_question_type(question)
 
         if question_type != "multiple_choice":
@@ -539,7 +590,7 @@ class DataProcessor:
                 if valid_choices >= 3:
                     return "multiple_choice", max_choice
 
-        # 패턴 기반 검사 (개선)
+        # 패턴 기반 검사
         for i in range(5, 2, -1):
             pattern_parts = [f"{j}\\s+[가-힣\\w]{{2,}}" for j in range(1, i + 1)]
             pattern = ".*".join(pattern_parts)
@@ -565,7 +616,7 @@ class DataProcessor:
         return "subjective", 0
 
     def analyze_question_type(self, question: str) -> str:
-        """질문 유형 분석 (개선)"""
+        """질문 유형 분석"""
         question = question.strip()
 
         # 주관식 패턴 우선 검사 (더 정확하게)
@@ -601,7 +652,7 @@ class DataProcessor:
         except Exception:
             pass
 
-        # 키워드 기반 검사 (개선)
+        # 키워드 기반 검사
         mc_score = 0
         for pattern in self.mc_keywords:
             try:
@@ -633,7 +684,7 @@ class DataProcessor:
         return "subjective"
 
     def extract_domain(self, question: str) -> str:
-        """도메인 추출 (개선)"""
+        """도메인 추출"""
         question_lower = question.lower()
         domain_scores = {}
 
@@ -863,11 +914,15 @@ class DataProcessor:
             return False
 
     def validate_answer_intent_match(self, answer: str, question: str, intent_analysis: Dict) -> bool:
-        """답변과 의도 매칭 검증 (완화)"""
+        """답변과 의도 매칭 검증"""
         if not answer or not intent_analysis:
             return True
 
         if self.detect_critical_repetitive_patterns(answer):
+            return False
+            
+        # 영어 답변 감지 시 실패
+        if self.detect_english_response(answer):
             return False
 
         required_type = intent_analysis.get("answer_type_required", "설명형")
@@ -891,6 +946,11 @@ class DataProcessor:
 
         if self.detect_critical_repetitive_patterns(answer):
             return False
+            
+        # 영어 답변 감지 시 실패
+        if self.detect_english_response(answer):
+            print(f"영어 답변 감지됨: {answer[:100]}...")
+            return False
 
         if question_type == "multiple_choice":
             if not self.validate_mc_answer_range(answer, max_choice):
@@ -902,30 +962,34 @@ class DataProcessor:
 
             if self.detect_critical_repetitive_patterns(clean_answer):
                 return False
+                
+            # 영어 답변 재검증
+            if self.detect_english_response(clean_answer):
+                return False
 
-            # 길이 검증 (완화)
+            # 길이 검증
             if len(clean_answer) < 8:
                 return False
 
-            # 한국어 비율 검증 (완화)
+            # 한국어 비율 검증
             korean_ratio = self.calculate_korean_ratio(clean_answer)
             if korean_ratio < 0.3:
                 return False
 
-            # 영어 비율 검증
+            # 영어 비율 검증 (더 엄격)
             english_ratio = self.calculate_english_ratio(answer)
-            if english_ratio > 0.7:
+            if english_ratio > 0.4:
                 return False
 
             # 한국어 문자 개수 검증
             try:
                 korean_chars = len(re.findall(r"[가-힣]", clean_answer))
-                if korean_chars < 3:
+                if korean_chars < 5:
                     return False
             except Exception:
                 return False
 
-            # 의미있는 키워드 검증 (완화)
+            # 의미있는 키워드 검증
             meaningful_keywords = [
                 "법", "규정", "조치", "관리", "보안", "방안", "절차", "기준",
                 "정책", "체계", "시스템", "통제", "특징", "지표", "탐지", "대응",
@@ -942,7 +1006,7 @@ class DataProcessor:
             return False
 
     def analyze_question_difficulty(self, question: str) -> str:
-        """질문 난이도 분석 (개선)"""
+        """질문 난이도 분석"""
         question_lower = question.lower()
 
         # 기술용어 (실제 출제 패턴 반영)
@@ -994,7 +1058,7 @@ class DataProcessor:
             return "초급"
 
     def extract_choices(self, question: str) -> List[str]:
-        """선택지 추출 (개선)"""
+        """선택지 추출"""
         choices = []
 
         lines = question.split("\n")
@@ -1054,6 +1118,11 @@ class DataProcessor:
             return ""
 
         answer = str(answer).strip()
+        
+        # 영어 답변 감지 및 거부
+        if self.detect_english_response(answer):
+            print(f"영어 답변 감지되어 정규화 거부: {answer[:100]}...")
+            return ""
 
         if question_type == "multiple_choice":
             try:
@@ -1075,6 +1144,10 @@ class DataProcessor:
                         return "답변 생성 중 반복 패턴이 감지되어 재생성이 필요합니다."
                 else:
                     return "답변 생성 중 반복 패턴이 감지되어 재생성이 필요합니다."
+                    
+            # 영어 답변 재검증
+            if self.detect_english_response(answer):
+                return "영어 답변이 감지되어 한국어 답변으로 재생성이 필요합니다."
 
             if len(answer) < 8:
                 return "답변 길이가 부족하여 생성에 실패했습니다."
