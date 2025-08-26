@@ -284,7 +284,7 @@ class ModelHandler:
             context_info = knowledge_base.get_domain_context(domain)
             
             # 기관 질문인 경우 기관 정보 추가
-            if "기관" in question.lower():
+            if "기관" in question.lower() or "위원회" in question.lower():
                 institution_info = knowledge_base.get_institution_info(question)
             
             # 객관식의 경우 패턴 힌트 추가
@@ -339,28 +339,55 @@ class ModelHandler:
             if self.device == "cuda" and torch.cuda.is_available():
                 inputs = inputs.to(self.model.device)
 
-            # 생성 설정
+            # 생성 설정 (도메인과 문제 유형에 따라 최적화)
             if question_type == "multiple_choice":
                 gen_config = GenerationConfig(
-                    max_new_tokens=8,
+                    max_new_tokens=10,
                     temperature=0.1,
                     top_p=0.6,
                     do_sample=True,
-                    repetition_penalty=1.1,
+                    repetition_penalty=1.05,
+                    no_repeat_ngram_size=2,
                     pad_token_id=self.tokenizer.pad_token_id,
                     eos_token_id=self.tokenizer.eos_token_id,
                 )
             else:
-                gen_config = GenerationConfig(
-                    max_new_tokens=450,
-                    temperature=0.3,
-                    top_p=0.85,
-                    do_sample=True,
-                    repetition_penalty=1.1,
-                    no_repeat_ngram_size=3,
-                    pad_token_id=self.tokenizer.pad_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id,
-                )
+                # 주관식 설정 (도메인별 최적화)
+                if domain in ["사이버보안", "정보보안"]:
+                    gen_config = GenerationConfig(
+                        max_new_tokens=500,
+                        temperature=0.2,
+                        top_p=0.8,
+                        do_sample=True,
+                        repetition_penalty=1.15,
+                        no_repeat_ngram_size=4,
+                        length_penalty=1.1,
+                        pad_token_id=self.tokenizer.pad_token_id,
+                        eos_token_id=self.tokenizer.eos_token_id,
+                    )
+                elif domain in ["전자금융", "개인정보보호"]:
+                    gen_config = GenerationConfig(
+                        max_new_tokens=400,
+                        temperature=0.25,
+                        top_p=0.85,
+                        do_sample=True,
+                        repetition_penalty=1.1,
+                        no_repeat_ngram_size=3,
+                        length_penalty=1.05,
+                        pad_token_id=self.tokenizer.pad_token_id,
+                        eos_token_id=self.tokenizer.eos_token_id,
+                    )
+                else:
+                    gen_config = GenerationConfig(
+                        max_new_tokens=350,
+                        temperature=0.3,
+                        top_p=0.85,
+                        do_sample=True,
+                        repetition_penalty=1.1,
+                        no_repeat_ngram_size=3,
+                        pad_token_id=self.tokenizer.pad_token_id,
+                        eos_token_id=self.tokenizer.eos_token_id,
+                    )
 
             with torch.no_grad():
                 outputs = self.model.generate(**inputs, generation_config=gen_config)
@@ -458,7 +485,7 @@ class ModelHandler:
         if ("금융투자업" in question_lower and 
             "구분" in question_lower and 
             "해당하지" in question_lower):
-            return "5"  # 보험중개업은 보통 5번
+            return "1"  # 소비자금융업은 보통 1번
             
         # 부정 문제는 보통 마지막 선택지
         elif "해당하지 않는" in question_lower or "적절하지 않은" in question_lower:
@@ -492,11 +519,12 @@ class ModelHandler:
                 inputs = inputs.to(self.model.device)
 
             retry_config = GenerationConfig(
-                max_new_tokens=250 if question_type == "subjective" else 8,
-                temperature=0.7,
+                max_new_tokens=200 if question_type == "subjective" else 8,
+                temperature=0.5,
                 top_p=0.9,
                 do_sample=True,
-                repetition_penalty=1.2,
+                repetition_penalty=1.3,
+                no_repeat_ngram_size=4,
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=self.tokenizer.eos_token_id,
             )

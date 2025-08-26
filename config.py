@@ -47,22 +47,53 @@ MODEL_CONFIG = {
 
 GENERATION_CONFIG = {
     "multiple_choice": {
-        "max_new_tokens": 15,
-        "temperature": 0.2,
-        "top_p": 0.7,
+        "max_new_tokens": 10,
+        "temperature": 0.1,
+        "top_p": 0.6,
         "do_sample": True,
-        "repetition_penalty": 1.15,
-        "no_repeat_ngram_size": 3,
+        "repetition_penalty": 1.05,
+        "no_repeat_ngram_size": 2,
     },
     "subjective": {
-        "max_new_tokens": 400,
-        "temperature": 0.4,
-        "top_p": 0.8,
+        "max_new_tokens": 450,
+        "temperature": 0.25,
+        "top_p": 0.85,
         "do_sample": True,
-        "repetition_penalty": 1.2,
-        "no_repeat_ngram_size": 4,
+        "repetition_penalty": 1.1,
+        "no_repeat_ngram_size": 3,
         "length_penalty": 1.05,
     },
+    "domain_specific": {
+        "사이버보안": {
+            "max_new_tokens": 500,
+            "temperature": 0.2,
+            "top_p": 0.8,
+            "repetition_penalty": 1.15,
+            "no_repeat_ngram_size": 4,
+            "length_penalty": 1.1,
+        },
+        "전자금융": {
+            "max_new_tokens": 400,
+            "temperature": 0.25,
+            "top_p": 0.85,
+            "repetition_penalty": 1.1,
+            "no_repeat_ngram_size": 3,
+        },
+        "개인정보보호": {
+            "max_new_tokens": 400,
+            "temperature": 0.25,
+            "top_p": 0.85,
+            "repetition_penalty": 1.1,
+            "no_repeat_ngram_size": 3,
+        },
+        "정보보안": {
+            "max_new_tokens": 350,
+            "temperature": 0.3,
+            "top_p": 0.85,
+            "repetition_penalty": 1.1,
+            "no_repeat_ngram_size": 3,
+        }
+    }
 }
 
 OPTIMIZATION_CONFIG = {
@@ -78,6 +109,8 @@ OPTIMIZATION_CONFIG = {
     "mc_context_weighting": True,
     "pkl_learning_enabled": True,
     "performance_tracking": True,
+    "few_shot_enabled": True,
+    "domain_adaptive_generation": True,
 }
 
 KOREAN_REQUIREMENTS = {
@@ -94,12 +127,12 @@ MEMORY_CONFIG = {
     "save_interval": 50,
     "pkl_save_frequency": 10,
     "max_learning_records": {
-        "successful_answers": 2000,
+        "successful_answers": 2500,
         "failed_answers": 1000,
-        "question_patterns": 1500,
-        "domain_templates": 500,
-        "mc_patterns": 300,
-        "performance_data": 1000,
+        "question_patterns": 2000,
+        "domain_templates": 800,
+        "mc_patterns": 500,
+        "performance_data": 1500,
     },
 }
 
