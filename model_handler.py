@@ -5,6 +5,7 @@ import re
 import gc
 import unicodedata
 import sys
+import hashlib
 from typing import Dict
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
 import warnings
@@ -31,8 +32,9 @@ class ModelHandler:
 
         self._initialize_data()
         self.optimization_config = OPTIMIZATION_CONFIG
+        self.answer_cache = {}
+        self.generation_history = []
 
-        # 토크나이저 로드
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.model_name,
@@ -49,7 +51,6 @@ class ModelHandler:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        # 모델 로드
         try:
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_name,
@@ -83,7 +84,6 @@ class ModelHandler:
     def _initialize_data(self):
         """데이터 초기화"""
         
-        # 객관식 문맥 패턴
         self.mc_context_patterns = {
             "negative_keywords": ["해당하지.*않는", "적절하지.*않는", "옳지.*않는", "틀린", "잘못된", "부적절한", "아닌.*것"],
             "positive_keywords": ["맞는.*것", "옳은.*것", "적절한.*것", "올바른.*것", "해당하는.*것", "정확한.*것", "가장.*적절한", "가장.*옳은"],
@@ -114,7 +114,6 @@ class ModelHandler:
             }
         }
 
-        # 한국어 복구 설정
         self.korean_recovery_config = {
             "broken_unicode_chars": {
                 "\\u1100": "", "\\u1101": "", "\\u1102": "", "\\u1103": "", "\\u1104": "",
@@ -145,7 +144,6 @@ class ModelHandler:
             }
         }
 
-        # 한국어 품질 패턴
         self.korean_quality_patterns = [
             {"pattern": r"([가-힣])\s+(은|는|이|가|을|를|에|의|와|과|로|으로)\s+", "replacement": r"\1\2 "},
             {"pattern": r"([가-힣])\s+(다|요|함|니다|습니다)\s*\.", "replacement": r"\1\2."},
@@ -159,7 +157,6 @@ class ModelHandler:
             {"pattern": r"\s+[.,!?]\s+", "replacement": ". "}
         ]
 
-        # 도메인별 답변 템플릿
         self.domain_templates = {
             "사이버보안": {
                 "트로이": "트로이 목마 기반 원격제어 악성코드는 정상 프로그램으로 위장하여 시스템에 침투하고 외부에서 원격으로 제어하는 특성을 가집니다.",
@@ -207,6 +204,40 @@ class ModelHandler:
         self.korean_recovery_mapping.update(self.korean_recovery_config["broken_korean_patterns"])
         self.korean_recovery_mapping.update(self.korean_recovery_config["spaced_korean_fixes"])
         self.korean_recovery_mapping.update(self.korean_recovery_config["common_korean_typos"])
+
+    def _generate_question_hash(self, question: str, domain: str) -> str:
+        """질문 해시 생성"""
+        try:
+            combined_text = f"{question[:100]}-{domain}"
+            return hashlib.md5(combined_text.encode()).hexdigest()[:8]
+        except Exception:
+            return ""
+
+    def _is_duplicate_answer(self, answer: str, question_hash: str) -> bool:
+        """중복 답변 확인"""
+        try:
+            if not answer or len(answer) < 15:
+                return False
+            
+            answer_key = answer.strip()[:60]
+            
+            for cached_hash, cached_answer in self.answer_cache.items():
+                if cached_hash != question_hash:
+                    if cached_answer == answer_key:
+                        return True
+                    
+                    if len(set(cached_answer.split()) & set(answer_key.split())) > len(answer_key.split()) * 0.7:
+                        return True
+            
+            self.answer_cache[question_hash] = answer_key
+            
+            if len(self.answer_cache) > 100:
+                oldest_key = list(self.answer_cache.keys())[0]
+                del self.answer_cache[oldest_key]
+            
+            return False
+        except Exception:
+            return False
 
     def detect_critical_repetitive_patterns(self, text: str) -> bool:
         """문제 패턴 감지"""
@@ -335,7 +366,6 @@ class ModelHandler:
         question_lower = question.lower()
         templates = self.domain_templates[domain]
 
-        # 키워드 매칭
         keyword_matches = {
             "트로이": ["트로이", "원격제어", "RAT", "특징", "탐지"],
             "딥페이크": ["딥페이크", "대응", "방안", "금융권"],
@@ -361,7 +391,6 @@ class ModelHandler:
             if template_key in templates:
                 keyword_count = sum(1 for keyword in keywords if keyword in question_lower)
                 
-                # 비율 관련 질문 특별 처리
                 if template_key == "정보기술부문비율":
                     if any(word in question_lower for word in ["비율", "얼마", "기준", "정보기술부문"]) and keyword_count >= 2:
                         return templates[template_key]
@@ -373,17 +402,42 @@ class ModelHandler:
 
         return None
 
+    def _create_diverse_prompt(self, base_prompt: str, domain: str, force_diversity: bool = False) -> str:
+        """다양성 확보 프롬프트 생성"""
+        try:
+            if not force_diversity:
+                return base_prompt
+            
+            diversity_instructions = [
+                "이전과 다른 관점에서 답변하세요.",
+                "구체적이고 실용적인 내용으로 답변하세요.",
+                "법적 조항과 실무 절차를 중심으로 답변하세요.",
+                "단계별 과정과 구체적 방법을 포함하여 답변하세요.",
+                "기술적 특성과 동작원리를 상세히 설명하세요."
+            ]
+            
+            import random
+            selected_instruction = random.choice(diversity_instructions)
+            
+            enhanced_prompt = f"{base_prompt}\n\n추가 지침: {selected_instruction}"
+            return enhanced_prompt
+            
+        except Exception:
+            return base_prompt
+
     def generate_answer(self, question: str, question_type: str, max_choice: int = 5,
                        intent_analysis: Dict = None, domain_hints: Dict = None, 
                        knowledge_base=None, prompt_enhancer=None) -> str:
         """답변 생성"""
 
         domain = domain_hints.get("domain", "일반") if domain_hints else "일반"
+        force_diversity = domain_hints.get("force_diversity", False) if domain_hints else False
+        
+        question_hash = self._generate_question_hash(question, domain)
 
-        # 도메인 템플릿 답변 우선 확인 (주관식만)
         if question_type == "subjective":
             template_answer = self.get_domain_template_answer(question, domain)
-            if template_answer:
+            if template_answer and not self._is_duplicate_answer(template_answer, question_hash):
                 return template_answer
         
         context_info = ""
@@ -401,13 +455,14 @@ class ModelHandler:
                     context_info += f"\n힌트: {pattern_hints}"
 
         if prompt_enhancer:
-            prompt = prompt_enhancer.build_enhanced_prompt(
+            base_prompt = prompt_enhancer.build_enhanced_prompt(
                 question=question,
                 question_type=question_type,
                 domain=domain,
                 context_info=context_info,
                 institution_info=institution_info
             )
+            prompt = self._create_diverse_prompt(base_prompt, domain, force_diversity)
         else:
             if question_type == "multiple_choice":
                 prompt = f"""다음은 금융보안 관련 객관식 문제입니다. 주어진 선택지 중에서 가장 적절한 답을 선택하세요.
@@ -421,9 +476,13 @@ class ModelHandler:
 
 정답 번호: """
             else:
+                diversity_instruction = ""
+                if force_diversity:
+                    diversity_instruction = "\n중요: 이전과 다른 구체적이고 실무적인 관점에서 답변하세요."
+                
                 prompt = f"""다음은 금융보안 관련 주관식 문제입니다. 반드시 한국어로만 전문적이고 정확한 답변을 작성하세요.
 
-중요: 모든 답변은 한국어로만 작성하고 절대 영어를 사용하지 마세요.
+중요: 모든 답변은 한국어로만 작성하고 절대 영어를 사용하지 마세요.{diversity_instruction}
 
 참고 정보:
 {context_info}
@@ -458,11 +517,18 @@ class ModelHandler:
                     eos_token_id=self.tokenizer.eos_token_id,
                 )
             else:
+                base_temp = 0.25
+                base_top_p = 0.85
+                
+                if force_diversity:
+                    base_temp = min(0.4, base_temp * 1.3)
+                    base_top_p = min(0.95, base_top_p * 1.1)
+                
                 if domain in ["사이버보안", "정보보안"]:
                     gen_config = GenerationConfig(
                         max_new_tokens=500,
-                        temperature=0.2,
-                        top_p=0.8,
+                        temperature=base_temp,
+                        top_p=base_top_p,
                         do_sample=True,
                         repetition_penalty=1.15,
                         no_repeat_ngram_size=4,
@@ -474,8 +540,8 @@ class ModelHandler:
                     if domain_hints and domain_hints.get("retry_mode"):
                         gen_config = GenerationConfig(
                             max_new_tokens=400,
-                            temperature=domain_hints.get("temperature", 0.4),
-                            top_p=domain_hints.get("top_p", 0.9),
+                            temperature=domain_hints.get("temperature", base_temp),
+                            top_p=domain_hints.get("top_p", base_top_p),
                             do_sample=True,
                             repetition_penalty=1.2,
                             no_repeat_ngram_size=3,
@@ -486,8 +552,8 @@ class ModelHandler:
                     else:
                         gen_config = GenerationConfig(
                             max_new_tokens=400,
-                            temperature=0.25,
-                            top_p=0.85,
+                            temperature=base_temp,
+                            top_p=base_top_p,
                             do_sample=True,
                             repetition_penalty=1.1,
                             no_repeat_ngram_size=3,
@@ -498,8 +564,8 @@ class ModelHandler:
                 else:
                     gen_config = GenerationConfig(
                         max_new_tokens=350,
-                        temperature=0.3,
-                        top_p=0.85,
+                        temperature=base_temp,
+                        top_p=base_top_p,
                         do_sample=True,
                         repetition_penalty=1.1,
                         no_repeat_ngram_size=3,
@@ -523,14 +589,14 @@ class ModelHandler:
                 answer = self._process_mc_answer(response, question, max_choice)
                 return answer
             else:
-                answer = self._process_subjective_answer(response, question)
+                answer = self._process_subjective_answer(response, question, question_hash)
                 return answer
 
         except Exception as e:
             print(f"모델 실행 오류: {e}")
             return self._get_fallback_answer(question_type, question, max_choice)
 
-    def _process_subjective_answer(self, response: str, question: str) -> str:
+    def _process_subjective_answer(self, response: str, question: str, question_hash: str = "") -> str:
         """주관식 답변 처리"""
         if not response:
             return None
@@ -554,6 +620,9 @@ class ModelHandler:
             return None
 
         if not self._is_valid_korean_response(response):
+            return None
+        
+        if question_hash and self._is_duplicate_answer(response, question_hash):
             return None
 
         if response and not response.endswith((".", "다", "요", "함")):

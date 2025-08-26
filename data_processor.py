@@ -12,11 +12,11 @@ class DataProcessor:
     def __init__(self):
         self._initialize_data()
         self.korean_requirements = KOREAN_REQUIREMENTS.copy()
+        self.domain_keywords_expanded = self._expand_domain_keywords()
 
     def _initialize_data(self):
         """데이터 초기화"""
         
-        # 객관식 확실한 패턴
         self.definitive_mc_patterns = [
             r"1\s+[가-힣\w].*\n2\s+[가-힣\w].*\n3\s+[가-힣\w].*\n4\s+[가-힣\w].*\n5\s+[가-힣\w]",
             r"1\s+[가-힣\w].*2\s+[가-힣\w].*3\s+[가-힣\w].*4\s+[가-힣\w].*5\s+[가-힣\w]",
@@ -25,7 +25,6 @@ class DataProcessor:
             r"①.*②.*③.*④.*⑤"
         ]
 
-        # 주관식 확실한 패턴
         self.definitive_subj_patterns = [
             r"설명하세요$", r"기술하세요$", r"서술하세요$", r"작성하세요$",
             r".*설명하세요\.$", r".*기술하세요\.$", r".*서술하세요\.$",
@@ -34,7 +33,6 @@ class DataProcessor:
             r".*지표.*설명하세요", r".*기관.*기술하세요"
         ]
 
-        # 객관식 키워드
         self.mc_keywords = [
             "해당하지.*않는.*것", "적절하지.*않는.*것", "옳지.*않는.*것", "틀린.*것",
             "맞는.*것", "옳은.*것", "적절한.*것", "올바른.*것", "가장.*적절한.*것",
@@ -43,7 +41,6 @@ class DataProcessor:
             "가장.*중요한.*것", "우선적으로.*고려.*것", "필수.*사항.*것"
         ]
 
-        # 질문 의도 패턴
         self.question_intent_patterns = {
             "기관_묻기": [
                 "기관.*기술하세요", "기관.*설명하세요", "기관.*서술하세요", "기관.*무엇",
@@ -111,7 +108,6 @@ class DataProcessor:
             ]
         }
 
-        # 주관식 패턴
         self.subj_patterns = [
             "설명하세요", "기술하세요", "서술하세요", "작성하세요", "무엇인가요",
             "어떻게.*해야.*하며", "방안을.*기술", "대응.*방안", "특징.*다음과.*같",
@@ -120,7 +116,6 @@ class DataProcessor:
             "기관을.*기술하세요", "대응.*방안을.*기술하세요", "절차를.*설명하세요"
         ]
 
-        # 한국어 복구 설정
         self.korean_recovery_config = {
             "broken_unicode_chars": {
                 "\\u1100": "", "\\u1101": "", "\\u1102": "", "\\u1103": "", "\\u1104": "",
@@ -137,7 +132,6 @@ class DataProcessor:
             }
         }
 
-        # 한국어 품질 패턴
         self.korean_quality_patterns = [
             {"pattern": r"([가-힣])\s+(은|는|이|가|을|를|에|의|와|과|로|으로)\s+", "replacement": r"\1\2 "},
             {"pattern": r"([가-힣])\s+(다|요|함|니다|습니다)\s*\.", "replacement": r"\1\2."},
@@ -151,7 +145,7 @@ class DataProcessor:
             {"pattern": r"\s+[.,!?]\s+", "replacement": ". "}
         ]
 
-        # 도메인 키워드
+        # 도메인 키워드 확장
         self.domain_keywords = {
             "개인정보보호": [
                 "개인정보", "정보주체", "개인정보보호법", "민감정보", "고유식별정보",
@@ -173,7 +167,7 @@ class DataProcessor:
                 "요청", "요구", "경우", "보안", "통계조사", "경영", "운영",
                 "전자금융업자", "보안시스템", "거래", "손해", "과실",
                 "접근매체", "부정거래", "이용", "승인", "기록", "정보보호", "예산",
-                "정보기술부문", "인력", "전자금융감독규정", "비율"
+                "정보기술부문", "인력", "전자금융감독규정", "비율", "5%", "7%"
             ],
             "사이버보안": [
                 "트로이", "악성코드", "멀웨어", "바이러스", "피싱", "스미싱", "랜섬웨어",
@@ -218,11 +212,60 @@ class DataProcessor:
 
         self._setup_korean_recovery_mappings()
 
+    def _expand_domain_keywords(self) -> Dict:
+        """도메인 키워드 확장"""
+        expanded_keywords = {}
+        
+        try:
+            # 기본 키워드에 추가 키워드 확장
+            additional_keywords = {
+                "개인정보보호": [
+                    "개인정보 접근", "접근권한", "최소권한", "권한 검토", "정보보호 정책",
+                    "개인정보 관리체계", "수립 및 운영", "정책 수립", "중요한 요소"
+                ],
+                "전자금융": [
+                    "전자금융업자", "보안조치", "접근매체 보안", "금융회사", "예산 관리",
+                    "정보보호 예산", "기준 비율", "전자금융감독규정", "16조"
+                ],
+                "사이버보안": [
+                    "딥보이스", "탐지 기술", "선제적 대응", "트로이 목마", "기반", 
+                    "원격제어", "주요 탐지 지표", "비정상적", "네트워크 통신",
+                    "공급망 공격", "예방", "구성 요소", "명세서"
+                ],
+                "정보보안": [
+                    "정보보호", "3대 요소", "보안 목표", "기밀성", "무결성", "가용성",
+                    "재해 복구", "계획 수립", "옳지 않은", "개인정보 파기", "SMTP"
+                ],
+                "금융투자": [
+                    "금융산업", "이해", "투자자문", "투자매매", "투자중개", "소비자금융",
+                    "보험중개", "해당하지 않는"
+                ],
+                "위험관리": [
+                    "위험 관리 계획", "수립", "고려", "요소", "적절하지 않은", "위험 수용",
+                    "수행인력", "대응 전략", "선정"
+                ],
+                "정보통신": [
+                    "중단 발생", "보고", "과학기술정보통신부장관", "보고 사항", "옳지 않은",
+                    "법적 책임", "피해내용", "응급조치"
+                ]
+            }
+            
+            for domain, base_keywords in self.domain_keywords.items():
+                expanded = base_keywords.copy()
+                if domain in additional_keywords:
+                    expanded.extend(additional_keywords[domain])
+                expanded_keywords[domain] = expanded
+                
+        except Exception as e:
+            print(f"도메인 키워드 확장 실패: {e}")
+            expanded_keywords = self.domain_keywords
+            
+        return expanded_keywords
+
     def _setup_korean_recovery_mappings(self):
         """한국어 복구 매핑 설정"""
         self.korean_recovery_mapping = {}
 
-        # 깨진 유니코드 문자 처리
         for broken, replacement in self.korean_recovery_config["broken_unicode_chars"].items():
             try:
                 actual_char = broken.encode().decode("unicode_escape")
@@ -230,13 +273,11 @@ class DataProcessor:
             except Exception:
                 continue
 
-        # 기타 매핑 추가
         self.korean_recovery_mapping.update(self.korean_recovery_config["spaced_korean_fixes"])
 
     def extract_choice_range(self, question: str) -> Tuple[str, int]:
         """선택지 범위 추출"""
         
-        # 1단계: 주관식 확실한 패턴 검사
         for pattern in self.definitive_subj_patterns:
             try:
                 if re.search(pattern, question, re.IGNORECASE):
@@ -244,7 +285,6 @@ class DataProcessor:
             except Exception:
                 continue
         
-        # 2단계: 객관식 확실한 패턴 검사
         for pattern in self.definitive_mc_patterns:
             try:
                 if re.search(pattern, question, re.DOTALL | re.MULTILINE):
@@ -252,19 +292,16 @@ class DataProcessor:
             except Exception:
                 continue
 
-        # 3단계: 선택지 개수 기반 검사
         choice_count = self._count_valid_choices(question)
         if choice_count >= 4:
             return "multiple_choice", choice_count
 
-        # 4단계: 키워드 기반 판별
         question_type = self._analyze_by_keywords(question)
         if question_type == "multiple_choice":
             return "multiple_choice", max(choice_count, 5)
         elif question_type == "subjective":
             return "subjective", 0
 
-        # 5단계: 최종 판별
         return self._final_type_determination(question, choice_count)
 
     def _extract_mc_choice_count(self, question: str) -> Tuple[str, int]:
@@ -275,7 +312,6 @@ class DataProcessor:
         for line in lines:
             line = line.strip()
             
-            # 기본 숫자 패턴
             patterns = [r"^(\d+)\s+(.+)", r"^(\d+)\)\s*(.+)", r"^(\d+)\.\s*(.+)"]
             
             for pattern in patterns:
@@ -327,12 +363,10 @@ class DataProcessor:
         """키워드 기반 분석"""
         question_lower = question.lower()
 
-        # 주관식 강한 키워드
         strong_subj_keywords = ["설명하세요", "기술하세요", "서술하세요", "방안을 기술하세요"]
         if any(keyword in question_lower for keyword in strong_subj_keywords):
             return "subjective"
 
-        # 객관식 강한 키워드
         strong_mc_keywords = ["해당하지 않는 것", "적절하지 않은 것", "가장 적절한 것"]
         if any(keyword in question_lower for keyword in strong_mc_keywords):
             return "multiple_choice"
@@ -343,18 +377,15 @@ class DataProcessor:
         """최종 유형 결정"""
         question_lower = question.lower()
 
-        # 질문 끝 패턴으로 판별
         if re.search(r"것은\?$|것\?$|무엇인가\?$", question_lower):
             if choice_count >= 3:
                 return "multiple_choice", max(choice_count, 5)
         
-        # 길이 기반 추가 판별
         if len(question) < 200 and choice_count >= 3:
             return "multiple_choice", choice_count
         elif len(question) > 300 and any(word in question_lower for word in ["설명", "기술", "서술"]):
             return "subjective", 0
 
-        # 기본값
         if choice_count >= 3:
             return "multiple_choice", max(choice_count, 5)
         else:
@@ -370,11 +401,10 @@ class DataProcessor:
         question_lower = question.lower()
         domain_scores = {}
 
-        for domain, keywords in self.domain_keywords.items():
+        for domain, keywords in self.domain_keywords_expanded.items():
             score = 0
             for keyword in keywords:
                 if keyword.lower() in question_lower:
-                    # 핵심 키워드에 더 높은 가중치
                     if keyword in [
                         "개인정보보호법", "전자금융거래법", "자본시장법", "ISMS",
                         "트로이", "RAT", "원격제어", "SBOM", "딥페이크",
@@ -401,12 +431,10 @@ class DataProcessor:
                 domain_scores[domain] = score
 
         if not domain_scores:
-            return "일반"
+            return self._classify_unknown_domain(question_lower)
 
-        # 최고 점수 도메인 선택
         detected_domain = max(domain_scores.items(), key=lambda x: x[1])[0]
 
-        # 도메인별 추가 검증
         if detected_domain == "사이버보안":
             cybersec_keywords = ["트로이", "악성코드", "RAT", "원격제어", "딥페이크", "SBOM", "보안", "탐지", "디지털 지갑"]
             if any(keyword in question_lower for keyword in cybersec_keywords):
@@ -438,6 +466,49 @@ class DataProcessor:
 
         return detected_domain
 
+    def _classify_unknown_domain(self, question_lower: str) -> str:
+        """미분류 도메인 분류"""
+        
+        technical_keywords = {
+            "암호화": "정보보안",
+            "해시": "정보보안",
+            "키": "정보보안",
+            "알고리즘": "정보보안",
+            "인증": "정보보안",
+            "감사": "정보보안",
+            "로그": "정보보안",
+            "방화벽": "정보보안",
+            "네트워크": "정보보안",
+            "서버": "정보보안",
+            "시스템": "정보보안",
+            "데이터베이스": "정보보안",
+            "SQL": "정보보안",
+            "웹": "정보보안",
+            "모니터링": "정보보안",
+            "백업": "정보보안",
+            "복구": "정보보안"
+        }
+        
+        for keyword, domain in technical_keywords.items():
+            if keyword in question_lower:
+                return domain
+        
+        financial_keywords = {
+            "투자": "금융투자",
+            "펀드": "금융투자", 
+            "주식": "금융투자",
+            "채권": "금융투자",
+            "금융상품": "금융투자",
+            "자본시장": "금융투자",
+            "증권": "금융투자"
+        }
+        
+        for keyword, domain in financial_keywords.items():
+            if keyword in question_lower:
+                return domain
+        
+        return "일반"
+
     def analyze_question_intent(self, question: str) -> Dict:
         """질문 의도 분석"""
         question_lower = question.lower()
@@ -452,7 +523,6 @@ class DataProcessor:
             "quality_risk": False,
         }
 
-        # 의도별 점수 계산
         intent_scores = {}
 
         for intent_type, patterns in self.question_intent_patterns.items():
@@ -473,7 +543,6 @@ class DataProcessor:
                 except Exception:
                     continue
 
-            # 키워드 보너스
             keyword_bonuses = {
                 "기관_묻기": ["기관", "위원회", "담당", "업무", "어디", "누가", "신청할", "분쟁조정", "한국은행", "금융감독원", "보호위원회"],
                 "특징_묻기": ["특징", "특성", "성질", "속성", "어떤", "트로이", "RAT", "원격제어", "악성코드", "딥페이크", "보안 위협", "주요", "역할"],
@@ -495,7 +564,6 @@ class DataProcessor:
                     else:
                         score += keyword_matches * 1.5
 
-            # 특정 조합 추가 점수
             if intent_type == "특징_묻기":
                 if "트로이" in question_lower and ("특징" in question_lower or "RAT" in question_lower):
                     score += 6.0
@@ -545,7 +613,6 @@ class DataProcessor:
             if score > 0:
                 intent_scores[intent_type] = {"score": score, "patterns": matched_patterns}
 
-        # 최고 점수 의도 선택
         if intent_scores:
             sorted_intents = sorted(intent_scores.items(), key=lambda x: x[1]["score"], reverse=True)
             best_intent = sorted_intents[0]
@@ -560,7 +627,6 @@ class DataProcessor:
                     for intent, data in sorted_intents[1:3]
                 ]
 
-            # 답변 유형 결정
             primary = best_intent[0]
             if "기관" in primary:
                 intent_analysis["answer_type_required"] = "기관명"
@@ -587,7 +653,6 @@ class DataProcessor:
                 intent_analysis["answer_type_required"] = "수치설명"
                 intent_analysis["context_hints"].append("정확한 수치와 법적 근거")
 
-        # 추가 문맥 분석
         self._add_context_analysis(question, intent_analysis)
 
         return intent_analysis
@@ -596,12 +661,10 @@ class DataProcessor:
         """문맥 분석 추가"""
         question_lower = question.lower()
 
-        # 복합 질문 처리
         if "특징" in question_lower and "지표" in question_lower:
             intent_analysis["context_hints"].append("특징과 탐지지표 복합 질문")
             intent_analysis["answer_type_required"] = "복합설명"
 
-        # 법적 근거 요구
         legal_keywords = ["법령", "법률", "규정", "조항", "법에", "근거", "조건"]
         if any(keyword in question_lower for keyword in legal_keywords):
             intent_analysis["context_hints"].append("법적 근거와 조항 포함")
@@ -665,7 +728,6 @@ class DataProcessor:
             except Exception:
                 continue
 
-        # 단어 반복 검사
         words = text.split()
         if len(words) >= 12:
             for i in range(len(words) - 11):
@@ -795,7 +857,6 @@ class DataProcessor:
         if self.detect_critical_repetitive_patterns(text):
             text = self.remove_critical_repetitive_patterns(text)
 
-        # 문법 수정
         grammar_fixes = [
             (r"([가-힣])\s+(은|는|이|가|을|를|에|의|와|과|로|으로)\s+", r"\1\2 "),
             (r"([가-힣])\s+(다|요|함|니다|습니다)\s*\.", r"\1\2."),
@@ -812,7 +873,6 @@ class DataProcessor:
             except Exception:
                 continue
 
-        # 문장별 처리
         sentences = text.split(".")
         processed_sentences = []
 
@@ -824,7 +884,6 @@ class DataProcessor:
             if self.detect_critical_repetitive_patterns(sentence):
                 continue
 
-            # 긴 문장 분할
             if len(sentence) > 300:
                 try:
                     parts = re.split(r"[,，]", sentence)

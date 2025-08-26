@@ -11,11 +11,12 @@ class KnowledgeBase:
     def __init__(self):
         self._initialize_data()
         self.template_quality_criteria = TEMPLATE_QUALITY_CRITERIA
+        self._setup_advanced_domain_mapping()
 
     def _initialize_data(self):
         """데이터 초기화"""
         
-        # 도메인 키워드 매핑
+        # 확장된 도메인 키워드 매핑
         self.domain_keywords = {
             "개인정보보호": [
                 "개인정보", "정보주체", "개인정보보호법", "민감정보", "고유식별정보",
@@ -26,7 +27,8 @@ class KnowledgeBase:
                 "개인정보침해신고센터", "PIMS", "관리체계", "정책",
                 "만 14세", "미만 아동", "중요한 요소", "경영진", "최고책임자",
                 "자원", "내부 감사", "처리 위탁", "수탁자", "위탁자",
-                "개인정보 처리 현황", "처리방침", "고지", "공개", "통지", "접근 권한"
+                "개인정보 처리 현황", "처리방침", "고지", "공개", "통지", "접근 권한",
+                "최소권한", "권한 검토", "수립 및 운영", "정책 수립"
             ],
             "전자금융": [
                 "전자금융", "전자적", "접근매체", "전자금융거래법", "전자서명",
@@ -37,7 +39,8 @@ class KnowledgeBase:
                 "요청", "요구", "경우", "보안", "통계조사", "경영", "운영",
                 "전자금융업자", "보안시스템", "거래", "손해", "과실",
                 "접근매체", "부정거래", "이용", "승인", "기록", "정보보호", "예산",
-                "정보기술부문", "인력", "전자금융감독규정", "비율", "5%", "7%"
+                "정보기술부문", "인력", "전자금융감독규정", "비율", "5%", "7%",
+                "보안조치", "안전성 확보", "16조", "기준 비율", "예산 관리"
             ],
             "사이버보안": [
                 "트로이", "악성코드", "멀웨어", "바이러스", "피싱", "스미싱", "랜섬웨어",
@@ -47,7 +50,9 @@ class KnowledgeBase:
                 "원격제어 악성코드", "탐지 지표", "보안 위협", "특징", "주요 탐지",
                 "금융권", "활용", "이유", "적절한", "소프트웨어", "접근 제어",
                 "투명성", "다양성", "공급망 보안", "행동 분석", "네트워크 모니터링",
-                "실시간 탐지", "SIEM", "보안 이벤트", "위협", "디지털 지갑", "보안 위협"
+                "실시간 탐지", "SIEM", "보안 이벤트", "위협", "디지털 지갑", "보안 위협",
+                "트로이 목마", "기반", "주요 탐지 지표", "비정상적", "네트워크 통신",
+                "딥보이스", "탐지 기술", "선제적 대응", "공급망 공격", "예방", "구성 요소", "명세서"
             ],
             "정보보안": [
                 "정보보안", "보안관리", "ISMS", "보안정책", "접근통제", "암호화",
@@ -57,7 +62,8 @@ class KnowledgeBase:
                 "자원", "내부 감사", "절차", "복구 절차", "비상연락체계",
                 "개인정보 파기", "복구 목표시간", "옳지 않은", "고려", "요소",
                 "보안 감사", "취약점 점검", "보안 교육", "사고 대응", "보안 운영",
-                "정보보호", "3대 요소", "보안 목표", "SMTP", "프로토콜", "보안상 주요 역할"
+                "정보보호", "3대 요소", "보안 목표", "SMTP", "프로토콜", "보안상 주요 역할",
+                "기밀성", "무결성", "가용성", "재해 복구", "계획 수립", "프로토콜"
             ],
             "금융투자": [
                 "금융투자업", "투자자문업", "투자매매업", "투자중개업", "소비자금융업",
@@ -72,15 +78,16 @@ class KnowledgeBase:
                 "위험전가", "위험감소", "잔여위험", "위험성향", "위험 관리 계획",
                 "수행인력", "위험 대응 전략", "재해 복구", "복구 절차", "비상연락체계",
                 "복구 목표시간", "계획 수립", "고려", "요소", "적절하지 않은", "대상", "기간",
-                "위험 허용 수준", "위험 보고", "위험 통제", "위험 지표"
+                "위험 허용 수준", "위험 보고", "위험 통제", "위험 지표", "선정"
             ],
             "정보통신": [
                 "정보통신시설", "집적된 정보통신시설", "정보통신서비스", "과학기술정보통신부장관",
-                "보고", "중단", "발생", "일시", "장소", "원인", "법적 책임", "피해내용", "응급조치"
+                "보고", "중단", "발생", "일시", "장소", "원인", "법적 책임", "피해내용", "응급조치",
+                "중단 발생", "보고 사항", "옳지 않은"
             ]
         }
 
-        # 한국어 금융 용어 사전
+        # 한국어 금융 용어 사전 확장
         self.korean_financial_terms = {
             "정보보안관리체계": "조직의 정보자산을 보호하기 위한 종합적인 관리체계",
             "개인정보관리체계": "개인정보의 안전한 처리를 위한 체계적 관리방안",
@@ -96,7 +103,7 @@ class KnowledgeBase:
             "정보기술부문예산": "전자금융감독규정에 따른 금융회사의 정보보호 예산 관리 기준"
         }
 
-        # 기관 데이터베이스
+        # 기관 데이터베이스 확장
         self.institution_database = {
             "전자금융분쟁조정": {
                 "기관명": "전자금융분쟁조정위원회",
@@ -104,7 +111,8 @@ class KnowledgeBase:
                 "역할": "전자금융거래 관련 분쟁조정",
                 "근거법": "전자금융거래법",
                 "상세정보": "전자금융거래에서 발생하는 분쟁의 공정하고 신속한 해결을 위해 설치된 기구로, 이용자와 전자금융업자 간의 분쟁조정 업무를 담당합니다.",
-                "관련질문패턴": ["전자금융거래법에 따라", "이용자가", "분쟁조정을 신청할 수 있는", "기관"]
+                "관련질문패턴": ["전자금융거래법에 따라", "이용자가", "분쟁조정을 신청할 수 있는", "기관"],
+                "키워드": ["전자금융", "분쟁조정", "신청", "기관", "이용자", "금융감독원"]
             },
             "개인정보보호": {
                 "기관명": "개인정보보호위원회",
@@ -113,7 +121,8 @@ class KnowledgeBase:
                 "근거법": "개인정보보호법",
                 "신고기관": "개인정보침해신고센터",
                 "상세정보": "개인정보 보호에 관한 업무를 총괄하는 중앙행정기관으로, 개인정보 보호 정책 수립, 법령 집행, 감시 업무를 수행합니다.",
-                "관련질문패턴": ["개인정보", "침해", "신고", "상담", "보호위원회"]
+                "관련질문패턴": ["개인정보", "침해", "신고", "상담", "보호위원회"],
+                "키워드": ["개인정보", "침해", "신고", "상담", "보호위원회", "총괄"]
             },
             "한국은행": {
                 "기관명": "한국은행",
@@ -121,11 +130,12 @@ class KnowledgeBase:
                 "역할": "통화신용정책 수행 및 지급결제제도 운영",
                 "근거법": "한국은행법",
                 "상세정보": "금융통화위원회의 요청에 따라 통화신용정책의 수행 및 지급결제제도의 원활한 운영을 위해 금융회사 및 전자금융업자에게 자료제출을 요구할 수 있습니다.",
-                "관련질문패턴": ["한국은행", "금융통화위원회", "자료제출", "요구"]
+                "관련질문패턴": ["한국은행", "금융통화위원회", "자료제출", "요구"],
+                "키워드": ["한국은행", "금융통화위원회", "자료제출", "통화신용정책", "지급결제제도"]
             }
         }
 
-        # 객관식 답변 패턴
+        # 객관식 답변 패턴 확장
         self.mc_answer_patterns = {
             "금융투자_해당하지않는": {
                 "question_keywords": ["금융투자업", "구분", "해당하지 않는"],
@@ -134,67 +144,76 @@ class KnowledgeBase:
                 "correct_answer": "1",
                 "correct_logic": "금융투자업이 아닌 것을 찾아야 함",
                 "explanation": "금융투자업에는 투자자문업, 투자매매업, 투자중개업이 포함되며, 소비자금융업과 보험중개업은 금융투자업에 해당하지 않습니다.",
-                "hint": "소비자금융업은 금융투자업에 해당하지 않습니다."
+                "hint": "소비자금융업은 금융투자업에 해당하지 않습니다.",
+                "confidence": 0.95
             },
             "위험관리_적절하지않은": {
                 "question_keywords": ["위험 관리", "계획 수립", "적절하지 않은"],
                 "choices": ["수행인력", "위험 수용", "위험 대응 전략", "대상", "기간"],
                 "correct_answer": "2",
                 "explanation": "위험 관리 계획 수립 시 수행인력, 위험 대응 전략 선정, 대상, 기간을 고려해야 하며, 위험 수용은 적절하지 않습니다.",
-                "hint": "위험관리에서는 위험을 수용하기보다 적극적으로 관리해야 합니다."
+                "hint": "위험관리에서는 위험을 수용하기보다 적극적으로 관리해야 합니다.",
+                "confidence": 0.90
             },
             "개인정보_중요한요소": {
                 "question_keywords": ["정책 수립", "가장 중요한 요소", "경영진"],
                 "choices": ["정보보호 정책 제개정", "경영진의 참여", "최고책임자 지정", "자원 할당"],
                 "correct_answer": "2",
                 "explanation": "관리체계 수립 및 운영의 정책 수립 단계에서 가장 중요한 요소는 경영진의 참여입니다.",
-                "hint": "정책 수립에서는 경영진의 적극적인 참여와 의지가 가장 중요합니다."
+                "hint": "정책 수립에서는 경영진의 적극적인 참여와 의지가 가장 중요합니다.",
+                "confidence": 0.85
             },
             "전자금융_요구경우": {
                 "question_keywords": ["한국은행", "자료제출", "요구할 수 있는 경우"],
                 "choices": ["보안 강화", "통계조사", "경영 실적", "통화신용정책"],
                 "correct_answer": "4",
                 "explanation": "한국은행이 금융통화위원회의 요청에 따라 자료제출을 요구할 수 있는 경우는 통화신용정책의 수행 및 지급결제제도의 원활한 운영을 위해서입니다.",
-                "hint": "한국은행의 핵심 업무인 통화신용정책 수행과 관련된 경우입니다."
+                "hint": "한국은행의 핵심 업무인 통화신용정책 수행과 관련된 경우입니다.",
+                "confidence": 0.95
             },
             "개인정보_법정대리인": {
                 "question_keywords": ["만 14세 미만", "아동", "개인정보", "절차"],
                 "choices": ["학교의 동의", "법정대리인의 동의", "본인의 동의", "친구의 동의"],
                 "correct_answer": "2",
                 "explanation": "개인정보보호법 제22조의2에 따라 만 14세 미만 아동의 개인정보를 처리하기 위해서는 법정대리인의 동의를 받아야 합니다.",
-                "hint": "만 14세 미만 아동은 법정대리인의 동의가 필요합니다."
+                "hint": "만 14세 미만 아동은 법정대리인의 동의가 필요합니다.",
+                "confidence": 0.98
             },
             "사이버보안_SBOM": {
                 "question_keywords": ["SBOM", "활용", "이유", "적절한"],
                 "choices": ["접근 제어", "투명성", "개인정보 보호", "다양성", "소프트웨어 공급망"],
                 "correct_answer": "5",
                 "explanation": "금융권에서 SBOM을 활용하는 이유는 소프트웨어 공급망 보안을 강화하기 위해서입니다.",
-                "hint": "SBOM은 소프트웨어 구성 요소의 투명성 확보를 통한 공급망 보안이 목적입니다."
+                "hint": "SBOM은 소프트웨어 구성 요소의 투명성 확보를 통한 공급망 보안이 목적입니다.",
+                "confidence": 0.92
             },
             "정보보안_재해복구": {
                 "question_keywords": ["재해 복구", "계획 수립", "옳지 않은"],
                 "choices": ["복구 절차", "비상연락체계", "개인정보 파기", "복구 목표시간"],
                 "correct_answer": "3",
                 "explanation": "재해 복구 계획 수립 시 복구 절차, 비상연락체계, 복구 목표시간 정의가 필요하며, 개인정보 파기 절차는 재해복구와 직접적 관련이 없습니다.",
-                "hint": "개인정보 파기는 재해복구가 아닌 개인정보 처리와 관련된 절차입니다."
+                "hint": "개인정보 파기는 재해복구가 아닌 개인정보 처리와 관련된 절차입니다.",
+                "confidence": 0.88
             },
             "딥페이크_적절한": {
                 "question_keywords": ["딥페이크", "선제적 대응 방안", "적절한"],
                 "choices": ["구식 인증", "딥보이스 탐지", "음성 복제", "영상 제작", "홍보"],
                 "correct_answer": "2",
                 "explanation": "딥페이크 기술 악용 방지를 위한 선제적 대응 방안으로는 딥보이스 탐지 기술 개발이 가장 적절합니다.",
-                "hint": "딥페이크 탐지 기술이 핵심적인 대응방안입니다."
+                "hint": "딥페이크 탐지 기술이 핵심적인 대응방안입니다.",
+                "confidence": 0.90
             },
             "정보통신_보고사항": {
                 "question_keywords": ["정보통신서비스", "중단", "보고", "옳지 않은"],
                 "choices": ["발생 일시 및 장소", "법적 책임", "원인 및 피해내용", "응급조치"],
                 "correct_answer": "2",
                 "explanation": "정보통신서비스 제공 중단 발생 시 과학기술정보통신부장관에게 보고해야 하는 사항에는 법적 책임이 포함되지 않습니다.",
-                "hint": "법적 책임은 보고 사항이 아닌 별도의 판단 영역입니다."
+                "hint": "법적 책임은 보고 사항이 아닌 별도의 판단 영역입니다.",
+                "confidence": 0.87
             }
         }
 
-        # 도메인별 컨텍스트 정보
+        # 도메인별 컨텍스트 정보 확장
         self.domain_context_info = {
             "사이버보안": {
                 "기본정보": "사이버보안은 컴퓨터 시스템과 네트워크를 디지털 공격으로부터 보호하는 것입니다.",
@@ -210,6 +229,11 @@ class KnowledgeBase:
                     "네트워크": "비정상적인 외부 통신, 대량 데이터 전송, 비인가 포트 접속",
                     "시스템": "비인가 프로세스 실행, 파일 시스템 변경, 레지스트리 수정",
                     "성능": "시스템 성능 저하, CPU 사용률 급증, 메모리 사용량 증가"
+                },
+                "대응방안": {
+                    "다층방어": "여러 단계의 보안 조치를 통한 종합적 방어체계",
+                    "실시간모니터링": "24시간 보안 이벤트 감시 및 대응",
+                    "탐지기술": "딥보이스 탐지 등 첨단 기술 활용"
                 }
             },
             "전자금융": {
@@ -244,6 +268,10 @@ class KnowledgeBase:
                     "열람권": "개인정보 처리 현황 열람 요구",
                     "정정삭제권": "잘못된 정보의 정정이나 삭제 요구",
                     "처리정지권": "개인정보 처리 정지 요구"
+                },
+                "관리체계": {
+                    "수립운영": "정책 수립 단계에서 경영진 참여가 가장 중요한 요소",
+                    "접근권한": "최소권한 원칙에 따른 정기적 권한 검토"
                 }
             },
             "정보보안": {
@@ -299,6 +327,40 @@ class KnowledgeBase:
             }
         }
 
+    def _setup_advanced_domain_mapping(self):
+        """도메인 매핑 확장"""
+        
+        # 질문 패턴별 도메인 매핑
+        self.question_pattern_domain_mapping = {
+            "기관_질문": {
+                "전자금융": ["분쟁조정", "신청", "기관", "이용자"],
+                "개인정보보호": ["개인정보", "침해", "신고", "상담"],
+                "한국은행": ["한국은행", "자료제출", "요구"]
+            },
+            "특징_질문": {
+                "사이버보안": ["트로이", "RAT", "원격제어", "악성코드", "딥페이크", "SBOM", "디지털 지갑"],
+                "정보보안": ["3대 요소", "보안 목표", "SMTP", "프로토콜"]
+            },
+            "비율_질문": {
+                "전자금융": ["정보기술부문", "비율", "예산", "5%", "7%", "인력"]
+            },
+            "절차_질문": {
+                "개인정보보호": ["법정대리인", "동의", "만 14세"],
+                "위험관리": ["위험 관리", "계획 수립", "고려"]
+            }
+        }
+        
+        # 도메인별 우선순위 키워드
+        self.domain_priority_keywords = {
+            "사이버보안": ["트로이", "RAT", "원격제어", "SBOM", "딥페이크", "악성코드", "탐지 지표"],
+            "전자금융": ["전자금융", "분쟁조정", "한국은행", "정보기술부문", "비율"],
+            "개인정보보호": ["개인정보", "만 14세", "법정대리인", "접근 권한"],
+            "정보보안": ["재해복구", "3대 요소", "SMTP", "정보보안관리체계"],
+            "금융투자": ["금융투자업", "소비자금융업", "보험중개업"],
+            "위험관리": ["위험 관리", "위험 수용", "수행인력"],
+            "정보통신": ["정보통신서비스", "중단", "보고"]
+        }
+
     def analyze_question(self, question: str) -> Dict:
         """질문 분석"""
         question_lower = question.lower()
@@ -306,41 +368,55 @@ class KnowledgeBase:
         detected_domains = []
         domain_scores = {}
 
-        for domain, keywords in self.domain_keywords.items():
+        # 우선순위 키워드 기반 점수 계산
+        for domain, priority_keywords in self.domain_priority_keywords.items():
             score = 0
-            for keyword in keywords:
+            for keyword in priority_keywords:
                 if keyword.lower() in question_lower:
-                    if keyword in [
-                        "개인정보보호법", "전자금융거래법", "자본시장법", "ISMS",
-                        "트로이", "RAT", "원격제어", "SBOM", "딥페이크",
-                        "전자금융분쟁조정위원회", "개인정보보호위원회", 
-                        "만 14세", "법정대리인", "위험 관리", "금융투자업",
-                        "재해 복구", "접근통제", "암호화", "디지털 지갑",
-                        "SMTP", "정보보호", "3대 요소", "정보통신시설",
-                        "정보기술부문", "비율", "5%", "7%"
-                    ]:
-                        score += 8
-                    elif keyword in [
-                        "개인정보", "전자금융", "사이버보안", "정보보안", 
-                        "금융투자", "위험관리"
-                    ]:
-                        score += 5
-                    elif keyword in [
-                        "보안", "관리", "정책", "법령", "규정", "조치"
-                    ]:
-                        score += 2
-                    else:
-                        score += 1
+                    score += 10
+
+            # 일반 키워드 추가 점수
+            if domain in self.domain_keywords:
+                for keyword in self.domain_keywords[domain]:
+                    if keyword.lower() in question_lower:
+                        if keyword in priority_keywords:
+                            continue  # 이미 계산됨
+                        elif keyword in [
+                            "개인정보보호법", "전자금융거래법", "자본시장법", "ISMS",
+                            "전자금융분쟁조정위원회", "개인정보보호위원회"
+                        ]:
+                            score += 8
+                        elif keyword in [
+                            "개인정보", "전자금융", "사이버보안", "정보보안", 
+                            "금융투자", "위험관리", "정보통신"
+                        ]:
+                            score += 5
+                        elif keyword in [
+                            "보안", "관리", "정책", "법령", "규정", "조치"
+                        ]:
+                            score += 2
+                        else:
+                            score += 1
 
             if score > 0:
                 domain_scores[domain] = score
+
+        # 패턴 매칭 추가 점수
+        for pattern_type, pattern_domains in self.question_pattern_domain_mapping.items():
+            for domain, keywords in pattern_domains.items():
+                keyword_matches = sum(1 for keyword in keywords if keyword in question_lower)
+                if keyword_matches >= 2:
+                    if domain in domain_scores:
+                        domain_scores[domain] += keyword_matches * 3
+                    else:
+                        domain_scores[domain] = keyword_matches * 3
 
         if domain_scores:
             sorted_domains = sorted(domain_scores.items(), key=lambda x: x[1], reverse=True)
             best_domain = sorted_domains[0][0]
             detected_domains = [best_domain]
             
-            if len(sorted_domains) > 1 and sorted_domains[1][1] > sorted_domains[0][1] * 0.7:
+            if len(sorted_domains) > 1 and sorted_domains[1][1] > sorted_domains[0][1] * 0.6:
                 detected_domains.append(sorted_domains[1][0])
         else:
             detected_domains = ["일반"]
@@ -368,6 +444,7 @@ class KnowledgeBase:
             "compliance": compliance_check,
             "institution_info": institution_info,
             "mc_pattern_info": mc_pattern_info,
+            "domain_confidence": domain_scores.get(detected_domains[0], 0) / 20 if detected_domains and detected_domains[0] != "일반" else 0,
         }
 
         return analysis_result
@@ -420,10 +497,15 @@ class KnowledgeBase:
                     context_text += f"특별 규정: {context['특별규정']}\n"
             
             # 도메인별 추가 정보
-            if domain == "사이버보안" and '탐지지표' in context:
-                context_text += "탐지 지표:\n"
-                for category, indicators in context['탐지지표'].items():
-                    context_text += f"- {category}: {indicators}\n"
+            if domain == "사이버보안":
+                if '탐지지표' in context:
+                    context_text += "탐지 지표:\n"
+                    for category, indicators in context['탐지지표'].items():
+                        context_text += f"- {category}: {indicators}\n"
+                if '대응방안' in context:
+                    context_text += "대응 방안:\n"
+                    for key, value in context['대응방안'].items():
+                        context_text += f"- {key}: {value}\n"
             
             elif domain == "전자금융":
                 if '보안요소' in context:
@@ -436,10 +518,15 @@ class KnowledgeBase:
                     for key, value in context['규정사항'].items():
                         context_text += f"- {key}: {value}\n"
             
-            elif domain == "개인정보보호" and '정보주체권리' in context:
-                context_text += "정보주체 권리:\n"
-                for right, desc in context['정보주체권리'].items():
-                    context_text += f"- {right}: {desc}\n"
+            elif domain == "개인정보보호":
+                if '정보주체권리' in context:
+                    context_text += "정보주체 권리:\n"
+                    for right, desc in context['정보주체권리'].items():
+                        context_text += f"- {right}: {desc}\n"
+                if '관리체계' in context:
+                    context_text += "관리체계 관련:\n"
+                    for key, value in context['관리체계'].items():
+                        context_text += f"- {key}: {value}\n"
             
             elif domain == "정보보안":
                 if '재해복구' in context:
@@ -487,7 +574,7 @@ class KnowledgeBase:
             
             try:
                 match_ratio = matched_keywords / len(pattern_data["question_keywords"])
-                final_score = score * match_ratio
+                final_score = score * match_ratio * pattern_data.get("confidence", 0.8)
                 
                 if matched_keywords >= 2 and final_score >= 5:
                     pattern_matches.append((pattern_key, pattern_data, final_score))
@@ -539,17 +626,39 @@ class KnowledgeBase:
         """기관 정보 제공"""
         question_lower = question.lower()
         
-        institution_priority = [
-            ("전자금융분쟁조정", ["전자금융", "분쟁조정", "이용자", "신청"]),
-            ("개인정보보호", ["개인정보", "침해", "신고", "상담", "보호위원회"]),
-            ("한국은행", ["한국은행", "금융통화위원회", "자료제출", "통화신용정책"])
-        ]
+        # 향상된 기관 매칭
+        institution_patterns = {
+            "전자금융분쟁조정": {
+                "keywords": ["전자금융", "분쟁조정", "이용자", "신청", "기관"],
+                "weight": [3, 3, 2, 2, 1]
+            },
+            "개인정보보호": {
+                "keywords": ["개인정보", "침해", "신고", "상담", "보호위원회"],
+                "weight": [3, 2, 2, 2, 3]
+            },
+            "한국은행": {
+                "keywords": ["한국은행", "금융통화위원회", "자료제출", "통화신용정책"],
+                "weight": [3, 3, 2, 2]
+            }
+        }
         
-        for inst_type, keywords in institution_priority:
-            keyword_count = sum(1 for keyword in keywords if keyword in question_lower)
-            if keyword_count >= 2:
-                return self._format_institution_info(self.institution_database[inst_type])
+        best_match = None
+        best_score = 0
         
+        for inst_type, pattern_info in institution_patterns.items():
+            score = 0
+            for i, keyword in enumerate(pattern_info["keywords"]):
+                if keyword in question_lower:
+                    score += pattern_info["weight"][i]
+            
+            if score > best_score and score >= 4:
+                best_score = score
+                best_match = inst_type
+        
+        if best_match and best_match in self.institution_database:
+            return self._format_institution_info(self.institution_database[best_match])
+        
+        # 대체 매칭
         for inst_type, info in self.institution_database.items():
             patterns = info.get("관련질문패턴", [])
             for pattern in patterns:
@@ -597,7 +706,7 @@ class KnowledgeBase:
 
                     if keyword_matches >= 2:
                         pattern_info["pattern_type"] = pattern_key
-                        pattern_info["pattern_confidence"] = keyword_matches / len(pattern_data["question_keywords"])
+                        pattern_info["pattern_confidence"] = (keyword_matches / len(pattern_data["question_keywords"])) * pattern_data.get("confidence", 0.8)
                         pattern_info["pattern_key"] = pattern_key
                         pattern_info["hint_available"] = True
                         break
@@ -648,32 +757,39 @@ class KnowledgeBase:
             institution_info["question_pattern"] = matched_patterns[0] if matched_patterns else None
             institution_info["hint_available"] = True
 
+            # 향상된 기관 타입 판별
             institution_scoring = {
-                "전자금융분쟁조정": ["전자금융", "전자적", "분쟁", "조정", "금융감독원", "이용자"],
-                "개인정보보호": ["개인정보", "정보주체", "침해", "신고", "상담", "보호위원회"],
-                "한국은행": ["한국은행", "금융통화위원회", "자료제출", "통화신용정책", "지급결제"]
+                "전자금융분쟁조정": {
+                    "keywords": ["전자금융", "전자적", "분쟁", "조정", "금융감독원", "이용자"],
+                    "weights": [4, 2, 3, 3, 2, 2]
+                },
+                "개인정보보호": {
+                    "keywords": ["개인정보", "정보주체", "침해", "신고", "상담", "보호위원회"],
+                    "weights": [4, 2, 2, 2, 2, 3]
+                },
+                "한국은행": {
+                    "keywords": ["한국은행", "금융통화위원회", "자료제출", "통화신용정책", "지급결제"],
+                    "weights": [4, 3, 2, 2, 2]
+                }
             }
 
             best_match_score = 0
             best_match_type = None
 
             try:
-                for inst_type, keywords in institution_scoring.items():
-                    keyword_matches = sum(1 for keyword in keywords if keyword in question_lower)
-                    if inst_type == "전자금융분쟁조정" and "전자금융" in question_lower:
-                        keyword_matches += 2
-                    elif inst_type == "개인정보보호" and "개인정보" in question_lower:
-                        keyword_matches += 2
-                    elif inst_type == "한국은행" and "한국은행" in question_lower:
-                        keyword_matches += 3
+                for inst_type, scoring_info in institution_scoring.items():
+                    score = 0
+                    for i, keyword in enumerate(scoring_info["keywords"]):
+                        if keyword in question_lower:
+                            score += scoring_info["weights"][i]
                     
-                    if keyword_matches > best_match_score:
-                        best_match_score = keyword_matches
+                    if score > best_match_score:
+                        best_match_score = score
                         best_match_type = inst_type
 
                 if best_match_score > 0:
                     institution_info["institution_type"] = best_match_type
-                    institution_info["confidence"] = min(best_match_score / 3.0, 1.0)
+                    institution_info["confidence"] = min(best_match_score / 10.0, 1.0)
             except Exception as e:
                 print(f"기관 타입 매칭 오류: {e}")
 
