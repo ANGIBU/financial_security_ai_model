@@ -240,10 +240,11 @@ class PromptEnhancer:
 
             "subjective_base": """다음은 금융보안 관련 주관식 문제입니다. 반드시 한국어로만 전문적이고 정확한 답변을 작성하세요.
 
-중요 지침:
-- 모든 답변은 한국어로만 작성하고 절대 영어를 사용하지 마세요
+답변 작성 지침:
+- 모든 답변은 한국어로만 작성
 - 관련 법령과 규정에 근거한 전문적 답변 작성
 - 구체적이고 실무적인 내용 포함
+- 자연스러운 한국어 문장으로 구성
 
 {few_shot_examples}
 
@@ -252,18 +253,15 @@ class PromptEnhancer:
 
 문제: {question}
 
-위 문제에 대해 다음 관점에서 체계적으로 한국어 답변하세요:
-1. 관련 법령과 규정의 근거 제시
-2. 핵심 개념과 원리 설명
-3. 구체적인 절차나 방법론 기술
-4. 실무 적용 시 고려사항 포함
+위 문제에 대해 관련 법령과 규정을 근거로 구체적이고 전문적인 한국어 답변을 작성하세요.
 
 한국어 답변: """,
 
             "institution_question": """다음은 금융보안 관련 기관에 대한 질문입니다. 반드시 한국어로만 답변하세요.
 
-중요 지침:
-- 모든 답변은 한국어로만 작성하고 절대 영어를 사용하지 마세요
+답변 작성 지침:
+- 모든 답변은 한국어로만 작성
+- 기관의 정확한 명칭과 역할 기술
 
 {few_shot_examples}
 
@@ -281,8 +279,8 @@ class PromptEnhancer:
 한국어 답변: """
         }
     
-    def build_few_shot_context(self, domain: str, question_type: str, count: int = 3) -> str:
-        """Few-shot 예시 구성"""
+    def build_few_shot_context(self, domain: str, question_type: str, count: int = 2) -> str:
+        """Few-shot 예시 구성 (개수 조정)"""
         try:
             if domain not in self.few_shot_examples:
                 return ""
@@ -292,8 +290,14 @@ class PromptEnhancer:
                 return ""
             
             examples = domain_examples[question_type]
-            selected_count = min(count, len(examples))
-            selected_examples = random.sample(examples, selected_count) if len(examples) > selected_count else examples
+            
+            # 주관식의 경우 예시 개수를 줄여서 프롬프트 크기 감소
+            if question_type == "subjective":
+                count = min(count, 1)
+            else:
+                count = min(count, len(examples))
+            
+            selected_examples = random.sample(examples, count) if len(examples) > count else examples
             
             few_shot_text = ""
             for i, example in enumerate(selected_examples, 1):
@@ -309,10 +313,10 @@ class PromptEnhancer:
     
     def build_enhanced_prompt(self, question: str, question_type: str, domain: str = "일반", 
                             context_info: str = "", institution_info: str = "") -> str:
-        """프롬프트 구성"""
+        """프롬프트 구성 (단순화)"""
         try:
-            # Few-shot 예시 추가 (도메인에 따라 3-5개)
-            example_count = 5 if domain in ["개인정보보호", "전자금융"] else 3
+            # Few-shot 예시 추가 (개수 줄임)
+            example_count = 2 if domain in ["개인정보보호", "전자금융"] else 1
             few_shot_examples = self.build_few_shot_context(domain, question_type, count=example_count)
             
             # 기관 질문 특별 처리
@@ -333,17 +337,25 @@ class PromptEnhancer:
                 )
             else:
                 template = self.prompt_templates["subjective_base"]
+                # context_info 단순화
+                simplified_context = context_info[:500] + "..." if len(context_info) > 500 else context_info
                 return template.format(
                     few_shot_examples=few_shot_examples,
-                    context_info=context_info if context_info else "해당 도메인의 관련 법령과 규정을 참고하세요.",
+                    context_info=simplified_context if simplified_context else "관련 법령과 규정을 참고하세요.",
                     question=question
                 )
                 
         except Exception as e:
             print(f"프롬프트 구성 오류: {e}")
-            return f"""다음 문제에 대해 반드시 한국어로만 전문적이고 정확한 답변을 작성하세요.
+            # 더 단순한 기본 프롬프트
+            if question_type == "multiple_choice":
+                return f"""다음 문제의 정답 번호를 선택하세요.
 
-중요: 모든 답변은 한국어로만 작성하고 절대 영어를 사용하지 마세요.
+문제: {question}
+
+정답 번호: """
+            else:
+                return f"""다음 문제에 대해 한국어로만 전문적인 답변을 작성하세요.
 
 문제: {question}
 

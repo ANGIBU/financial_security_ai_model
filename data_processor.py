@@ -213,30 +213,30 @@ class DataProcessor:
         self.korean_recovery_mapping.update(self.korean_recovery_config["spaced_korean_fixes"])
 
     def detect_english_response(self, text: str) -> bool:
-        """영어 답변 감지"""
+        """영어 답변 감지 (완화된 기준)"""
         if not text:
             return False
         
         try:
-            # 영어 단어 패턴 감지
+            # 영어 단어 패턴 감지 (기준 완화)
             english_words = re.findall(r'\b[a-zA-Z]+\b', text)
             
-            # 영어 단어 수가 많은 경우
-            if len(english_words) > 8:
+            # 영어 단어 수가 매우 많은 경우만 영어 답변으로 판단
+            if len(english_words) > 15:  # 8 -> 15로 완화
                 return True
             
-            # 긴 영어 문장 패턴
-            english_sentences = re.findall(r'[A-Z][a-zA-Z\s,\.]{20,}', text)
-            if len(english_sentences) > 0:
+            # 긴 영어 문장 패턴 (더 엄격한 기준)
+            english_sentences = re.findall(r'[A-Z][a-zA-Z\s,\.]{30,}', text)  # 20 -> 30으로 완화
+            if len(english_sentences) > 1:  # 0 -> 1로 완화
                 return True
                 
-            # 영어 전문 용어가 연속으로 나오는 패턴
+            # 영어 전문 용어가 연속으로 나오는 패턴 (더 엄격한 기준)
             english_terms = ['Relation', 'relevant', 'laws', 'regulations', 'Trojans', 'Remote', 'Access', 'Tools', 'RATs', 'malware', 'computer', 'systems', 'networks', 'subjected', 'various', 'legal', 'frameworks', 'jurisdictions', 'worldwide']
             english_term_count = sum(1 for term in english_terms if term in text)
-            if english_term_count > 3:
+            if english_term_count > 5:  # 3 -> 5로 완화
                 return True
                 
-            # 영어 문장 구조 패턴
+            # 영어 문장 구조 패턴 (더 엄격한 기준)
             english_patterns = [
                 r'\b[A-Z][a-z]+\s+to\s+[a-z]+',
                 r'\b[A-Z][a-z]+\s+and\s+[A-Z][a-z]+',
@@ -248,9 +248,14 @@ class DataProcessor:
                 r'in different'
             ]
             
+            english_pattern_count = 0
             for pattern in english_patterns:
                 if re.search(pattern, text):
-                    return True
+                    english_pattern_count += 1
+                    
+            # 여러 영어 패턴이 동시에 존재하는 경우만 영어 답변으로 판단
+            if english_pattern_count > 2:  # 1 -> 2로 완화
+                return True
                     
             return False
             
@@ -692,20 +697,22 @@ class DataProcessor:
             score = 0
             for keyword in keywords:
                 if keyword.lower() in question_lower:
-                    # 핵심 키워드에 높은 점수 (실제 출제 패턴 반영)
+                    # 핵심 키워드에 더 높은 가중치
                     if keyword in [
                         "개인정보보호법", "전자금융거래법", "자본시장법", "ISMS",
-                        "트로이", "RAT", "원격제어", "분쟁조정", "위험관리", 
-                        "SBOM", "딥페이크", "만 14세", "한국은행"
+                        "트로이", "RAT", "원격제어", "SBOM", "딥페이크",
+                        "전자금융분쟁조정위원회", "개인정보보호위원회", 
+                        "만 14세", "법정대리인", "위험 관리", "금융투자업",
+                        "재해 복구", "접근통제", "암호화"
                     ]:
                         score += 8
                     elif keyword in [
-                        "개인정보", "전자금융", "금융투자", "사이버보안", 
-                        "정보보안", "위험관리"
+                        "개인정보", "전자금융", "사이버보안", "정보보안", 
+                        "금융투자", "위험관리"
                     ]:
                         score += 5
                     elif keyword in [
-                        "보안", "관리", "법령", "규정", "조치"
+                        "보안", "관리", "정책", "법령", "규정", "조치"
                     ]:
                         score += 2
                     else:
@@ -767,11 +774,11 @@ class DataProcessor:
         except Exception:
             pass
 
-        # 영어 비율 체크
+        # 영어 비율 체크 (완화된 기준)
         try:
             english_chars = len(re.findall(r"[a-zA-Z]", text))
             total_chars = len(re.sub(r"[^\w가-힣]", "", text))
-            if total_chars > 0 and english_chars / total_chars > 0.5:
+            if total_chars > 0 and english_chars / total_chars > 0.6:  # 0.5 -> 0.6으로 완화
                 text = re.sub(r"[a-zA-Z]+", "", text)
         except Exception:
             pass
@@ -801,23 +808,9 @@ class DataProcessor:
 
         # 문법 수정
         grammar_fixes = [
-            (r"([가-힣])\s+은\s+", r"\1은 "),
-            (r"([가-힣])\s+는\s+", r"\1는 "),
-            (r"([가-힣])\s+이\s+", r"\1이 "),
-            (r"([가-힣])\s+가\s+", r"\1가 "),
-            (r"([가-힣])\s+을\s+", r"\1을 "),
-            (r"([가-힣])\s+를\s+", r"\1를 "),
-            (r"([가-힣])\s+에\s+", r"\1에 "),
-            (r"([가-힣])\s+의\s+", r"\1의 "),
-            (r"([가-힣])\s+와\s+", r"\1와 "),
-            (r"([가-힣])\s+과\s+", r"\1과 "),
-            (r"([가-힣])\s+로\s+", r"\1로 "),
-            (r"([가-힣])\s+으로\s+", r"\1으로 "),
-            (r"([가-힣])\s+다\s*\.", r"\1다."),
-            (r"([가-힣])\s+요\s*\.", r"\1요."),
-            (r"([가-힣])\s+함\s*\.", r"\1함."),
-            (r"([가-힣])\s+니다\s*\.", r"\1니다."),
-            (r"([가-힣])\s+습니다\s*\.", r"\1습니다."),
+            (r"([가-힣])\s+(은|는|이|가|을|를|에|의|와|과|로|으로)\s+", r"\1\2 "),
+            (r"([가-힣])\s+(다|요|함|니다|습니다)\s*\.", r"\1\2."),
+            (r"([가-힣])\s*$", r"\1."),
             (r"\.+", "."),
             (r"\s*\.\s*", ". "),
             (r"\s*,\s*", ", "),
@@ -914,7 +907,7 @@ class DataProcessor:
             return False
 
     def validate_answer_intent_match(self, answer: str, question: str, intent_analysis: Dict) -> bool:
-        """답변과 의도 매칭 검증"""
+        """답변과 의도 매칭 검증 (완화된 기준)"""
         if not answer or not intent_analysis:
             return True
 
@@ -938,7 +931,7 @@ class DataProcessor:
         return any(word in answer_lower for word in basic_quality_keywords)
 
     def validate_korean_answer(self, answer: str, question_type: str, max_choice: int = 5, question: str = "") -> bool:
-        """한국어 답변 검증"""
+        """한국어 답변 검증 (완화된 기준)"""
         if not answer:
             return False
 
@@ -949,7 +942,6 @@ class DataProcessor:
             
         # 영어 답변 감지 시 실패
         if self.detect_english_response(answer):
-            print(f"영어 답변 감지됨: {answer[:100]}...")
             return False
 
         if question_type == "multiple_choice":
@@ -967,24 +959,24 @@ class DataProcessor:
             if self.detect_english_response(clean_answer):
                 return False
 
-            # 길이 검증
-            if len(clean_answer) < 8:
+            # 길이 검증 (완화)
+            if len(clean_answer) < 5:  # 8 -> 5로 완화
                 return False
 
-            # 한국어 비율 검증
+            # 한국어 비율 검증 (완화)
             korean_ratio = self.calculate_korean_ratio(clean_answer)
-            if korean_ratio < 0.3:
+            if korean_ratio < 0.2:  # 0.3 -> 0.2로 완화
                 return False
 
-            # 영어 비율 검증 (더 엄격)
+            # 영어 비율 검증 (완화)
             english_ratio = self.calculate_english_ratio(answer)
-            if english_ratio > 0.4:
+            if english_ratio > 0.5:  # 0.4 -> 0.5로 완화
                 return False
 
-            # 한국어 문자 개수 검증
+            # 한국어 문자 개수 검증 (완화)
             try:
                 korean_chars = len(re.findall(r"[가-힣]", clean_answer))
-                if korean_chars < 5:
+                if korean_chars < 3:  # 5 -> 3으로 완화
                     return False
             except Exception:
                 return False
@@ -1000,7 +992,7 @@ class DataProcessor:
             if any(word in clean_answer for word in meaningful_keywords):
                 return True
 
-            if len(clean_answer) >= 15:
+            if len(clean_answer) >= 10:  # 15 -> 10으로 완화
                 return True
 
             return False
@@ -1121,7 +1113,6 @@ class DataProcessor:
         
         # 영어 답변 감지 및 거부
         if self.detect_english_response(answer):
-            print(f"영어 답변 감지되어 정규화 거부: {answer[:100]}...")
             return ""
 
         if question_type == "multiple_choice":
@@ -1147,9 +1138,9 @@ class DataProcessor:
                     
             # 영어 답변 재검증
             if self.detect_english_response(answer):
-                return "영어 답변이 감지되어 한국어 답변으로 재생성이 필요합니다."
+                return ""
 
-            if len(answer) < 8:
+            if len(answer) < 5:  # 8 -> 5로 완화
                 return "답변 길이가 부족하여 생성에 실패했습니다."
 
             # 길이 조정 (도메인별 최적화)

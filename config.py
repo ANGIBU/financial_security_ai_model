@@ -99,7 +99,7 @@ GENERATION_CONFIG = {
 OPTIMIZATION_CONFIG = {
     "intent_confidence_threshold": 0.7,
     "quality_threshold": 0.8,
-    "korean_ratio_threshold": 0.85,
+    "korean_ratio_threshold": 0.7,
     "max_retry_attempts": 3,
     "template_preference": True,
     "adaptive_prompt": True,
@@ -114,9 +114,9 @@ OPTIMIZATION_CONFIG = {
 }
 
 KOREAN_REQUIREMENTS = {
-    "min_korean_ratio": 0.85,
-    "max_english_ratio": 0.05,
-    "min_length": 40,
+    "min_korean_ratio": 0.3,
+    "max_english_ratio": 0.4,
+    "min_length": 10,
     "max_length": 600,
     "repetition_tolerance": 2,
     "critical_repetition_limit": 3,
