@@ -250,15 +250,21 @@ class ModelHandler:
             
             # 검증된 패턴과의 정확한 매칭
             for pattern_key, pattern_data in self.verified_mc_patterns.items():
-                keywords = pattern_data["keywords"]
+                keywords = pattern_data.get("keywords", [])
+                if not keywords:
+                    continue
+                    
                 keyword_matches = sum(1 for keyword in keywords if keyword in question_lower)
                 
                 # 엄격한 매칭 기준 (정확도 향상을 위해)
                 match_threshold = 0.8 if len(keywords) <= 3 else 0.7
                 match_ratio = keyword_matches / len(keywords)
+                confidence = pattern_data.get("confidence", 0.8)
                 
-                if match_ratio >= match_threshold and pattern_data["confidence"] >= 0.85:
-                    return pattern_data["correct_answer"]
+                if match_ratio >= match_threshold and confidence >= 0.85:
+                    correct_answer = pattern_data.get("correct_answer", "2")
+                    if correct_answer and correct_answer != "2":  # 기본값이 아닌 경우만
+                        return str(correct_answer)
             
             # 도메인별 특화 패턴 매칭
             domain_patterns = {

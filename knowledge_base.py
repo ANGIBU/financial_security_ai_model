@@ -661,6 +661,58 @@ class KnowledgeBase:
 
         return analysis_result
 
+    def _find_korean_technical_terms(self, question: str) -> List[str]:
+        """한국어 기술용어 탐지"""
+        found_terms = []
+        try:
+            for term in self.korean_financial_terms.keys():
+                if term in question:
+                    found_terms.append(term)
+        except Exception:
+            pass
+        return found_terms
+
+    def _determine_technical_level(self, complexity: float, korean_terms: List[str]) -> str:
+        """기술 수준 결정"""
+        try:
+            if complexity > 0.7 or len(korean_terms) >= 2:
+                return "고급"
+            elif complexity > 0.4 or len(korean_terms) >= 1:
+                return "중급"
+            else:
+                return "초급"
+        except Exception:
+            return "중급"
+
+    def _check_compliance(self, question: str) -> Dict:
+        """규칙 준수 확인"""
+        compliance = {
+            "korean_content": True,
+            "appropriate_domain": True
+        }
+
+        try:
+            korean_chars = len([c for c in question if ord(c) >= 0xAC00 and ord(c) <= 0xD7A3])
+            total_chars = len([c for c in question if c.isalpha()])
+
+            if total_chars > 0:
+                korean_ratio = korean_chars / total_chars
+                compliance["korean_content"] = korean_ratio > 0.7
+        except Exception:
+            compliance["korean_content"] = True
+
+        found_domains = []
+        try:
+            for domain, keywords in self.domain_keywords.items():
+                if any(keyword in question.lower() for keyword in keywords):
+                    found_domains.append(domain)
+        except Exception:
+            pass
+
+        compliance["appropriate_domain"] = len(found_domains) > 0
+
+        return compliance
+
     def _calculate_precise_complexity(self, question: str) -> float:
         """정확한 질문 복잡도 계산"""
         try:

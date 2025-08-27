@@ -712,8 +712,8 @@ class FinancialAIInference:
                 total=self.total_questions, 
                 desc="추론 진행", 
                 unit="문항",
-                ncols=90,
-                bar_format='{desc}: {percentage:3.1f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] 성공률: {postfix}'
+                ncols=100,
+                bar_format='{desc}: {percentage:3.1f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]'
             ) as pbar:
                 for question_idx, (original_idx, row) in enumerate(test_df.iterrows()):
                     question = row["Question"]
@@ -722,10 +722,12 @@ class FinancialAIInference:
                     answer = self.process_single_question(question, question_id)
                     answers.append(answer)
                     
-                    # 현재 성공률 계산
-                    current_success_rate = (self.successful_processing / max(question_idx + 1, 1)) * 100
-                    pbar.set_postfix_str(f"{current_success_rate:.1f}%")
                     pbar.update(1)
+                    
+                    # 성공률을 설명에 추가 (10개마다)
+                    if (question_idx + 1) % 10 == 0:
+                        current_success_rate = (self.successful_processing / max(question_idx + 1, 1)) * 100
+                        pbar.set_description(f"추론 진행 (성공률: {current_success_rate:.1f}%)")
 
                     # 주기적 저장
                     if (question_idx + 1) % MEMORY_CONFIG["pkl_save_frequency"] == 0:
