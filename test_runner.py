@@ -36,7 +36,7 @@ def run_test(test_size: int = None, verbose: bool = True):
 
         engine = None
         try:
-            engine = FinancialAIInference(verbose=False, log_type="test")
+            engine = FinancialAIInference(verbose=False)
 
             import pandas as pd
 
@@ -182,7 +182,7 @@ def run_comprehensive_test(test_size: int):
 
         engine = None
         try:
-            engine = FinancialAIInference(verbose=False, log_type="test")
+            engine = FinancialAIInference(verbose=False)
 
             import pandas as pd
 
@@ -340,7 +340,7 @@ def run_question_type_test(question_type: str, test_size: int):
 
         engine = None
         try:
-            engine = FinancialAIInference(verbose=False, log_type="test")
+            engine = FinancialAIInference(verbose=False)
 
             import pandas as pd
 
@@ -460,7 +460,7 @@ def run_domain_test(domain_name: str, test_size: int):
 
         engine = None
         try:
-            engine = FinancialAIInference(verbose=False, log_type="test")
+            engine = FinancialAIInference(verbose=False)
 
             import pandas as pd
 
@@ -502,12 +502,7 @@ def run_domain_test(domain_name: str, test_size: int):
                             question_type_counts["주관식"] += 1
                         
                         # 난이도 분포
-                        if difficulty < 0.4:
-                            difficulty_distribution["초급"] += 1
-                        elif difficulty < 0.7:
-                            difficulty_distribution["중급"] += 1
-                        else:
-                            difficulty_distribution["고급"] += 1
+                        difficulty_distribution[difficulty] += 1
 
                     if len(domain_indices) >= test_size:
                         break
@@ -573,7 +568,6 @@ def print_comprehensive_results(results: dict, output_file: Path, test_count: in
         print(f"\n=== 종합 테스트 결과 ===")
         if results.get("success"):
             print(f"처리 완료: {test_count}개 문항")
-            print(f"처리 시간: {results.get('total_time', 0):.1f}초")
             success_rate = results.get('success_rate', 0)
             print(f"성공률: {success_rate:.1f}%")
             
@@ -596,7 +590,6 @@ def print_comprehensive_results(results: dict, output_file: Path, test_count: in
                 print(f"\n학습 데이터 현황:")
                 print(f"  성공 답변: {learning.get('successful_answers', 0)}개")
                 print(f"  실패 답변: {learning.get('failed_answers', 0)}개")
-                print(f"  질문 패턴: {learning.get('question_patterns', 0)}개")
         
         print(f"결과 파일: {output_file.name}")
     except Exception as e:
@@ -609,7 +602,6 @@ def print_multiple_choice_results(results: dict, output_file: Path, test_count: 
         print(f"\n=== 객관식 테스트 결과 ===")
         if results.get("success"):
             print(f"처리 완료: {test_count}개 문항")
-            print(f"처리 시간: {results.get('total_time', 0):.1f}초")
             success_rate = results.get('success_rate', 0)
             print(f"성공률: {success_rate:.1f}%")
             
@@ -631,7 +623,6 @@ def print_subjective_results(results: dict, output_file: Path, test_count: int):
         print(f"\n=== 주관식 테스트 결과 ===")
         if results.get("success"):
             print(f"처리 완료: {test_count}개 문항")
-            print(f"처리 시간: {results.get('total_time', 0):.1f}초")
             success_rate = results.get('success_rate', 0)
             print(f"성공률: {success_rate:.1f}%")
             
@@ -653,7 +644,6 @@ def print_domain_results(results: dict, output_file: Path, test_count: int, doma
         print(f"\n=== {domain_name} 도메인 테스트 결과 ===")
         if results.get("success"):
             print(f"처리 완료: {test_count}개 문항")
-            print(f"처리 시간: {results.get('total_time', 0):.1f}초")
             success_rate = results.get('success_rate', 0)
             print(f"성공률: {success_rate:.1f}%")
             
@@ -678,7 +668,6 @@ def print_results(results: dict, output_file: str, test_size: int):
         print(f"\n=== 테스트 결과 ===")
         if results.get("success"):
             print(f"처리 완료: {test_size}개 문항")
-            print(f"처리 시간: {results.get('total_time', 0):.1f}초")
             success_rate = results.get('success_rate', 0)
             print(f"성공률: {success_rate:.1f}%")
             
@@ -859,7 +848,7 @@ def main():
         print("\n프로그램이 사용자에 의해 중단되었습니다.")
         sys.exit(0)
     except Exception as e:
-        print(f"메인 실행 오료: {e}")
+        print(f"메인 실행 오류: {e}")
         sys.exit(1)
 
 

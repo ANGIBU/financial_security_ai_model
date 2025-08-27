@@ -778,7 +778,6 @@ class FinancialAIInference:
 def main():
     engine = None
     try:
-        print("금융보안 LLM 추론 시스템 시작")
         engine = FinancialAIInference(verbose=False)
 
         results = engine.execute_inference()
