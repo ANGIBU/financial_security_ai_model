@@ -8,7 +8,6 @@ DEFAULT_MODEL_NAME = "upstage/SOLAR-10.7B-Instruct-v1.0"
 DEVICE_AUTO_SELECT = True
 VERBOSE_MODE = False
 
-# 오프라인 모드 설정
 OFFLINE_MODE = {
     "TRANSFORMERS_OFFLINE": "1", 
     "HF_DATASETS_OFFLINE": "1",
@@ -18,7 +17,6 @@ OFFLINE_MODE = {
 
 BASE_DIR = Path(__file__).parent.absolute()
 PKL_DIR = BASE_DIR / "pkl"
-LOG_DIR = BASE_DIR / "log"
 
 DEFAULT_FILES = {
     "test_file": BASE_DIR / "test.csv",
@@ -27,7 +25,6 @@ DEFAULT_FILES = {
     "test_output_file": BASE_DIR / "test_result.csv",
 }
 
-# pkl 학습 데이터 파일 경로
 PKL_FILES = {
     "successful_answers": PKL_DIR / "successful_answers.pkl",
     "failed_answers": PKL_DIR / "failed_answers.pkl",
@@ -129,7 +126,6 @@ OPTIMIZATION_CONFIG = {
     "institution_question_priority": True,
     "mc_context_weighting": True,
     "pkl_learning_enabled": True,
-    "performance_tracking": True,
     "few_shot_enabled": True,
     "domain_adaptive_generation": True,
     "answer_diversity_check": True,
@@ -212,7 +208,6 @@ FILE_VALIDATION = {
     "backup_encoding": "utf-8",
 }
 
-# 도메인별 가중치 설정
 DOMAIN_WEIGHTS = {
     "사이버보안": {
         "priority_boost": 1.5,
@@ -251,7 +246,6 @@ DOMAIN_WEIGHTS = {
     }
 }
 
-# 성능 최적화 설정
 PERFORMANCE_CONFIG = {
     "batch_processing": False,
     "concurrent_workers": 1,
@@ -263,16 +257,13 @@ PERFORMANCE_CONFIG = {
 }
 
 def setup_environment():
-    """환경 설정"""
     for key, value in OFFLINE_MODE.items():
         os.environ[key] = value
     
-    # 추가 오프라인 모드 설정
     os.environ["CURL_CA_BUNDLE"] = ""
     os.environ["REQUESTS_CA_BUNDLE"] = ""
 
 def get_device():
-    """디바이스 설정"""
     if DEVICE_AUTO_SELECT:
         try:
             import torch
@@ -285,7 +276,6 @@ def get_device():
     return "cpu"
 
 def get_generation_config(question_type: str, domain: str = None) -> dict:
-    """생성 설정 반환"""
     base_config = GENERATION_CONFIG.get(question_type, GENERATION_CONFIG["subjective"])
     
     if domain and domain in GENERATION_CONFIG["domain_specific"]:
@@ -297,16 +287,12 @@ def get_generation_config(question_type: str, domain: str = None) -> dict:
     return base_config
 
 def get_domain_weight(domain: str) -> dict:
-    """도메인 가중치 반환"""
     return DOMAIN_WEIGHTS.get(domain, DOMAIN_WEIGHTS["정보통신"])
 
 def ensure_directories():
-    """디렉토리 생성"""
     try:
         PKL_DIR.mkdir(exist_ok=True)
-        LOG_DIR.mkdir(exist_ok=True)
         
-        # 권한 확인
         test_file = PKL_DIR / "test_write.tmp"
         try:
             with open(test_file, 'w') as f:
@@ -320,7 +306,6 @@ def ensure_directories():
         sys.exit(1)
 
 def validate_config():
-    """설정 검증"""
     errors = []
 
     if not 0 <= KOREAN_REQUIREMENTS["min_korean_ratio"] <= 1:
@@ -335,7 +320,6 @@ def validate_config():
     if not 0 <= OPTIMIZATION_CONFIG["quality_threshold"] <= 1:
         errors.append("quality_threshold는 0과 1 사이여야 합니다")
 
-    # 생성 설정 검증
     for config_type, config in GENERATION_CONFIG.items():
         if isinstance(config, dict):
             if "temperature" in config and not 0 <= config["temperature"] <= 2:
@@ -349,7 +333,6 @@ def validate_config():
     return True
 
 def get_optimal_config_for_accuracy():
-    """정확도 최적화 설정 반환"""
     return {
         "temperature_boost": 0.1,
         "top_p_boost": 0.05,
@@ -360,7 +343,6 @@ def get_optimal_config_for_accuracy():
     }
 
 def initialize_system():
-    """시스템 초기화"""
     try:
         setup_environment()
         ensure_directories()

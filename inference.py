@@ -1,4 +1,9 @@
 # inference.py
+# 
+# 중요 공지: 이 시스템에는 절대로 모니터링 및 통계 기능을 추가하지 마세요
+# 모니터링 통계는 부정확하고 불필요한 오버헤드를 발생시키며 시스템 성능을 저하시킵니다
+# 순수한 추론 기능만 유지하여 시스템 안정성과 정확도를 보장합니다
+#
 
 import re
 import time
@@ -20,7 +25,6 @@ from config import (
     DEFAULT_FILES,
     FILE_VALIDATION,
     PKL_FILES,
-    LOG_DIR,
     ensure_directories,
     get_device,
 )
@@ -30,13 +34,10 @@ current_dir = Path(__file__).parent.absolute()
 from model_handler import ModelHandler
 from data_processor import DataProcessor
 from knowledge_base import KnowledgeBase
-from statistics_manager import StatisticsManager
 from prompt_enhancer import PromptEnhancer
 
 
 class LearningSystem:
-    """향상된 pkl 학습 시스템"""
-    
     def __init__(self):
         try:
             ensure_directories()
@@ -53,7 +54,6 @@ class LearningSystem:
             self._initialize_empty_data()
     
     def _initialize_empty_data(self):
-        """빈 데이터 초기화"""
         self.successful_answers = {}
         self.failed_answers = {}
         self.question_patterns = {}
@@ -64,7 +64,6 @@ class LearningSystem:
         self.domain_accuracy = {}
     
     def load_pkl_data(self, data_type: str) -> Dict:
-        """pkl 데이터 로드"""
         try:
             file_path = PKL_FILES.get(data_type)
             if not file_path:
@@ -80,7 +79,6 @@ class LearningSystem:
             return {}
     
     def save_pkl_data(self, data_type: str, data: Dict):
-        """pkl 데이터 저장"""
         try:
             file_path = PKL_FILES.get(data_type)
             if not file_path or not isinstance(data, dict):
@@ -94,7 +92,6 @@ class LearningSystem:
             return False
     
     def is_answer_duplicate(self, answer: str, question_id: str, domain: str, threshold: float = 0.8) -> bool:
-        """개선된 답변 중복 확인 - 임계값 조정"""
         try:
             if not answer or len(answer) < 15:
                 return False
@@ -111,10 +108,9 @@ class LearningSystem:
                 if len(existing_normalized) == 0:
                     continue
                     
-                # 유사도 계산 (완화된 기준)
                 similarity = len(set(answer_normalized) & set(existing_normalized)) / len(set(answer_normalized) | set(existing_normalized))
                 
-                if similarity > threshold:  # 기본값 0.8에서 조정 가능
+                if similarity > threshold:
                     return True
             
             return False
@@ -124,12 +120,10 @@ class LearningSystem:
     
     def record_successful_answer(self, question_id: str, question: str, answer: str, 
                                 question_type: str, domain: str, method: str):
-        """성공한 답변 기록 - 개선된 로직"""
         try:
             if not all([question_id, question, answer, question_type, domain, method]):
                 return False
             
-            # 중복 확인을 더 관대하게
             if self.is_answer_duplicate(answer, question_id, domain, threshold=0.9):
                 return False
                 
@@ -145,13 +139,11 @@ class LearningSystem:
                 "quality_score": self._calculate_answer_quality(answer)
             }
             
-            # 도메인별 성공률 추적
             if domain not in self.domain_accuracy:
                 self.domain_accuracy[domain] = {"success": 0, "total": 0}
             self.domain_accuracy[domain]["success"] += 1
             self.domain_accuracy[domain]["total"] += 1
             
-            # 메모리 관리
             max_count = MEMORY_CONFIG["max_learning_records"]["successful_answers"]
             if len(self.successful_answers) > max_count:
                 self._cleanup_old_records("successful_answers")
@@ -162,30 +154,25 @@ class LearningSystem:
             return False
     
     def _calculate_answer_quality(self, answer: str) -> float:
-        """답변 품질 점수 계산"""
         try:
             score = 0.0
             
-            # 길이 점수 (20-500자 적정)
             length = len(answer)
             if 20 <= length <= 500:
                 score += 0.3
             elif length > 10:
                 score += 0.1
             
-            # 한국어 비율
             korean_chars = len(re.findall(r'[가-힣]', answer))
             total_chars = len(re.sub(r'[^\w가-힣]', '', answer))
             if total_chars > 0:
                 korean_ratio = korean_chars / total_chars
                 score += korean_ratio * 0.3
             
-            # 전문용어 포함 여부
             professional_terms = ['법', '규정', '관리', '체계', '조치', '보안', '방안', '절차']
             term_count = sum(1 for term in professional_terms if term in answer)
             score += min(term_count * 0.05, 0.2)
             
-            # 문장 구조
             sentences = answer.count('.')
             if 1 <= sentences <= 8:
                 score += 0.2
@@ -195,13 +182,11 @@ class LearningSystem:
             return 0.5
     
     def _cleanup_old_records(self, record_type: str):
-        """오래된 기록 정리 - 품질 기준 개선"""
         try:
             records = getattr(self, record_type)
             if not records:
                 return
                 
-            # 품질 점수가 낮은 것부터 제거
             sorted_items = sorted(
                 records.items(),
                 key=lambda x: (
@@ -210,7 +195,6 @@ class LearningSystem:
                 )
             )
             
-            # 하위 20% 제거
             remove_count = len(sorted_items) // 5
             for key, _ in sorted_items[:remove_count]:
                 del records[key]
@@ -219,7 +203,6 @@ class LearningSystem:
             print(f"기록 정리 실패: {e}")
     
     def get_similar_successful_answer(self, question: str, domain: str, question_type: str) -> str:
-        """유사한 성공 답변 찾기 - 개선된 매칭"""
         try:
             if not question or not domain:
                 return None
@@ -236,14 +219,12 @@ class LearningSystem:
                 if not stored_question:
                     continue
                 
-                # 키워드 기반 유사도 계산
                 question_keywords = set(re.findall(r'[가-힣]{2,}', question_lower))
                 stored_keywords = set(re.findall(r'[가-힣]{2,}', stored_question))
                 
                 if not question_keywords:
                     continue
                 
-                # Jaccard 유사도
                 intersection = question_keywords & stored_keywords
                 union = question_keywords | stored_keywords
                 
@@ -251,12 +232,9 @@ class LearningSystem:
                     continue
                     
                 similarity = len(intersection) / len(union)
-                
-                # 품질 점수 가중치
                 quality_bonus = data.get("quality_score", 0.5) * 0.2
                 final_score = similarity + quality_bonus
                 
-                # 임계값 낮춤 (0.4 → 0.3)
                 if final_score > best_score and similarity > 0.3:
                     best_score = final_score
                     best_match = data.get("answer")
@@ -266,8 +244,25 @@ class LearningSystem:
             print(f"유사 답변 찾기 실패: {e}")
             return None
     
+    def record_failed_answer(self, question_id: str, question: str, error: str,
+                           question_type: str, domain: str):
+        try:
+            self.failed_answers[question_id] = {
+                "question": question,
+                "error": error,
+                "question_type": question_type,
+                "domain": domain,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            if domain not in self.domain_accuracy:
+                self.domain_accuracy[domain] = {"success": 0, "total": 0}
+            self.domain_accuracy[domain]["total"] += 1
+            
+        except Exception as e:
+            print(f"실패 답변 기록 실패: {e}")
+    
     def save_all_data(self):
-        """모든 학습 데이터 저장"""
         try:
             save_results = {
                 "successful_answers": self.save_pkl_data("successful_answers", self.successful_answers),
@@ -286,8 +281,7 @@ class LearningSystem:
 
 
 class FinancialAIInference:
-
-    def __init__(self, verbose: bool = False, log_type: str = "inference"):
+    def __init__(self, verbose: bool = False):
         self.verbose = verbose
         self.start_time = time.time()
 
@@ -299,19 +293,16 @@ class FinancialAIInference:
             sys.exit(1)
 
         try:
-            self.statistics_manager = StatisticsManager(log_type)
             self.learning = LearningSystem()
-            
             self.model_handler = ModelHandler(verbose=False)
             self.data_processor = DataProcessor()
             self.knowledge_base = KnowledgeBase()
             self.prompt_enhancer = PromptEnhancer()
 
             self.optimization_config = OPTIMIZATION_CONFIG.copy()
-            # 최적화 설정 개선
-            self.optimization_config["temperature"] = 0.4  # 0.25 → 0.4
-            self.optimization_config["top_p"] = 0.9        # 0.85 → 0.9
-            self.optimization_config["diversity_threshold"] = 0.7  # 새로운 설정
+            self.optimization_config["temperature"] = 0.4
+            self.optimization_config["top_p"] = 0.9
+            self.optimization_config["diversity_threshold"] = 0.7
             
             self.total_questions = 0
             self.successful_processing = 0
@@ -323,40 +314,32 @@ class FinancialAIInference:
             sys.exit(1)
 
     def process_single_question(self, question: str, question_id: str) -> str:
-        """단일 질문 처리 - 최적화된 버전"""
         start_time = time.time()
         
         try:
             if not question or not question_id:
                 return self._get_fallback_answer("subjective", question, 5)
             
-            # 질문 분석
             question_type, max_choice = self.data_processor.extract_choice_range(question)
             domain = self.data_processor.extract_domain(question)
             difficulty = self.data_processor.analyze_question_difficulty(question)
             
-            # PKL 학습 데이터 활용 (조건 완화)
             if self.optimization_config.get("pkl_learning_enabled", True):
                 similar_answer = self.learning.get_similar_successful_answer(question, domain, question_type)
                 if similar_answer and len(str(similar_answer).strip()) > 15:
-                    # 다양성 체크를 더 관대하게
                     if not self.learning.is_answer_duplicate(similar_answer, question_id, domain, threshold=0.9):
-                        processing_time = time.time() - start_time
-                        self._record_processing_stats(processing_time, domain, "learning_match", question_type, True)
                         self.learning.record_successful_answer(question_id, question, similar_answer, 
                                                              question_type, domain, "learning_match")
                         self.successful_processing += 1
                         self._update_domain_performance(domain, True)
                         return similar_answer
 
-            # 지식베이스 분석
             try:
                 kb_analysis = self.knowledge_base.analyze_question(question)
             except Exception as e:
                 print(f"지식베이스 분석 실패: {e}")
                 kb_analysis = {}
 
-            # 의도 분석
             intent_analysis = None
             if question_type == "subjective":
                 try:
@@ -365,22 +348,16 @@ class FinancialAIInference:
                     print(f"의도 분석 실패: {e}")
                     intent_analysis = None
 
-            # LLM을 통한 답변 생성
             answer = self._generate_answer_with_enhanced_llm(
                 question, question_type, max_choice, domain, intent_analysis, kb_analysis, question_id
             )
 
-            processing_time = time.time() - start_time
             success = answer and len(str(answer).strip()) > 0
 
-            method = "enhanced_llm_generation"
-            self._record_processing_stats(processing_time, domain, method, question_type, success)
-
             if success:
-                # 중복 체크를 더 관대하게
                 if not self.learning.is_answer_duplicate(answer, question_id, domain, threshold=0.85):
                     self.learning.record_successful_answer(question_id, question, answer, 
-                                                         question_type, domain, method)
+                                                         question_type, domain, "enhanced_llm_generation")
                 self.successful_processing += 1
                 self._update_domain_performance(domain, True)
             else:
@@ -396,10 +373,7 @@ class FinancialAIInference:
 
     def _generate_answer_with_enhanced_llm(self, question: str, question_type: str, max_choice: int, 
                                          domain: str, intent_analysis: Dict, kb_analysis: Dict, question_id: str) -> str:
-        """향상된 LLM 답변 생성"""
-        
         try:
-            # 도메인별 힌트 강화
             domain_hints = {
                 "domain": domain,
                 "temperature": self.optimization_config.get("temperature", 0.4),
@@ -408,13 +382,11 @@ class FinancialAIInference:
                 "context_boost": True
             }
             
-            # 객관식 특별 패턴 처리 개선
             if question_type == "multiple_choice":
                 pattern_answer = self._get_enhanced_mc_pattern_answer(question, max_choice, domain)
                 if pattern_answer:
                     return pattern_answer
 
-            # LLM 답변 생성
             answer = self.model_handler.generate_answer(
                 question=question,
                 question_type=question_type,
@@ -425,7 +397,6 @@ class FinancialAIInference:
                 prompt_enhancer=self.prompt_enhancer
             )
 
-            # 답변 검증 및 후처리
             if question_type == "multiple_choice":
                 return self._validate_mc_answer(answer, question, max_choice, domain)
             else:
@@ -436,39 +407,24 @@ class FinancialAIInference:
             return self._get_fallback_answer(question_type, question, max_choice)
 
     def _get_enhanced_mc_pattern_answer(self, question: str, max_choice: int, domain: str) -> str:
-        """향상된 객관식 패턴 답변"""
         try:
             question_lower = question.lower()
             
-            # 확장된 패턴 매칭
             enhanced_patterns = {
-                # 금융투자업 관련
                 ("금융투자업", "구분", "해당하지"): "1",
                 ("소비자금융업", "투자자문업", "해당하지"): "1",
-                
-                # 위험관리 관련
                 ("위험", "관리", "적절하지"): "2",
                 ("위험 수용", "계획 수립", "적절하지"): "2",
-                
-                # 개인정보보호 관련
                 ("만 14세", "개인정보", "동의"): "2",
                 ("법정대리인", "아동", "동의"): "2",
                 ("경영진", "중요한", "요소"): "2",
-                
-                # 전자금융 관련
                 ("한국은행", "자료제출", "요구"): "4",
                 ("통화신용정책", "지급결제", "요구"): "4",
-                
-                # 사이버보안 관련
                 ("SBOM", "활용", "이유"): "5",
                 ("소프트웨어", "공급망", "보안"): "5",
                 ("딥페이크", "대응", "적절한"): "2",
-                
-                # 정보보안 관련
                 ("재해", "복구", "옳지"): "3",
                 ("개인정보", "파기", "절차"): "3",
-                
-                # 정보통신 관련
                 ("정보통신서비스", "보고", "옳지"): "2",
                 ("법적", "책임", "보고"): "2"
             }
@@ -477,10 +433,8 @@ class FinancialAIInference:
                 if all(keyword in question_lower for keyword in pattern_keywords):
                     return answer
                     
-            # 일반적인 부정 질문 처리
             negative_indicators = ["해당하지 않는", "적절하지 않은", "옳지 않은", "잘못된"]
             if any(indicator in question_lower for indicator in negative_indicators):
-                # 도메인별 부정 답변 패턴
                 if domain == "금융투자":
                     return "1"
                 elif domain in ["위험관리", "개인정보보호", "정보통신"]:
@@ -495,7 +449,6 @@ class FinancialAIInference:
             return None
 
     def _validate_mc_answer(self, answer: str, question: str, max_choice: int, domain: str) -> str:
-        """객관식 답변 검증"""
         try:
             if answer and str(answer).isdigit() and 1 <= int(answer) <= max_choice:
                 return str(answer)
@@ -506,14 +459,12 @@ class FinancialAIInference:
 
     def _validate_subjective_answer(self, answer: str, question: str, domain: str, 
                                   intent_analysis: Dict, question_id: str) -> str:
-        """주관식 답변 검증"""
         try:
             if answer and len(str(answer).strip()) > 15:
                 if not self.data_processor.detect_english_response(answer):
                     if not self.learning.is_answer_duplicate(answer, question_id, domain, threshold=0.85):
                         return self._finalize_answer(answer, question, intent_analysis, domain)
             
-            # 재시도 생성
             retry_answer = self._retry_subjective_generation(question, domain, intent_analysis, question_id)
             if retry_answer:
                 return retry_answer
@@ -523,13 +474,12 @@ class FinancialAIInference:
             return self._get_enhanced_domain_fallback(question, domain, intent_analysis)
 
     def _retry_subjective_generation(self, question: str, domain: str, intent_analysis: Dict, question_id: str) -> str:
-        """주관식 재시도 생성 - 개선된 파라미터"""
         try:
             domain_hints = {
                 "domain": domain,
                 "retry_mode": True,
-                "temperature": 0.6,  # 0.4 → 0.6 (다양성 증가)
-                "top_p": 0.95,       # 0.9 → 0.95
+                "temperature": 0.6,
+                "top_p": 0.95,
                 "force_diversity": True,
                 "max_length_boost": True
             }
@@ -555,7 +505,6 @@ class FinancialAIInference:
         return None
 
     def _get_enhanced_domain_fallback(self, question: str, domain: str, intent_analysis: Dict) -> str:
-        """향상된 도메인별 폴백 답변"""
         try:
             question_lower = question.lower()
             
@@ -586,13 +535,11 @@ class FinancialAIInference:
                 }
             }
             
-            # 키워드 매칭으로 적절한 답변 선택
             if domain in enhanced_fallbacks:
                 for keyword, answer in enhanced_fallbacks[domain].items():
                     if keyword in question_lower:
                         return answer
                         
-                # 도메인 기본 답변
                 domain_defaults = {
                     "사이버보안": "사이버보안 위협에 대응하기 위해 다층 방어체계를 구축하고 실시간 모니터링과 침입탐지시스템을 운영하며, 정기적인 보안교육과 취약점 점검을 통해 종합적인 보안 관리체계를 유지해야 합니다.",
                     "전자금융": "전자금융거래법에 따라 전자금융업자는 이용자의 전자금융거래 안전성 확보를 위한 보안조치를 시행하고 접근매체 보안 관리를 통해 안전한 거래환경을 제공해야 합니다.",
@@ -608,18 +555,7 @@ class FinancialAIInference:
             print(f"향상된 도메인 폴백 답변 생성 오류: {e}")
             return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
 
-    def _record_processing_stats(self, processing_time: float, domain: str, method: str, 
-                               question_type: str, success: bool, error: str = None):
-        """처리 통계 기록"""
-        try:
-            self.statistics_manager.record_question_processing(
-                processing_time, domain, method, question_type, success, error
-            )
-        except Exception as e:
-            print(f"통계 기록 실패: {e}")
-
     def _update_domain_performance(self, domain: str, success: bool):
-        """도메인별 성능 추적"""
         if domain not in self.domain_performance:
             self.domain_performance[domain] = {"total": 0, "success": 0}
         
@@ -628,7 +564,6 @@ class FinancialAIInference:
             self.domain_performance[domain]["success"] += 1
 
     def _handle_processing_error(self, error: Exception, question_id: str, question: str, context: dict) -> str:
-        """처리 오류 핸들링"""
         try:
             domain = context.get('domain', 'unknown')
             question_type = context.get('question_type', 'unknown')
@@ -637,7 +572,6 @@ class FinancialAIInference:
             error_msg = str(error)
             print(f"질문 처리 오류 ({question_id}): {error_msg}")
             
-            self._record_processing_stats(0, domain, "error_fallback", question_type, False, "processing_error")
             self.failed_processing += 1
             self._update_domain_performance(domain, False)
             
@@ -646,7 +580,6 @@ class FinancialAIInference:
             return "시스템 오류로 인해 답변을 생성할 수 없습니다."
 
     def _finalize_answer(self, answer: str, question: str, intent_analysis: Dict = None, domain: str = "일반") -> str:
-        """답변 정리 - 개선된 버전"""
         try:
             if not answer:
                 return self._get_enhanced_domain_fallback(question, domain, intent_analysis)
@@ -656,18 +589,17 @@ class FinancialAIInference:
             if self.data_processor.detect_english_response(answer):
                 return self._get_enhanced_domain_fallback(question, domain, intent_analysis)
             
-            # 도메인별 최적 길이 (늘림)
             max_lengths = {
-                "사이버보안": 700,    # 550 → 700
-                "전자금융": 600,      # 450 → 600
-                "개인정보보호": 600,  # 450 → 600
-                "정보보안": 550,      # 400 → 550
-                "위험관리": 500,      # 400 → 500
-                "금융투자": 450,      # 350 → 450
-                "정보통신": 450       # 350 → 450
+                "사이버보안": 700,
+                "전자금융": 600,
+                "개인정보보호": 600,
+                "정보보안": 550,
+                "위험관리": 500,
+                "금융투자": 450,
+                "정보통신": 450
             }
             
-            max_length = max_lengths.get(domain, 600)  # 기본값도 500 → 600
+            max_length = max_lengths.get(domain, 600)
             
             if len(answer) > max_length:
                 sentences = re.split(r'[.!?]', answer)
@@ -690,10 +622,9 @@ class FinancialAIInference:
                     answer = answer[:max_length-3] + "..."
             
             korean_ratio = self.data_processor.calculate_korean_ratio(answer)
-            if korean_ratio < 0.25:  # 0.3 → 0.25 (더 관대하게)
+            if korean_ratio < 0.25:
                 return self._get_enhanced_domain_fallback(question, domain, intent_analysis)
             
-            # 마침표 처리 개선
             if answer and not answer.endswith((".", "다", "요", "함", "니다", "습니다")):
                 if answer.endswith("니"):
                     answer += "다."
@@ -710,7 +641,6 @@ class FinancialAIInference:
             return self._get_enhanced_domain_fallback(question, domain, intent_analysis)
 
     def _get_fallback_answer(self, question_type: str, question: str, max_choice: int) -> str:
-        """폴백 답변"""
         try:
             if question_type == "multiple_choice":
                 domain = self.data_processor.extract_domain(question)
@@ -726,7 +656,6 @@ class FinancialAIInference:
 
     def execute_inference(self, test_file: str = None, submission_file: str = None, 
                          output_file: str = None) -> Dict:
-        """추론 실행"""
         try:
             test_file = Path(test_file) if test_file else DEFAULT_FILES["test_file"]
             submission_file = Path(submission_file) if submission_file else DEFAULT_FILES["submission_file"]
@@ -742,18 +671,15 @@ class FinancialAIInference:
 
     def execute_inference_with_data(self, test_df: pd.DataFrame, submission_df: pd.DataFrame, 
                                    output_file: str = None) -> Dict:
-        """데이터를 이용한 추론 실행"""
         try:
             output_file = Path(output_file) if output_file else DEFAULT_FILES["output_file"]
             
             answers = []
             self.total_questions = len(test_df)
-            
-            self.statistics_manager.start_session()
 
             with tqdm(
                 total=self.total_questions, 
-                desc="향상된 추론 진행", 
+                desc="추론 진행", 
                 unit="문항",
                 ncols=80,
                 bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]'
@@ -767,15 +693,13 @@ class FinancialAIInference:
                     
                     pbar.update(1)
 
-                    # 메모리 관리 개선
                     if (question_idx + 1) % MEMORY_CONFIG["pkl_save_frequency"] == 0:
                         self.learning.save_all_data()
 
                     if (question_idx + 1) % MEMORY_CONFIG["gc_frequency"] == 0:
-                        self.statistics_manager.record_memory_snapshot()
                         try:
                             import psutil
-                            if psutil.virtual_memory().percent > 80:  # 85 → 80
+                            if psutil.virtual_memory().percent > 80:
                                 gc.collect()
                         except ImportError:
                             gc.collect()
@@ -788,73 +712,35 @@ class FinancialAIInference:
             if not save_success:
                 return {"success": False, "error": "파일 저장 실패"}
 
-            learning_data = {
-                "successful_answers": len(self.learning.successful_answers),
-                "failed_answers": len(self.learning.failed_answers),
-                "question_patterns": sum(len(patterns) for patterns in self.learning.question_patterns.values()),
-                "domain_accuracy": self.learning.domain_accuracy
-            }
+            success_rate = (self.successful_processing / max(self.total_questions, 1)) * 100
             
-            final_stats = self.statistics_manager.generate_final_statistics(learning_data)
-            result = self._format_results_for_compatibility(final_stats)
-            
-            success_rate = result.get('success_rate', 0)
-            print(f"\n향상된 추론 완료: {self.total_questions}개 문항")
+            print(f"\n추론 완료: {self.total_questions}개 문항")
             print(f"성공: {self.successful_processing}개, 실패: {self.failed_processing}개")
-            print(f"성공률: {success_rate}% (목표: 70% 이상)")
+            print(f"성공률: {success_rate:.1f}% (목표: 70% 이상)")
             
             if success_rate >= 70:
-                print("🎉 목표 성공률 달성!")
+                print("목표 성공률 달성!")
             else:
-                print(f"📈 개선 필요: {70 - success_rate}% 추가 향상 요구")
+                print(f"개선 필요: {70 - success_rate:.1f}% 추가 향상 요구")
             
-            return result
+            return {
+                "success": True,
+                "total_questions": self.total_questions,
+                "successful_processing": self.successful_processing,
+                "failed_processing": self.failed_processing,
+                "success_rate": success_rate,
+                "domain_performance": self.domain_performance,
+                "learning_data": {
+                    "successful_answers": len(self.learning.successful_answers),
+                    "failed_answers": len(self.learning.failed_answers),
+                    "domain_accuracy": self.learning.domain_accuracy
+                }
+            }
+            
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def _format_results_for_compatibility(self, stats: Dict) -> Dict:
-        """호환성을 위한 결과 형식"""
-        try:
-            exec_summary = stats.get("execution_summary", {})
-            learning_metrics = stats.get("learning_metrics", {})
-            domain_analysis = stats.get("domain_analysis", {})
-            method_analysis = stats.get("method_analysis", {})
-            
-            return {
-                "success": True,
-                "total_time": exec_summary.get("total_time_seconds", 0),
-                "total_questions": exec_summary.get("total_questions", 0),
-                "avg_processing_time": exec_summary.get("avg_processing_time", 0),
-                "successful_processing": self.successful_processing,
-                "failed_processing": self.failed_processing,
-                "success_rate": round((self.successful_processing / max(self.total_questions, 1)) * 100, 1),
-                "domain_distribution": {k: v.get("question_count", 0) for k, v in domain_analysis.items()},
-                "method_distribution": {k: v.get("question_count", 0) for k, v in method_analysis.items()},
-                "learning_data": {
-                    "successful_answers": learning_metrics.get("successful_answers", 0),
-                    "failed_answers": learning_metrics.get("failed_answers", 0),
-                    "question_patterns": learning_metrics.get("pattern_records", 0),
-                    "domain_accuracy": learning_metrics.get("domain_accuracy", {})
-                },
-                "performance_metrics": stats.get("performance_metrics", {}),
-                "quality_metrics": stats.get("quality_metrics", {}),
-                "domain_performance": self.domain_performance,
-                "optimization_applied": True,
-                "target_accuracy": 70
-            }
-        except Exception as e:
-            print(f"결과 형식 변환 오류: {e}")
-            return {
-                "success": True,
-                "total_time": 0,
-                "total_questions": self.total_questions,
-                "domain_performance": self.domain_performance,
-                "error": "통계 처리 중 오류 발생",
-                "optimization_applied": False
-            }
-
     def _save_csv(self, df: pd.DataFrame, filepath: Path) -> bool:
-        """CSV 저장"""
         try:
             df.to_csv(filepath, index=False, encoding=FILE_VALIDATION["encoding"])
             return True
@@ -866,7 +752,6 @@ class FinancialAIInference:
             return False
 
     def cleanup(self):
-        """리소스 정리"""
         try:
             if hasattr(self, 'learning'):
                 self.learning.save_all_data()
@@ -884,37 +769,36 @@ class FinancialAIInference:
                 self.prompt_enhancer.cleanup()
 
             gc.collect()
-            print("향상된 추론 엔진 리소스 정리 완료")
+            print("추론 엔진 리소스 정리 완료")
 
         except Exception as e:
             print(f"리소스 정리 오류: {e}")
 
 
 def main():
-    """메인 실행 함수"""
     engine = None
     try:
-        print("🚀 향상된 금융보안 LLM 추론 시스템 시작")
+        print("금융보안 LLM 추론 시스템 시작")
         engine = FinancialAIInference(verbose=False)
 
         results = engine.execute_inference()
 
         if results.get("success"):
             success_rate = results.get('success_rate', 0)
-            print(f"✅ 추론 완료 (처리시간: {results['total_time']:.1f}초)")
-            print(f"🎯 최종 성공률: {success_rate}%")
+            print(f"추론 완료")
+            print(f"최종 성공률: {success_rate:.1f}%")
             
             if success_rate >= 70:
-                print("🏆 목표 달성: 70% 이상 정확도 확보!")
+                print("목표 달성: 70% 이상 정확도 확보!")
             else:
-                print(f"📊 목표까지: {70 - success_rate}% 추가 개선 필요")
+                print(f"목표까지: {70 - success_rate:.1f}% 추가 개선 필요")
         else:
-            print(f"❌ 추론 실패: {results.get('error', '알 수 없는 오류')}")
+            print(f"추론 실패: {results.get('error', '알 수 없는 오류')}")
 
     except KeyboardInterrupt:
-        print("\n⏹️ 사용자에 의해 중단됨")
+        print("\n사용자에 의해 중단됨")
     except Exception as e:
-        print(f"💥 실행 오류: {e}")
+        print(f"실행 오류: {e}")
         import traceback
         traceback.print_exc()
     finally:

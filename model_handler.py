@@ -23,8 +23,6 @@ from config import (
 
 
 class ModelHandler:
-    """향상된 LLM 모델 처리"""
-
     def __init__(self, model_name: str = None, verbose: bool = False):
         self.model_name = model_name or DEFAULT_MODEL_NAME
         self.verbose = verbose
@@ -67,7 +65,6 @@ class ModelHandler:
         self._warmup()
 
     def _setup_korean_tokenizer(self):
-        """한국어 토크나이저 설정"""
         if hasattr(self.tokenizer, "do_lower_case"):
             self.tokenizer.do_lower_case = False
 
@@ -82,8 +79,6 @@ class ModelHandler:
                 print(f"특수 토큰 추가 실패: {e}")
 
     def _initialize_enhanced_data(self):
-        """향상된 데이터 초기화"""
-        
         self.enhanced_mc_patterns = {
             "domain_specific_answers": {
                 "금융투자": {
@@ -242,7 +237,6 @@ class ModelHandler:
         ]
 
     def _generate_question_hash(self, question: str, domain: str) -> str:
-        """질문 해시 생성"""
         try:
             combined_text = f"{question[:100]}-{domain}"
             return hashlib.md5(combined_text.encode()).hexdigest()[:8]
@@ -250,7 +244,6 @@ class ModelHandler:
             return ""
 
     def _is_duplicate_answer(self, answer: str, question_hash: str, threshold: float = 0.7) -> bool:
-        """중복 답변 확인 - 임계값 완화"""
         try:
             if not answer or len(answer) < 15:
                 return False
@@ -268,7 +261,6 @@ class ModelHandler:
                     if not cached_key:
                         continue
                         
-                    # 단어 기반 유사도
                     answer_words = set(answer_key.split())
                     cached_words = set(cached_key.split())
                     
@@ -282,24 +274,21 @@ class ModelHandler:
             
             self.answer_cache[question_hash] = answer_key[:60]
             
-            if len(self.answer_cache) > 150:  # 100 → 150 (캐시 크기 증가)
+            if len(self.answer_cache) > 150:
                 oldest_key = list(self.answer_cache.keys())[0]
                 del self.answer_cache[oldest_key]
             
-            # 유사도 비율이 30% 이상이면 중복으로 판단 (완화)
             return (similarity_count / max(total_comparisons, 1)) > 0.3
         except Exception:
             return False
 
     def get_enhanced_domain_template_answer(self, question: str, domain: str) -> str:
-        """향상된 도메인 템플릿 답변 조회"""
         if domain not in self.enhanced_domain_templates:
             return None
 
         question_lower = question.lower()
         templates = self.enhanced_domain_templates[domain]
         
-        # 우선순위별 매칭
         high_priority_matches = []
         medium_priority_matches = []
         
@@ -307,11 +296,10 @@ class ModelHandler:
             keywords = template_data.get("keywords", [])
             priority = template_data.get("priority", "low")
             
-            # 키워드 매칭 점수 계산
             keyword_matches = sum(1 for keyword in keywords if keyword in question_lower)
             match_ratio = keyword_matches / len(keywords) if keywords else 0
             
-            if match_ratio >= 0.5:  # 50% 이상 매칭
+            if match_ratio >= 0.5:
                 match_data = {
                     "template": template_data["template"],
                     "score": match_ratio,
@@ -323,21 +311,19 @@ class ModelHandler:
                 elif priority == "medium":
                     medium_priority_matches.append(match_data)
         
-        # 우선순위별 정렬 후 선택
         if high_priority_matches:
             best_match = max(high_priority_matches, key=lambda x: x["score"])
-            if best_match["score"] >= 0.6:  # 60% 이상만
+            if best_match["score"] >= 0.6:
                 return best_match["template"]
         
         if medium_priority_matches:
             best_match = max(medium_priority_matches, key=lambda x: x["score"])
-            if best_match["score"] >= 0.7:  # 70% 이상만
+            if best_match["score"] >= 0.7:
                 return best_match["template"]
 
         return None
 
     def _create_enhanced_diverse_prompt(self, base_prompt: str, domain: str, force_diversity: bool = False) -> str:
-        """향상된 다양성 확보 프롬프트 생성"""
         try:
             if not force_diversity:
                 return base_prompt
@@ -380,10 +366,13 @@ class ModelHandler:
         except Exception:
             return base_prompt
 
+    def restore_korean_text(self, text: str) -> str:
+        """한국어 텍스트 복구 메서드 (외부 호출용)"""
+        return self._recover_korean_text(text)
+
     def generate_answer(self, question: str, question_type: str, max_choice: int = 5,
                        intent_analysis: Dict = None, domain_hints: Dict = None, 
                        knowledge_base=None, prompt_enhancer=None) -> str:
-        """향상된 답변 생성"""
 
         domain = domain_hints.get("domain", "일반") if domain_hints else "일반"
         force_diversity = domain_hints.get("force_diversity", False) if domain_hints else False
@@ -391,13 +380,11 @@ class ModelHandler:
         
         question_hash = self._generate_question_hash(question, domain)
 
-        # 주관식에 대해 도메인 템플릿 우선 확인
         if question_type == "subjective":
             template_answer = self.get_enhanced_domain_template_answer(question, domain)
             if template_answer and not self._is_duplicate_answer(template_answer, question_hash, threshold=0.8):
                 return template_answer
         
-        # 컨텍스트 정보 수집
         context_info = ""
         institution_info = ""
         
@@ -412,7 +399,6 @@ class ModelHandler:
                 if pattern_hints:
                     context_info += f"\n힌트: {pattern_hints}"
 
-        # 향상된 프롬프트 생성
         if prompt_enhancer:
             base_prompt = prompt_enhancer.build_enhanced_prompt(
                 question=question,
@@ -431,48 +417,43 @@ class ModelHandler:
                 prompt,
                 return_tensors="pt",
                 truncation=True,
-                max_length=2500,  # 2000 → 2500 (더 긴 컨텍스트)
+                max_length=2500,
                 add_special_tokens=True,
             )
 
             if self.device == "cuda" and torch.cuda.is_available():
                 inputs = inputs.to(self.model.device)
 
-            # 향상된 생성 설정
             if question_type == "multiple_choice":
                 gen_config = GenerationConfig(
-                    max_new_tokens=15,  # 10 → 15
-                    temperature=0.2,    # 0.1 → 0.2
-                    top_p=0.7,         # 0.6 → 0.7
+                    max_new_tokens=15,
+                    temperature=0.2,
+                    top_p=0.7,
                     do_sample=True,
-                    repetition_penalty=1.1,  # 1.05 → 1.1
+                    repetition_penalty=1.1,
                     no_repeat_ngram_size=2,
                     pad_token_id=self.tokenizer.pad_token_id,
                     eos_token_id=self.tokenizer.eos_token_id,
                 )
             else:
-                # 주관식용 향상된 파라미터
                 base_temp = domain_hints.get("temperature", 0.4) if domain_hints else 0.4
                 base_top_p = domain_hints.get("top_p", 0.9) if domain_hints else 0.9
                 
-                # 재시도 모드일 때 더 높은 다양성
                 if retry_mode:
-                    base_temp = min(0.7, base_temp * 1.4)  # 더 큰 증가
+                    base_temp = min(0.7, base_temp * 1.4)
                     base_top_p = min(0.95, base_top_p * 1.05)
                 
-                # 다양성 강제 모드
                 if force_diversity:
                     base_temp = min(0.6, base_temp * 1.2)
                     base_top_p = min(0.95, base_top_p * 1.1)
                 
-                # 도메인별 최적화된 토큰 수
                 max_tokens_by_domain = {
-                    "사이버보안": 600,      # 500 → 600
-                    "전자금융": 500,        # 400 → 500
-                    "개인정보보호": 500,    # 400 → 500
-                    "정보보안": 450,        # 350 → 450
-                    "위험관리": 400,        # 350 → 400
-                    "정보통신": 400         # 350 → 400
+                    "사이버보안": 600,
+                    "전자금융": 500,
+                    "개인정보보호": 500,
+                    "정보보안": 450,
+                    "위험관리": 400,
+                    "정보통신": 400
                 }
                 
                 max_tokens = max_tokens_by_domain.get(domain, 500)
@@ -484,8 +465,8 @@ class ModelHandler:
                     temperature=base_temp,
                     top_p=base_top_p,
                     do_sample=True,
-                    repetition_penalty=1.15,  # 1.1 → 1.15 (반복 더 억제)
-                    no_repeat_ngram_size=4,   # 3 → 4
+                    repetition_penalty=1.15,
+                    no_repeat_ngram_size=4,
                     length_penalty=1.05,
                     pad_token_id=self.tokenizer.pad_token_id,
                     eos_token_id=self.tokenizer.eos_token_id,
@@ -500,11 +481,9 @@ class ModelHandler:
                 clean_up_tokenization_spaces=True,
             ).strip()
 
-            # 반복 패턴 감지 및 처리
             if self._detect_critical_repetitive_patterns(response):
                 return self._retry_generation_with_different_params(prompt, question_type, max_choice)
 
-            # 답변 후처리
             if question_type == "multiple_choice":
                 return self._process_enhanced_mc_answer(response, question, max_choice, domain)
             else:
@@ -516,7 +495,6 @@ class ModelHandler:
 
     def _create_fallback_prompt(self, question: str, question_type: str, domain: str, 
                               context_info: str, force_diversity: bool) -> str:
-        """폴백 프롬프트 생성"""
         if question_type == "multiple_choice":
             return f"""다음은 금융보안 관련 객관식 문제입니다. 정답 번호를 선택하세요.
 
@@ -539,20 +517,16 @@ class ModelHandler:
 한국어 답변: """
 
     def _process_enhanced_subjective_answer(self, response: str, question: str, question_hash: str = "") -> str:
-        """향상된 주관식 답변 처리"""
         if not response:
             return None
 
-        # 반복 패턴 감지 및 제거
         if self._detect_critical_repetitive_patterns(response):
             response = self._remove_repetitive_patterns(response)
-            if len(response) < 20:  # 15 → 20
+            if len(response) < 20:
                 return None
 
-        # 한국어 텍스트 복구
         response = self._recover_korean_text(response)
 
-        # 답변 정리
         response = re.sub(r"답변[:：]\s*", "", response)
         response = re.sub(r"한국어\s*답변[:：]\s*", "", response)
         response = re.sub(r"질문[:：].*?\n", "", response)
@@ -560,17 +534,15 @@ class ModelHandler:
         response = re.sub(r"참고.*?정보[:：].*?\n", "", response)
         response = re.sub(r"\s+", " ", response).strip()
 
-        if len(response) < 20:  # 15 → 20
+        if len(response) < 20:
             return None
 
         if not self._is_valid_korean_response(response):
             return None
         
-        # 중복 검사 완화
         if question_hash and self._is_duplicate_answer(response, question_hash, threshold=0.75):
             return None
 
-        # 마침표 처리
         if response and not response.endswith((".", "다", "요", "함", "니다", "습니다")):
             if response.endswith("니"):
                 response += "다."
@@ -584,14 +556,12 @@ class ModelHandler:
         return response
 
     def _process_enhanced_mc_answer(self, response: str, question: str, max_choice: int, domain: str) -> str:
-        """향상된 객관식 답변 처리"""
         if max_choice <= 0:
             max_choice = 5
 
         response = self._recover_korean_text(response)
         response = response.strip()
 
-        # 숫자 추출 개선
         number_patterns = [
             r'정답[:：]?\s*(\d+)',
             r'답[:：]?\s*(\d+)', 
@@ -605,30 +575,25 @@ class ModelHandler:
                 if 1 <= int(match) <= max_choice:
                     return match
 
-        # 향상된 패턴 매칭으로 폴백
         return self._get_enhanced_mc_pattern_answer(question, max_choice, domain)
 
     def _get_enhanced_mc_pattern_answer(self, question: str, max_choice: int, domain: str) -> str:
-        """향상된 객관식 패턴 답변"""
         try:
             question_lower = question.lower()
             
-            # 도메인별 특화 패턴 확인
             if domain in self.enhanced_mc_patterns["domain_specific_answers"]:
                 domain_patterns = self.enhanced_mc_patterns["domain_specific_answers"][domain]
                 
                 for pattern_keywords, answer in domain_patterns.items():
                     if all(keyword in question_lower for keyword in pattern_keywords):
                         if answer == "특별처리":
-                            # 특별한 로직이 필요한 경우
                             if "정보기술부문" in question_lower and "비율" in question_lower:
-                                return "특별답변처리"  # 실제로는 template에서 처리
+                                return "특별답변처리"
                             elif "3대요소" in question_lower:
                                 return "특별답변처리"
                         else:
                             return answer
             
-            # 일반적인 부정/긍정 패턴 처리
             negative_score = 0
             positive_score = 0
             
@@ -641,7 +606,6 @@ class ModelHandler:
                     positive_score += data["weight"]
             
             if negative_score > positive_score:
-                # 부정 질문 처리
                 domain_negative_defaults = {
                     "금융투자": "1",
                     "위험관리": "2",
@@ -652,7 +616,6 @@ class ModelHandler:
                 }
                 return domain_negative_defaults.get(domain, str(max_choice))
             elif positive_score > 0:
-                # 긍정 질문 처리
                 domain_positive_defaults = {
                     "개인정보보호": "2",
                     "전자금융": "4",
@@ -662,32 +625,28 @@ class ModelHandler:
                 }
                 return domain_positive_defaults.get(domain, "2")
             
-            # 기본 답변
             return str((max_choice + 1) // 2)
             
         except Exception:
             return "3"
 
     def _detect_critical_repetitive_patterns(self, text: str) -> bool:
-        """문제 패턴 감지 - 개선된 버전"""
         if not text or len(text) < 30:
             return False
 
-        # 더 정교한 반복 패턴 감지
         patterns = [
-            r"(.{1,3})\s*(\1\s*){8,}",        # 8회 이상 반복 (12→8)
-            r"([가-힣]{1,2})\s*(\1\s*){6,}",  # 한글 6회 이상 반복
-            r"(\w+\s+){5,}\1",                # 단어 패턴 반복
+            r"(.{1,3})\s*(\1\s*){8,}",
+            r"([가-힣]{1,2})\s*(\1\s*){6,}",
+            r"(\w+\s+){5,}\1",
         ]
 
         for pattern in patterns:
             if re.search(pattern, text):
                 return True
 
-        # 단어 수준 반복 감지
         words = text.split()
         if len(words) >= 10:
-            for i in range(len(words) - 7):  # 9→7로 완화
+            for i in range(len(words) - 7):
                 same_count = 0
                 for j in range(i, min(i + 8, len(words))):
                     if words[i] == words[j]:
@@ -695,17 +654,15 @@ class ModelHandler:
                     else:
                         break
 
-                if same_count >= 8 and len(words[i]) <= 3:  # 10→8로 완화
+                if same_count >= 8 and len(words[i]) <= 3:
                     return True
 
         return False
 
     def _remove_repetitive_patterns(self, text: str) -> str:
-        """반복 패턴 제거 - 개선된 버전"""
         if not text:
             return ""
 
-        # 단어 수준 중복 제거
         words = text.split()
         cleaned_words = []
         i = 0
@@ -714,27 +671,24 @@ class ModelHandler:
             current_word = words[i]
             count = 1
             
-            # 연속된 같은 단어 카운트
             while i + count < len(words) and words[i + count] == current_word:
                 count += 1
 
-            # 적절한 반복 수 결정
             if len(current_word) <= 2:
-                max_repeat = 3   # 2글자 이하는 3회까지
+                max_repeat = 3
             elif len(current_word) <= 5:
-                max_repeat = 4   # 5글자 이하는 4회까지
+                max_repeat = 4
             else:
-                max_repeat = 2   # 긴 단어는 2회까지
+                max_repeat = 2
 
             cleaned_words.extend([current_word] * min(count, max_repeat))
             i += count
 
         text = " ".join(cleaned_words)
         
-        # 정규식 기반 패턴 제거
         try:
-            text = re.sub(r"(.{2,10})\s*\1{3,}", r"\1", text)  # 3회 이상 반복 제거
-            text = re.sub(r"(.{1,3})\s*(\1\s*){5,}", r"\1", text)  # 짧은 패턴 반복 제거
+            text = re.sub(r"(.{2,10})\s*\1{3,}", r"\1", text)
+            text = re.sub(r"(.{1,3})\s*(\1\s*){5,}", r"\1", text)
             text = re.sub(r"\s+", " ", text).strip()
         except Exception:
             pass
@@ -742,11 +696,9 @@ class ModelHandler:
         return text
 
     def _recover_korean_text(self, text: str) -> str:
-        """한국어 텍스트 복구 - 개선된 버전"""
         if not text:
             return ""
 
-        # 반복 패턴 먼저 처리
         if self._detect_critical_repetitive_patterns(text):
             text = self._remove_repetitive_patterns(text)
 
@@ -755,7 +707,6 @@ class ModelHandler:
         except Exception:
             pass
 
-        # 품질 패턴 적용
         for pattern_config in self.korean_quality_patterns:
             pattern = pattern_config["pattern"]
             replacement = pattern_config["replacement"]
@@ -764,10 +715,9 @@ class ModelHandler:
             except Exception:
                 continue
 
-        # 추가 정리
         try:
             text = re.sub(r"\s+", " ", text).strip()
-            text = re.sub(r"[^\w\s가-힣.,!?()[\]\-]", " ", text)  # 특수문자 제거
+            text = re.sub(r"[^\w\s가-힣.,!?()[\]\-]", " ", text)
             text = re.sub(r"\s+", " ", text).strip()
         except Exception:
             pass
@@ -775,14 +725,12 @@ class ModelHandler:
         return text
 
     def _is_valid_korean_response(self, text: str) -> bool:
-        """한국어 답변 유효성 검사 - 개선된 버전"""
         if not text:
             return False
         
-        if len(text.strip()) < 15:  # 10 → 15
+        if len(text.strip()) < 15:
             return False
             
-        # 영어 비율 검사
         english_chars = len(re.findall(r'[a-zA-Z]', text))
         total_chars = len(re.sub(r'[^\w가-힣]', '', text))
         
@@ -790,15 +738,13 @@ class ModelHandler:
             return False
             
         english_ratio = english_chars / total_chars
-        if english_ratio > 0.25:  # 0.3 → 0.25 (더 엄격)
+        if english_ratio > 0.25:
             return False
             
-        # 한국어 문자 수 검사
         korean_chars = len(re.findall(r'[가-힣]', text))
-        if korean_chars < 5:  # 3 → 5
+        if korean_chars < 5:
             return False
             
-        # 의미있는 키워드 검사 (확장)
         meaningful_keywords = [
             "법", "규정", "조치", "관리", "보안", "방안", "절차", "기준", "정책", 
             "체계", "시스템", "통제", "특징", "지표", "탐지", "대응", "기관", 
@@ -809,28 +755,25 @@ class ModelHandler:
         ]
         
         keyword_count = sum(1 for word in meaningful_keywords if word in text)
-        if keyword_count >= 2:  # 2개 이상 키워드
+        if keyword_count >= 2:
             return True
             
-        # 길이가 충분하면 유효
         return len(text) >= 25
 
     def _retry_generation_with_different_params(self, prompt: str, question_type: str, max_choice: int) -> str:
-        """다른 파라미터로 재생성"""
         try:
             inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2000)
 
             if self.device == "cuda" and torch.cuda.is_available():
                 inputs = inputs.to(self.model.device)
 
-            # 더 보수적인 재시도 설정
             retry_config = GenerationConfig(
                 max_new_tokens=300 if question_type == "subjective" else 10,
-                temperature=0.6,   # 0.5 → 0.6 (다양성 증가)
+                temperature=0.6,
                 top_p=0.9,
                 do_sample=True,
-                repetition_penalty=1.4,  # 1.3 → 1.4 (반복 더 억제)
-                no_repeat_ngram_size=5,  # 4 → 5
+                repetition_penalty=1.4,
+                no_repeat_ngram_size=5,
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=self.tokenizer.eos_token_id,
             )
@@ -850,14 +793,12 @@ class ModelHandler:
             return None
 
     def _get_fallback_answer(self, question_type: str, question: str = "", max_choice: int = 5) -> str:
-        """대체 답변"""
         if question_type == "multiple_choice":
             return self._get_enhanced_mc_pattern_answer(question, max_choice, "일반")
         else:
             return None
 
     def _warmup(self):
-        """모델 워밍업"""
         try:
             test_prompt = "테스트 문제입니다."
             inputs = self.tokenizer(test_prompt, return_tensors="pt")
@@ -873,7 +814,6 @@ class ModelHandler:
                 print("CUDA를 사용할 수 없습니다. CPU 모드로 실행됩니다.")
 
     def cleanup(self):
-        """리소스 정리"""
         try:
             if hasattr(self, "model"):
                 del self.model
