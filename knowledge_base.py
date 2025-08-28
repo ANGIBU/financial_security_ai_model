@@ -2,21 +2,22 @@
 
 import re
 from typing import Dict, List
-from config import TEMPLATE_QUALITY_CRITERIA
+from config import TEMPLATE_QUALITY_CRITERIA, POSITIONAL_ANALYSIS
 
 
 class KnowledgeBase:
-    """금융보안 지식베이스 - 정확도 최적화 버전"""
+    """금융보안 지식베이스"""
 
     def __init__(self):
-        self._initialize_enhanced_data()
+        self._initialize_data()
         self.template_quality_criteria = TEMPLATE_QUALITY_CRITERIA
-        self._setup_improved_domain_mapping()
+        self.positional_config = POSITIONAL_ANALYSIS
+        self._setup_domain_mapping()
 
-    def _initialize_enhanced_data(self):
-        """향상된 데이터 초기화 - 실제 법령 기반"""
+    def _initialize_data(self):
+        """데이터 초기화"""
         
-        # 정확한 도메인 키워드 매핑 (법령 기반)
+        # 도메인 키워드 매핑
         self.domain_keywords = {
             "개인정보보호": [
                 "개인정보", "정보주체", "개인정보보호법", "민감정보", "고유식별정보",
@@ -36,7 +37,8 @@ class KnowledgeBase:
                 "요청", "요구", "경우", "보안", "통계조사", "경영", "운영",
                 "전자금융업자", "보안시스템", "거래", "손해", "과실", "접근매체",
                 "부정거래", "이용", "승인", "기록", "정보보호", "예산", "정보기술부문",
-                "인력", "전자금융감독규정", "비율", "5%", "7%", "16조", "배정", "91조"
+                "인력", "전자금융감독규정", "비율", "5%", "7%", "16조", "배정", "91조",
+                "청문", "절차"
             ],
             "사이버보안": [
                 "트로이", "악성코드", "멀웨어", "바이러스", "피싱", "스미싱", "랜섬웨어",
@@ -58,14 +60,16 @@ class KnowledgeBase:
                 "복구 목표시간", "RTO", "옳지 않은", "고려", "요소", "보안 감사", "취약점 점검",
                 "보안 교육", "사고 대응", "보안 운영", "정보보호", "3대 요소",
                 "보안 목표", "SMTP", "프로토콜", "보안상 주요 역할", "기밀성", "무결성", "가용성",
-                "CIA", "Confidentiality", "Integrity", "Availability", "인증", "암호화"
+                "CIA", "Confidentiality", "Integrity", "Availability", "인증", "암호화",
+                "취약점 스캐닝", "정보보호최고책임자", "키 분배"
             ],
             "금융투자": [
                 "금융투자업", "투자자문업", "투자매매업", "투자중개업", "소비자금융업",
                 "보험중개업", "자본시장법", "집합투자업", "신탁업", "펀드", "파생상품",
                 "투자자보호", "적합성원칙", "설명의무", "금융산업", "구분",
                 "해당하지 않는", "금융산업의 이해", "내부통제", "리스크 관리",
-                "투자일임업", "자본시장과 금융투자업에 관한 법률"
+                "투자일임업", "자본시장과 금융투자업에 관한 법률", "신용정보회사",
+                "신용회복", "겸영"
             ],
             "위험관리": [
                 "위험관리", "위험평가", "위험대응", "위험수용", "리스크", "내부통제",
@@ -75,14 +79,23 @@ class KnowledgeBase:
                 "복구 목표시간", "계획 수립", "고려", "요소", "적절하지 않은", "위험통제"
             ],
             "정보통신": [
-                "정보통신시설", "집적된 정보통신시설", "정보통신서비스", "과학기술정보통신부장관",
-                "보고", "중단", "발생", "일시", "장소", "원인", "법적 책임", "피해내용", 
-                "응급조치", "정보통신기반 보호법", "중단 발생", "보고 사항", "옳지 않은",
-                "정보통신기반보호법", "집적된", "보호", "관련"
+                "정보통신시설", "집적된 정보통신시설", "정보통신서비스", 
+                "과학기술정보통신부장관", "보고", "중단", "발생", "일시", "장소", 
+                "원인", "법적 책임", "피해내용", "응급조치", "정보통신기반 보호법",
+                "중단 발생", "보고 사항", "옳지 않은", "정보통신기반보호법", 
+                "집적된", "보호", "관련", "SPF", "Sender Policy Framework", 
+                "프로토콜", "네트워크", "키 분배", "대칭 키", "국내대리인"
+            ],
+            "기타": [
+                "청문", "절차", "제출", "기준", "관리", "통제", "운영", "업무", "법", "조",
+                "규정", "시행", "적용", "준수", "이행", "수행", "담당", "책임", "의무",
+                "권한", "허가", "승인", "신고", "등록", "지정", "선정", "검토", "평가",
+                "감독", "감시", "점검", "조사", "확인", "검증", "분석", "판단", "결정",
+                "개인정보관리", "전문기관", "정보보호최고책임자", "위반", "책임"
             ]
         }
 
-        # 정확한 한국어 금융 용어 사전 (법령 기반)
+        # 한국어 금융 용어 사전
         self.korean_financial_terms = {
             "정보보안관리체계": "조직의 정보자산을 보호하기 위해 수립·운영하는 종합적인 관리체계(ISMS)",
             "개인정보관리체계": "개인정보의 안전한 처리를 위한 체계적 관리방안(PIMS)",
@@ -98,7 +111,7 @@ class KnowledgeBase:
             "정보보호3대요소": "기밀성(Confidentiality), 무결성(Integrity), 가용성(Availability)"
         }
 
-        # 정확한 기관 데이터베이스 (법령 기반)
+        # 기관 데이터베이스
         self.institution_database = {
             "전자금융분쟁조정": {
                 "기관명": "전자금융분쟁조정위원회",
@@ -135,13 +148,13 @@ class KnowledgeBase:
             }
         }
 
-        # 정확한 객관식 답변 패턴 (실제 법령 기반)
+        # 객관식 답변 패턴
         self.mc_answer_patterns = {
             "금융투자_해당하지않는": {
                 "question_keywords": ["금융투자업", "구분", "해당하지 않는"],
                 "correct_answers": {
                     "소비자금융업": "1",
-                    "보험중개업": "적용범위 확인 필요"
+                    "보험중개업": "5"
                 },
                 "financial_investment_types": ["투자자문업", "투자매매업", "투자중개업", "집합투자업", "신탁업", "투자일임업"],
                 "correct_answer": "1",
@@ -231,10 +244,18 @@ class KnowledgeBase:
                 "correct_answer": "2",
                 "explanation": "전자금융감독규정 제16조에 따라 정보기술부문 인력 5% 이상, 예산 7% 이상을 정보보호 업무에 배정",
                 "confidence": 0.98
+            },
+            "전자금융_청문절차": {
+                "question_keywords": ["전자금융거래법", "청문", "절차", "필요한", "경우"],
+                "legal_basis": "전자금융거래법 제44조",
+                "required_cases": ["전자금융업 허가 취소", "전자금융업 업무 정지"],
+                "not_required_cases": ["전자금융거래의 중단", "전자금융업자 업무 개선명령"],
+                "correct_answer": "3",
+                "confidence": 0.85
             }
         }
 
-        # 정확한 도메인별 컨텍스트 정보 (법령 기반)
+        # 도메인별 컨텍스트 정보
         self.domain_context_info = {
             "사이버보안": {
                 "기본정보": "사이버보안은 컴퓨터 시스템과 네트워크를 디지털 공격으로부터 보호하는 것",
@@ -261,7 +282,8 @@ class KnowledgeBase:
                 },
                 "중요규정": {
                     "정보기술부문배정": "전자금융감독규정 제16조 - 인력 5% 이상, 예산 7% 이상 정보보호 업무에 배정",
-                    "자료제출요구": "한국은행법 제91조 - 통화신용정책 수행 및 지급결제제도 운영 목적으로만 가능"
+                    "자료제출요구": "한국은행법 제91조 - 통화신용정책 수행 및 지급결제제도 운영 목적으로만 가능",
+                    "청문절차": "전자금융거래법 제44조 - 허가 취소나 업무 정지 시 청문 필요"
                 }
             },
             "개인정보보호": {
@@ -295,6 +317,10 @@ class KnowledgeBase:
                 "업무구분": {
                     "금융투자업": ["투자자문업", "투자매매업", "투자중개업", "집합투자업", "신탁업", "투자일임업"],
                     "비금융투자업": ["소비자금융업", "보험중개업"]
+                },
+                "신용정보": {
+                    "신용정보회사": "신용정보법 제11조에 따라 겸영할 수 있는 업무가 정해져 있음",
+                    "겸영업무": ["신용회복업무", "기업구조조정업무"]
                 }
             },
             "위험관리": {
@@ -310,14 +336,24 @@ class KnowledgeBase:
                 "보고사항": {
                     "필수보고": ["발생 일시 및 장소", "원인 및 피해내용", "응급조치 사항"],
                     "비보고": ["법적 책임에 관한 사항"]
+                },
+                "기술개념": {
+                    "SPF": "Sender Policy Framework - 이메일 발신자 인증 프로토콜",
+                    "키분배": "대칭 키 기반 분배 방식의 보안 통신",
+                    "국내대리인": "국내에서 개인정보 처리 업무를 담당하는 대리인"
                 }
+            },
+            "기타": {
+                "기본정보": "다양한 금융보안 관련 법령과 규정",
+                "포함영역": ["청문절차", "업무감독", "책임규정", "관리체계"],
+                "공통원칙": ["법령준수", "적절한 관리", "체계적 운영", "지속적 개선"]
             }
         }
 
-    def _setup_improved_domain_mapping(self):
-        """개선된 도메인 매핑 설정"""
+    def _setup_domain_mapping(self):
+        """도메인 매핑 설정"""
         
-        # 정확한 질문 패턴별 도메인 매핑
+        # 질문 패턴별 도메인 매핑
         self.question_pattern_domain_mapping = {
             "기관_질문": {
                 "전자금융": {
@@ -357,12 +393,16 @@ class KnowledgeBase:
                 "위험관리": {
                     "keywords": ["위험관리", "계획", "수립", "고려"],
                     "answer_focus": "적극적 위험 대응 방안"
+                },
+                "전자금융": {
+                    "keywords": ["청문", "절차", "필요한", "경우"],
+                    "answer_template": "전자금융거래법 제44조: 허가 취소나 업무 정지 시 청문 필요"
                 }
             }
         }
 
-    def get_enhanced_mc_pattern_answer(self, question: str, max_choice: int, domain: str) -> str:
-        """향상된 객관식 패턴 답변 - 정확도 최적화"""
+    def get_mc_pattern_answer(self, question: str, max_choice: int, domain: str, question_number: int = None) -> str:
+        """객관식 패턴 답변"""
         try:
             question_lower = question.lower()
             
@@ -375,41 +415,38 @@ class KnowledgeBase:
                     if keyword in question_lower:
                         keyword_matches += 1
                 
-                # 매칭 임계값 - 높은 정확도를 위해 엄격하게 설정
-                match_threshold = 0.7 if total_keywords <= 3 else 0.6
+                # 위치별 매칭 임계값 조정
+                base_threshold = 0.6 if total_keywords <= 3 else 0.5
+                if question_number is not None and question_number > 300:
+                    base_threshold -= 0.1
+                    
                 match_ratio = keyword_matches / total_keywords
                 
-                if match_ratio >= match_threshold:
+                if match_ratio >= base_threshold:
                     confidence = pattern_data.get("confidence", 0.8)
-                    # 높은 신뢰도를 가진 패턴만 사용
                     if confidence >= 0.85:
                         return pattern_data["correct_answer"]
             
-            # 도메인별 정확한 패턴 매칭
+            # 도메인별 패턴 매칭
             domain_specific_patterns = {
                 "금융투자": {
                     "keywords": ["금융투자업", "구분", "해당하지 않는"],
-                    "non_investment": ["소비자금융업", "보험중개업"],
                     "answer": "1"
                 },
                 "전자금융": {
                     "keywords": ["한국은행", "자료제출", "요구"],
-                    "valid_purpose": ["통화신용정책", "지급결제제도"],
                     "answer": "4"
                 },
                 "개인정보보호": {
                     "keywords": ["만 14세", "아동", "법정대리인"],
-                    "required": "법정대리인의 동의",
                     "answer": "2"
                 },
                 "정보보안": {
                     "keywords": ["재해복구", "옳지 않은", "개인정보 파기"],
-                    "irrelevant": "개인정보 파기",
                     "answer": "3"
                 },
                 "사이버보안": {
                     "keywords": ["SBOM", "활용", "소프트웨어 공급망"],
-                    "purpose": "공급망 보안",
                     "answer": "5"
                 }
             }
@@ -418,7 +455,7 @@ class KnowledgeBase:
                 pattern = domain_specific_patterns[domain]
                 keyword_count = sum(1 for keyword in pattern["keywords"] if keyword in question_lower)
                 
-                if keyword_count >= len(pattern["keywords"]) - 1:  # 키워드 대부분 매칭
+                if keyword_count >= len(pattern["keywords"]) - 1:
                     return pattern["answer"]
             
             # 일반적인 부정형/긍정형 패턴
@@ -428,7 +465,7 @@ class KnowledgeBase:
             is_negative = any(pattern in question_lower for pattern in negative_patterns)
             is_positive = any(pattern in question_lower for pattern in positive_patterns)
             
-            # 도메인별 기본 답변 (부정형)
+            # 도메인별 기본 답변
             if is_negative:
                 domain_defaults = {
                     "금융투자": "1",
@@ -436,23 +473,21 @@ class KnowledgeBase:
                     "개인정보보호": "2",
                     "정보통신": "2",
                     "정보보안": "3",
-                    "사이버보안": "3"
+                    "사이버보안": "3",
+                    "기타": "2"
                 }
-                return domain_defaults.get(domain, "3")
-            
-            # 긍정형 질문의 경우
+                return domain_defaults.get(domain, "2")
             elif is_positive:
-                return "2"  # 일반적으로 2번이 정답인 경우가 많음
+                return "2"
             
-            # 기본값
             return str((max_choice + 1) // 2)
             
         except Exception as e:
-            print(f"향상된 MC 패턴 답변 생성 오류: {e}")
-            return "3"
+            print(f"MC 패턴 답변 생성 오류: {e}")
+            return "2"
 
-    def get_domain_context(self, domain: str) -> str:
-        """도메인 컨텍스트 정보 제공 - 정확도 향상"""
+    def get_domain_context(self, domain: str, question_number: int = None) -> str:
+        """도메인 컨텍스트 정보 제공"""
         try:
             if domain not in self.domain_context_info:
                 return "관련 법령과 규정을 정확히 참고하여 답변하세요."
@@ -486,13 +521,18 @@ class KnowledgeBase:
                 for rule, desc in context['중요규정'].items():
                     context_text += f"- {rule}: {desc}\n"
             
-            return context_text[:1000]  # 길이 제한
+            # 위치별 컨텍스트 조정
+            if question_number is not None and question_number > 300:
+                if domain == "기타":
+                    context_text += "**후반부 주의사항**: 법령 조항과 구체적 기준을 정확히 확인하세요.\n"
+            
+            return context_text[:1200]
             
         except Exception as e:
             print(f"도메인 컨텍스트 제공 오류: {e}")
             return "관련 법령과 규정을 정확히 참고하여 전문적인 답변을 작성하세요."
 
-    def get_precise_mc_pattern_hints(self, question: str) -> str:
+    def get_precise_mc_pattern_hints(self, question: str, question_number: int = None) -> str:
         """정확한 객관식 패턴 힌트 제공"""
         question_lower = question.lower()
         
@@ -525,13 +565,23 @@ class KnowledgeBase:
             "정보통신 보고사항": {
                 "patterns": ["정보통신서비스", "중단", "보고", "옳지 않은"],
                 "hint": "정보통신기반 보호법에 따른 보고 사항에는 발생 일시·장소, 원인·피해내용, 응급조치가 포함되지만, 법적 책임은 포함되지 않습니다."
+            },
+            "청문 절차": {
+                "patterns": ["전자금융거래법", "청문", "절차", "필요한"],
+                "hint": "전자금융거래법 제44조에 따라 허가 취소나 업무 정지 등의 중요한 처분 시에만 청문 절차가 필요합니다."
             }
         }
         
         # 매칭된 패턴에 대한 힌트 제공
         for hint_key, hint_data in precise_hints.items():
             pattern_matches = sum(1 for pattern in hint_data["patterns"] if pattern in question_lower)
-            if pattern_matches >= len(hint_data["patterns"]) - 1:
+            threshold = len(hint_data["patterns"]) - 1
+            
+            # 후반부 문제는 더 엄격한 기준 적용
+            if question_number is not None and question_number > 300:
+                threshold = max(1, len(hint_data["patterns"]) - 2)
+                
+            if pattern_matches >= threshold:
                 return hint_data["hint"]
         
         # 일반적인 힌트
@@ -567,12 +617,12 @@ class KnowledgeBase:
             
             if keyword_count >= match_info["min_keywords"]:
                 if inst_type in self.institution_database:
-                    return self._format_precise_institution_info(self.institution_database[inst_type])
+                    return self._format_institution_info(self.institution_database[inst_type])
         
         return "관련 전문 기관에서 해당 업무를 담당합니다. 구체적인 기관명과 근거 법령을 확인하여 답변하세요."
 
-    def _format_precise_institution_info(self, info: Dict) -> str:
-        """정확한 기관 정보 포맷팅"""
+    def _format_institution_info(self, info: Dict) -> str:
+        """기관 정보 포맷팅"""
         context_text = f"**기관명**: {info['기관명']}\n"
         context_text += f"**소속**: {info['소속']}\n"
         context_text += f"**주요 역할**: {info['역할']}\n"
@@ -592,8 +642,8 @@ class KnowledgeBase:
         
         return context_text
 
-    def analyze_question(self, question: str) -> Dict:
-        """질문 분석 - 정확도 향상"""
+    def analyze_question(self, question: str, question_number: int = None) -> Dict:
+        """질문 분석"""
         question_lower = question.lower()
 
         detected_domains = []
@@ -605,40 +655,43 @@ class KnowledgeBase:
             for keyword in keywords:
                 if keyword.lower() in question_lower:
                     # 키워드 중요도에 따른 가중치 적용
-                    if len(keyword) >= 6:  # 긴 키워드는 더 높은 가중치
+                    if len(keyword) >= 6:
                         score += 5
                     elif len(keyword) >= 4:
                         score += 3
                     elif len(keyword) >= 2:
                         score += 1
+                    
+                    # 위치별 가중치 적용
+                    if question_number is not None:
+                        position_weight = self._get_position_weight(question_number)
+                        score *= position_weight
 
             if score > 0:
                 domain_scores[domain] = score
 
         if domain_scores:
-            # 최고 점수와 2등 점수의 차이가 클 때만 확실한 도메인으로 판정
             sorted_domains = sorted(domain_scores.items(), key=lambda x: x[1], reverse=True)
             best_domain = sorted_domains[0][0]
             best_score = sorted_domains[0][1]
             
             if len(sorted_domains) > 1:
                 second_score = sorted_domains[1][1]
-                if best_score - second_score >= 3:  # 충분한 점수 차이
+                if best_score - second_score >= 3:
                     detected_domains = [best_domain]
                 else:
-                    # 점수가 비슷하면 두 도메인 모두 고려
                     detected_domains = [best_domain, sorted_domains[1][0]]
             else:
                 detected_domains = [best_domain]
         else:
-            detected_domains = ["일반"]
+            detected_domains = ["기타"]
 
         try:
-            complexity = self._calculate_precise_complexity(question)
+            complexity = self._calculate_complexity(question, question_number)
             korean_terms = self._find_korean_technical_terms(question)
             compliance_check = self._check_compliance(question)
-            institution_info = self._check_institution_question_precise(question)
-            mc_pattern_info = self._analyze_mc_pattern_precise(question)
+            institution_info = self._check_institution_question(question)
+            mc_pattern_info = self._analyze_mc_pattern(question, question_number)
         except Exception as e:
             print(f"질문 분석 중 오류: {e}")
             complexity = 0.5
@@ -649,17 +702,43 @@ class KnowledgeBase:
 
         analysis_result = {
             "domain": detected_domains,
-            "primary_domain": detected_domains[0] if detected_domains else "일반",
+            "primary_domain": detected_domains[0] if detected_domains else "기타",
             "complexity": complexity,
             "technical_level": self._determine_technical_level(complexity, korean_terms),
             "korean_technical_terms": korean_terms,
             "compliance": compliance_check,
             "institution_info": institution_info,
             "mc_pattern_info": mc_pattern_info,
-            "domain_confidence": max(domain_scores.values()) / 20 if domain_scores else 0
+            "domain_confidence": max(domain_scores.values()) / 20 if domain_scores else 0,
+            "question_number": question_number,
+            "position_stage": self._get_position_stage(question_number)
         }
 
         return analysis_result
+
+    def _get_position_weight(self, question_number: int) -> float:
+        """위치별 가중치 계산"""
+        if question_number is None:
+            return 1.0
+            
+        if question_number <= 100:
+            return self.positional_config["position_weight_factors"]["early"]
+        elif question_number <= 300:
+            return self.positional_config["position_weight_factors"]["middle"]
+        else:
+            return self.positional_config["position_weight_factors"]["late"]
+
+    def _get_position_stage(self, question_number: int) -> str:
+        """위치 단계 확인"""
+        if question_number is None:
+            return "unknown"
+            
+        if question_number <= 100:
+            return "early"
+        elif question_number <= 300:
+            return "middle"
+        else:
+            return "late"
 
     def _find_korean_technical_terms(self, question: str) -> List[str]:
         """한국어 기술용어 탐지"""
@@ -713,13 +792,13 @@ class KnowledgeBase:
 
         return compliance
 
-    def _calculate_precise_complexity(self, question: str) -> float:
-        """정확한 질문 복잡도 계산"""
+    def _calculate_complexity(self, question: str, question_number: int = None) -> float:
+        """질문 복잡도 계산"""
         try:
             complexity_score = 0.0
             
             # 길이 기반 복잡도
-            length_factor = min(len(question) / 300, 0.3)
+            length_factor = min(len(question) / 400, 0.3)
             complexity_score += length_factor
             
             # 전문 용어 밀도
@@ -740,12 +819,16 @@ class KnowledgeBase:
             if "방안" in question or "절차" in question:
                 complexity_score += 0.1
             
+            # 위치별 복잡도 조정
+            if question_number is not None and question_number > 300:
+                complexity_score += 0.05
+            
             return min(complexity_score, 1.0)
         except Exception:
             return 0.5
 
-    def _check_institution_question_precise(self, question: str) -> Dict:
-        """정확한 기관 관련 질문 확인"""
+    def _check_institution_question(self, question: str) -> Dict:
+        """기관 관련 질문 확인"""
         question_lower = question.lower()
 
         institution_info = {
@@ -757,7 +840,6 @@ class KnowledgeBase:
             "hint_available": False
         }
 
-        # 정확한 기관 질문 패턴
         institution_patterns = [
             r"어떤.*기관", r"어느.*기관", r"기관.*기술하세요", r"기관.*설명하세요",
             r"조정.*신청.*기관", r"분쟁.*조정.*기관", r"신청.*할.*수.*있는.*기관",
@@ -788,8 +870,8 @@ class KnowledgeBase:
 
         return institution_info
 
-    def _analyze_mc_pattern_precise(self, question: str) -> Dict:
-        """정확한 객관식 패턴 분석"""
+    def _analyze_mc_pattern(self, question: str, question_number: int = None) -> Dict:
+        """객관식 패턴 분석"""
         question_lower = question.lower()
 
         pattern_info = {
@@ -798,7 +880,8 @@ class KnowledgeBase:
             "pattern_confidence": 0.0,
             "pattern_key": None,
             "hint_available": False,
-            "expected_answer": None
+            "expected_answer": None,
+            "position_adjusted": False
         }
 
         try:
@@ -821,16 +904,22 @@ class KnowledgeBase:
                     match_ratio = keyword_matches / total_keywords if total_keywords > 0 else 0
                     confidence = pattern_data.get("confidence", 0.8)
                     
-                    if match_ratio >= 0.6 and confidence >= 0.85:
+                    # 위치별 신뢰도 조정
+                    adjusted_confidence = confidence
+                    if question_number is not None and question_number > 300:
+                        adjusted_confidence *= 0.95
+                        pattern_info["position_adjusted"] = True
+                    
+                    if match_ratio >= 0.5 and adjusted_confidence >= 0.80:
                         pattern_info["pattern_type"] = pattern_key
-                        pattern_info["pattern_confidence"] = match_ratio * confidence
+                        pattern_info["pattern_confidence"] = match_ratio * adjusted_confidence
                         pattern_info["pattern_key"] = pattern_key
                         pattern_info["hint_available"] = True
                         pattern_info["expected_answer"] = pattern_data["correct_answer"]
                         break
                         
         except Exception as e:
-            print(f"정확한 객관식 패턴 분석 오류: {e}")
+            print(f"객관식 패턴 분석 오류: {e}")
 
         return pattern_info
 

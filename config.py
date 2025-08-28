@@ -32,6 +32,8 @@ PKL_FILES = {
     "domain_templates": PKL_DIR / "domain_templates.pkl",
     "mc_patterns": PKL_DIR / "mc_patterns.pkl",
     "performance_data": PKL_DIR / "performance_data.pkl",
+    "positional_patterns": PKL_DIR / "positional_patterns.pkl",
+    "complexity_analysis": PKL_DIR / "complexity_analysis.pkl",
 }
 
 MODEL_CONFIG = {
@@ -45,16 +47,16 @@ MODEL_CONFIG = {
 GENERATION_CONFIG = {
     "multiple_choice": {
         "max_new_tokens": 15,
-        "temperature": 0.05,
-        "top_p": 0.5,
+        "temperature": 0.03,
+        "top_p": 0.4,
         "do_sample": True,
         "repetition_penalty": 1.02,
         "no_repeat_ngram_size": 2,
     },
     "subjective": {
         "max_new_tokens": 500,
-        "temperature": 0.4,
-        "top_p": 0.9,
+        "temperature": 0.35,
+        "top_p": 0.85,
         "do_sample": True,
         "repetition_penalty": 1.15,
         "no_repeat_ngram_size": 4,
@@ -63,61 +65,68 @@ GENERATION_CONFIG = {
     "domain_specific": {
         "사이버보안": {
             "max_new_tokens": 550,
-            "temperature": 0.35,
-            "top_p": 0.85,
+            "temperature": 0.3,
+            "top_p": 0.8,
             "repetition_penalty": 1.2,
             "no_repeat_ngram_size": 5,
             "length_penalty": 1.15,
         },
         "전자금융": {
             "max_new_tokens": 450,
-            "temperature": 0.3,
-            "top_p": 0.8,
+            "temperature": 0.25,
+            "top_p": 0.75,
             "repetition_penalty": 1.15,
             "no_repeat_ngram_size": 4,
         },
         "개인정보보호": {
             "max_new_tokens": 450,
-            "temperature": 0.3,
-            "top_p": 0.8,
+            "temperature": 0.25,
+            "top_p": 0.75,
             "repetition_penalty": 1.15,
             "no_repeat_ngram_size": 4,
         },
         "정보보안": {
             "max_new_tokens": 400,
-            "temperature": 0.35,
-            "top_p": 0.85,
+            "temperature": 0.3,
+            "top_p": 0.8,
             "repetition_penalty": 1.15,
             "no_repeat_ngram_size": 4,
         },
         "위험관리": {
             "max_new_tokens": 350,
-            "temperature": 0.25,
-            "top_p": 0.75,
+            "temperature": 0.2,
+            "top_p": 0.7,
             "repetition_penalty": 1.1,
             "no_repeat_ngram_size": 3,
         },
         "금융투자": {
             "max_new_tokens": 350,
-            "temperature": 0.25,
-            "top_p": 0.75,
+            "temperature": 0.2,
+            "top_p": 0.7,
             "repetition_penalty": 1.1,
             "no_repeat_ngram_size": 3,
         },
         "정보통신": {
             "max_new_tokens": 300,
-            "temperature": 0.3,
-            "top_p": 0.8,
+            "temperature": 0.25,
+            "top_p": 0.75,
             "repetition_penalty": 1.1,
             "no_repeat_ngram_size": 3,
+        },
+        "기타": {
+            "max_new_tokens": 450,
+            "temperature": 0.25,
+            "top_p": 0.75,
+            "repetition_penalty": 1.15,
+            "no_repeat_ngram_size": 4,
         }
     }
 }
 
 OPTIMIZATION_CONFIG = {
-    "intent_confidence_threshold": 0.75,
-    "quality_threshold": 0.85,
-    "korean_ratio_threshold": 0.75,
+    "intent_confidence_threshold": 0.7,
+    "quality_threshold": 0.8,
+    "korean_ratio_threshold": 0.7,
     "max_retry_attempts": 4,
     "template_preference": True,
     "adaptive_prompt": True,
@@ -131,49 +140,54 @@ OPTIMIZATION_CONFIG = {
     "answer_diversity_check": True,
     "quality_based_selection": True,
     "context_aware_prompting": True,
-    "domain_weight_boost": 2.0,
-    "pattern_matching_sensitivity": 0.8,
+    "domain_weight_boost": 2.2,
+    "pattern_matching_sensitivity": 0.75,
     "fallback_strategy": "domain_specific",
+    "positional_analysis_enabled": True,
+    "complexity_adaptive_generation": True,
+    "late_stage_enhancement": True,
 }
 
 KOREAN_REQUIREMENTS = {
-    "min_korean_ratio": 0.4,
-    "max_english_ratio": 0.35,
-    "min_length": 15,
+    "min_korean_ratio": 0.35,
+    "max_english_ratio": 0.4,
+    "min_length": 12,
     "max_length": 650,
     "repetition_tolerance": 3,
     "critical_repetition_limit": 4,
     "sentence_count_range": (1, 10),
-    "professional_term_bonus": 0.1,
+    "professional_term_bonus": 0.15,
 }
 
 MEMORY_CONFIG = {
-    "gc_frequency": 25,
-    "save_interval": 40,
-    "pkl_save_frequency": 8,
+    "gc_frequency": 20,
+    "save_interval": 35,
+    "pkl_save_frequency": 6,
     "max_learning_records": {
-        "successful_answers": 3000,
-        "failed_answers": 1200,
-        "question_patterns": 2500,
-        "domain_templates": 1000,
-        "mc_patterns": 600,
-        "performance_data": 2000,
+        "successful_answers": 4000,
+        "failed_answers": 1500,
+        "question_patterns": 3000,
+        "domain_templates": 1200,
+        "mc_patterns": 800,
+        "performance_data": 2500,
+        "positional_patterns": 1000,
+        "complexity_analysis": 800,
     },
     "memory_threshold": 80,
-    "cache_size_limit": 500,
+    "cache_size_limit": 600,
 }
 
 TIME_LIMITS = {
-    "total_inference_minutes": 280,
-    "warmup_timeout": 35,
-    "single_question_timeout": 30,
-    "generation_timeout": 18,
-    "pattern_matching_timeout": 5,
+    "total_inference_minutes": 270,
+    "warmup_timeout": 30,
+    "single_question_timeout": 25,
+    "generation_timeout": 15,
+    "pattern_matching_timeout": 4,
 }
 
 TEMPLATE_QUALITY_CRITERIA = {
-    "length_range": (50, 550),
-    "korean_ratio_min": 0.85,
+    "length_range": (40, 580),
+    "korean_ratio_min": 0.8,
     "structure_keywords": ["법", "규정", "조치", "관리", "절차", "기준", "원칙", "체계"],
     "intent_keywords": {
         "기관_묻기": ["위원회", "기관", "담당", "업무", "소속", "역할"],
@@ -191,13 +205,14 @@ TEMPLATE_QUALITY_CRITERIA = {
     ],
     "quality_boost_keywords": ["법령", "규정", "기준", "원칙", "체계", "정책"],
     "domain_specific_weights": {
-        "사이버보안": 1.3,
-        "전자금융": 1.2,
-        "개인정보보호": 1.2,
-        "정보보안": 1.1,
-        "위험관리": 1.0,
-        "금융투자": 1.0,
-        "정보통신": 1.0,
+        "사이버보안": 1.4,
+        "전자금융": 1.3,
+        "개인정보보호": 1.3,
+        "정보보안": 1.2,
+        "위험관리": 1.1,
+        "금융투자": 1.1,
+        "정보통신": 1.1,
+        "기타": 1.2,
     }
 }
 
@@ -210,39 +225,63 @@ FILE_VALIDATION = {
 
 DOMAIN_WEIGHTS = {
     "사이버보안": {
-        "priority_boost": 1.5,
-        "pattern_sensitivity": 0.85,
-        "context_depth": "high"
+        "priority_boost": 1.6,
+        "pattern_sensitivity": 0.8,
+        "context_depth": "high",
+        "position_adjustment": 1.2,
     },
     "전자금융": {
-        "priority_boost": 1.4,
-        "pattern_sensitivity": 0.9,
-        "context_depth": "high"
+        "priority_boost": 1.5,
+        "pattern_sensitivity": 0.85,
+        "context_depth": "high",
+        "position_adjustment": 1.1,
     },
     "개인정보보호": {
-        "priority_boost": 1.3,
-        "pattern_sensitivity": 0.8,
-        "context_depth": "medium"
+        "priority_boost": 1.4,
+        "pattern_sensitivity": 0.75,
+        "context_depth": "medium",
+        "position_adjustment": 1.0,
     },
     "정보보안": {
-        "priority_boost": 1.2,
-        "pattern_sensitivity": 0.8,
-        "context_depth": "medium"
+        "priority_boost": 1.3,
+        "pattern_sensitivity": 0.75,
+        "context_depth": "medium",
+        "position_adjustment": 1.1,
     },
     "위험관리": {
-        "priority_boost": 1.1,
-        "pattern_sensitivity": 0.75,
-        "context_depth": "medium"
+        "priority_boost": 1.2,
+        "pattern_sensitivity": 0.7,
+        "context_depth": "medium",
+        "position_adjustment": 1.0,
     },
     "금융투자": {
-        "priority_boost": 1.1,
-        "pattern_sensitivity": 0.75,
-        "context_depth": "medium"
+        "priority_boost": 1.2,
+        "pattern_sensitivity": 0.7,
+        "context_depth": "medium",
+        "position_adjustment": 1.0,
     },
     "정보통신": {
-        "priority_boost": 1.0,
+        "priority_boost": 1.1,
+        "pattern_sensitivity": 0.65,
+        "context_depth": "low",
+        "position_adjustment": 1.0,
+    },
+    "기타": {
+        "priority_boost": 1.3,
         "pattern_sensitivity": 0.7,
-        "context_depth": "low"
+        "context_depth": "medium",
+        "position_adjustment": 1.1,
+    }
+}
+
+POSITIONAL_ANALYSIS = {
+    "early_stage": {"start": 0, "end": 100, "complexity_threshold": 0.6},
+    "middle_stage": {"start": 101, "end": 300, "complexity_threshold": 0.55},
+    "late_stage": {"start": 301, "end": 514, "complexity_threshold": 0.65},
+    "position_weight_factors": {
+        "early": 1.0,
+        "middle": 1.1,
+        "late": 1.3,
     }
 }
 
@@ -254,6 +293,7 @@ PERFORMANCE_CONFIG = {
     "memory_efficient_mode": True,
     "gradient_checkpointing": False,
     "mixed_precision": True,
+    "position_aware_processing": True,
 }
 
 def setup_environment():
@@ -287,7 +327,22 @@ def get_generation_config(question_type: str, domain: str = None) -> dict:
     return base_config
 
 def get_domain_weight(domain: str) -> dict:
-    return DOMAIN_WEIGHTS.get(domain, DOMAIN_WEIGHTS["정보통신"])
+    return DOMAIN_WEIGHTS.get(domain, DOMAIN_WEIGHTS["기타"])
+
+def get_positional_config(question_number: int) -> dict:
+    if question_number <= 100:
+        stage = "early_stage"
+        weight = POSITIONAL_ANALYSIS["position_weight_factors"]["early"]
+    elif question_number <= 300:
+        stage = "middle_stage"
+        weight = POSITIONAL_ANALYSIS["position_weight_factors"]["middle"]
+    else:
+        stage = "late_stage"
+        weight = POSITIONAL_ANALYSIS["position_weight_factors"]["late"]
+    
+    stage_config = POSITIONAL_ANALYSIS[stage].copy()
+    stage_config["position_weight"] = weight
+    return stage_config
 
 def ensure_directories():
     try:
@@ -334,12 +389,13 @@ def validate_config():
 
 def get_optimal_config_for_accuracy():
     return {
-        "temperature_boost": 0.1,
-        "top_p_boost": 0.05,
-        "repetition_penalty_boost": 0.05,
+        "temperature_boost": 0.05,
+        "top_p_boost": 0.03,
+        "repetition_penalty_boost": 0.03,
         "max_retry_attempts": OPTIMIZATION_CONFIG["max_retry_attempts"] + 1,
-        "quality_threshold": OPTIMIZATION_CONFIG["quality_threshold"] + 0.05,
-        "korean_ratio_threshold": KOREAN_REQUIREMENTS["min_korean_ratio"] + 0.1,
+        "quality_threshold": OPTIMIZATION_CONFIG["quality_threshold"] + 0.1,
+        "korean_ratio_threshold": KOREAN_REQUIREMENTS["min_korean_ratio"] + 0.15,
+        "position_weight_multiplier": 1.2,
     }
 
 def initialize_system():
@@ -352,7 +408,7 @@ def initialize_system():
             print("시스템 설정 완료")
             print(f"기본 모델: {DEFAULT_MODEL_NAME}")
             print(f"디바이스: {get_device()}")
-            print(f"최적화 모드: 활성화")
+            print(f"위치 인식 처리: 활성화")
     except Exception as e:
         print(f"시스템 초기화 실패: {e}")
         sys.exit(1)

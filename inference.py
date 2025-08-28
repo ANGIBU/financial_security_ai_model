@@ -20,8 +20,10 @@ from config import (
     DEFAULT_FILES,
     FILE_VALIDATION,
     PKL_FILES,
+    POSITIONAL_ANALYSIS,
     ensure_directories,
     get_device,
+    get_positional_config,
 )
 
 current_dir = Path(__file__).parent.absolute()
@@ -42,6 +44,8 @@ class LearningSystem:
             self.domain_templates = self.load_pkl_data("domain_templates")
             self.mc_patterns = self.load_pkl_data("mc_patterns")
             self.performance_data = self.load_pkl_data("performance_data")
+            self.positional_patterns = self.load_pkl_data("positional_patterns")
+            self.complexity_analysis = self.load_pkl_data("complexity_analysis")
             self.answer_diversity_tracker = {}
             self.domain_accuracy = {}
         except Exception as e:
@@ -55,6 +59,8 @@ class LearningSystem:
         self.domain_templates = {}
         self.mc_patterns = {}
         self.performance_data = {}
+        self.positional_patterns = {}
+        self.complexity_analysis = {}
         self.answer_diversity_tracker = {}
         self.domain_accuracy = {}
     
@@ -86,12 +92,18 @@ class LearningSystem:
             print(f"pkl 데이터 저장 실패 ({data_type}): {e}")
             return False
     
-    def is_answer_duplicate(self, answer: str, question_id: str, domain: str, threshold: float = 0.8) -> bool:
+    def is_answer_duplicate(self, answer: str, question_id: str, domain: str, 
+                          question_number: int = None, threshold: float = 0.8) -> bool:
         try:
             if not answer or len(answer) < 15:
                 return False
             
             answer_normalized = re.sub(r'[^\w가-힣]', '', answer.lower())
+            
+            # 위치별 중복 검사 강도 조정
+            position_threshold = threshold
+            if question_number is not None and question_number > 300:
+                position_threshold *= 0.9
             
             for qid, data in self.successful_answers.items():
                 if qid == question_id or data.get("domain") != domain:
@@ -105,7 +117,7 @@ class LearningSystem:
                     
                 similarity = len(set(answer_normalized) & set(existing_normalized)) / len(set(answer_normalized) | set(existing_normalized))
                 
-                if similarity > threshold:
+                if similarity > position_threshold:
                     return True
             
             return False
@@ -114,14 +126,19 @@ class LearningSystem:
             return False
     
     def record_successful_answer(self, question_id: str, question: str, answer: str, 
-                                question_type: str, domain: str, method: str):
+                                question_type: str, domain: str, method: str, 
+                                question_number: int = None, complexity: float = None):
         try:
             if not all([question_id, question, answer, question_type, domain, method]):
                 return False
             
-            if self.is_answer_duplicate(answer, question_id, domain, threshold=0.9):
+            # 위치별 중복 검사
+            if self.is_answer_duplicate(answer, question_id, domain, question_number, threshold=0.85):
                 return False
                 
+            position_stage = self._get_position_stage(question_number)
+            quality_score = self._calculate_answer_quality(answer, position_stage, complexity)
+            
             self.successful_answers[question_id] = {
                 "question": question,
                 "answer": answer,
@@ -131,8 +148,14 @@ class LearningSystem:
                 "timestamp": datetime.now().isoformat(),
                 "answer_length": len(str(answer)),
                 "question_hash": hash(question[:100]),
-                "quality_score": self._calculate_answer_quality(answer)
+                "quality_score": quality_score,
+                "question_number": question_number,
+                "position_stage": position_stage,
+                "complexity": complexity or 0.5
             }
+            
+            # 위치별 성공률 업데이트
+            self._update_positional_accuracy(domain, position_stage, True)
             
             if domain not in self.domain_accuracy:
                 self.domain_accuracy[domain] = {"success": 0, "total": 0}
@@ -148,21 +171,54 @@ class LearningSystem:
             print(f"성공 답변 기록 실패: {e}")
             return False
     
-    def _calculate_answer_quality(self, answer: str) -> float:
+    def _get_position_stage(self, question_number: int) -> str:
+        """위치 단계 확인"""
+        if question_number is None:
+            return "unknown"
+        if question_number <= 100:
+            return "early"
+        elif question_number <= 300:
+            return "middle"
+        else:
+            return "late"
+    
+    def _update_positional_accuracy(self, domain: str, position_stage: str, success: bool):
+        """위치별 정확도 업데이트"""
+        try:
+            if position_stage not in self.positional_patterns:
+                self.positional_patterns[position_stage] = {}
+            if domain not in self.positional_patterns[position_stage]:
+                self.positional_patterns[position_stage][domain] = {"success": 0, "total": 0}
+            
+            self.positional_patterns[position_stage][domain]["total"] += 1
+            if success:
+                self.positional_patterns[position_stage][domain]["success"] += 1
+        except Exception as e:
+            print(f"위치별 정확도 업데이트 오류: {e}")
+    
+    def _calculate_answer_quality(self, answer: str, position_stage: str = "middle", 
+                                complexity: float = None) -> float:
         try:
             score = 0.0
             
             length = len(answer)
-            if 25 <= length <= 600:  # 더 엄격한 길이 기준
-                score += 0.4
-            elif length > 15:
-                score += 0.2
+            # 위치별 길이 기준 조정
+            if position_stage == "late":
+                if 30 <= length <= 650:
+                    score += 0.4
+                elif length > 20:
+                    score += 0.25
+            else:
+                if 25 <= length <= 600:
+                    score += 0.4
+                elif length > 15:
+                    score += 0.2
             
             korean_chars = len(re.findall(r'[가-힣]', answer))
             total_chars = len(re.sub(r'[^\w가-힣]', '', answer))
             if total_chars > 0:
                 korean_ratio = korean_chars / total_chars
-                if korean_ratio >= 0.8:  # 높은 한국어 비율
+                if korean_ratio >= 0.8:
                     score += 0.3
                 elif korean_ratio >= 0.6:
                     score += 0.2
@@ -171,6 +227,10 @@ class LearningSystem:
                                  '기관', '위원회', '업무', '담당', '권한', '의무', '원칙']
             term_count = sum(1 for term in professional_terms if term in answer)
             score += min(term_count * 0.05, 0.3)
+            
+            # 복잡도 기반 품질 보정
+            if complexity is not None and complexity > 0.6:
+                score += 0.1
             
             return min(score, 1.0)
         except Exception:
@@ -197,17 +257,24 @@ class LearningSystem:
         except Exception as e:
             print(f"기록 정리 실패: {e}")
     
-    def get_similar_successful_answer(self, question: str, domain: str, question_type: str) -> str:
+    def get_similar_successful_answer(self, question: str, domain: str, question_type: str, 
+                                    question_number: int = None) -> str:
         try:
             if not question or not domain:
                 return None
                 
             question_lower = question.lower()
+            position_stage = self._get_position_stage(question_number)
             best_match = None
             best_score = 0
             
             for qid, data in self.successful_answers.items():
                 if data.get("domain") != domain or data.get("question_type") != question_type:
+                    continue
+                
+                # 위치별 유사도 가중치 적용
+                stored_position = data.get("position_stage", "middle")
+                if position_stage != stored_position and position_stage == "late":
                     continue
                     
                 stored_question = data.get("question", "").lower()
@@ -228,9 +295,15 @@ class LearningSystem:
                     
                 similarity = len(intersection) / len(union)
                 quality_bonus = data.get("quality_score", 0.5) * 0.2
+                
+                # 위치별 유사도 임계값 조정
+                similarity_threshold = 0.4
+                if position_stage == "late":
+                    similarity_threshold = 0.5
+                
                 final_score = similarity + quality_bonus
                 
-                if final_score > best_score and similarity > 0.4:  # 더 높은 유사도 기준
+                if final_score > best_score and similarity > similarity_threshold:
                     best_score = final_score
                     best_match = data.get("answer")
             
@@ -240,15 +313,21 @@ class LearningSystem:
             return None
     
     def record_failed_answer(self, question_id: str, question: str, error: str,
-                           question_type: str, domain: str):
+                           question_type: str, domain: str, question_number: int = None):
         try:
+            position_stage = self._get_position_stage(question_number)
+            
             self.failed_answers[question_id] = {
                 "question": question,
                 "error": error,
                 "question_type": question_type,
                 "domain": domain,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
+                "question_number": question_number,
+                "position_stage": position_stage
             }
+            
+            self._update_positional_accuracy(domain, position_stage, False)
             
             if domain not in self.domain_accuracy:
                 self.domain_accuracy[domain] = {"success": 0, "total": 0}
@@ -265,7 +344,9 @@ class LearningSystem:
                 "question_patterns": self.save_pkl_data("question_patterns", self.question_patterns),
                 "domain_templates": self.save_pkl_data("domain_templates", self.domain_templates),
                 "mc_patterns": self.save_pkl_data("mc_patterns", self.mc_patterns),
-                "performance_data": self.save_pkl_data("performance_data", self.performance_data)
+                "performance_data": self.save_pkl_data("performance_data", self.performance_data),
+                "positional_patterns": self.save_pkl_data("positional_patterns", self.positional_patterns),
+                "complexity_analysis": self.save_pkl_data("complexity_analysis", self.complexity_analysis)
             }
             
             failed_saves = [k for k, v in save_results.items() if not v]
@@ -294,23 +375,27 @@ class FinancialAIInference:
             self.knowledge_base = KnowledgeBase()
             self.prompt_enhancer = PromptEnhancer()
 
-            # 정확도 최적화를 위한 설정
             self.optimization_config = OPTIMIZATION_CONFIG.copy()
             self.optimization_config.update({
-                "temperature": 0.3,  # 더 낮은 temperature
-                "top_p": 0.8,
-                "diversity_threshold": 0.8,
-                "quality_threshold": 0.9,
-                "korean_ratio_threshold": 0.8,
-                "max_retry_attempts": 3
+                "temperature": 0.25,
+                "top_p": 0.75,
+                "diversity_threshold": 0.75,
+                "quality_threshold": 0.85,
+                "korean_ratio_threshold": 0.75,
+                "max_retry_attempts": 4,
+                "position_aware_processing": True
             })
             
             self.total_questions = 0
             self.successful_processing = 0
             self.failed_processing = 0
             self.domain_performance = {}
+            self.positional_performance = {
+                "early": {"total": 0, "success": 0},
+                "middle": {"total": 0, "success": 0},
+                "late": {"total": 0, "success": 0}
+            }
             
-            # 정확도 추적
             self.accuracy_tracking = {
                 "mc_correct": 0,
                 "mc_total": 0,
@@ -322,42 +407,54 @@ class FinancialAIInference:
             print(f"시스템 초기화 실패: {e}")
             sys.exit(1)
 
-    def process_single_question(self, question: str, question_id: str) -> str:
-        """단일 질문 처리 - 정확도 최적화"""
+    def process_single_question(self, question: str, question_id: str, question_number: int = None) -> str:
+        """단일 질문 처리"""
         start_time = time.time()
         
         try:
             if not question or not question_id:
-                return self._get_enhanced_fallback_answer("subjective", question, 5, "일반")
+                return self._get_fallback_answer("subjective", question, 5, "일반", question_number)
             
-            # 1단계: 질문 분석 (정확도 향상)
+            # 질문 번호 추출
+            if question_number is None:
+                try:
+                    question_number = int(question_id.replace('TEST_', ''))
+                except:
+                    question_number = 0
+            
+            # 1단계: 위치별 질문 분석
             question_type, max_choice = self.data_processor.extract_choice_range(question)
-            domain = self.data_processor.extract_domain(question)
-            difficulty = self.data_processor.analyze_question_difficulty(question)
+            domain = self.data_processor.extract_domain(question, question_number)
+            difficulty = self.data_processor.analyze_question_difficulty(question, question_number)
+            complexity = self.data_processor.analyze_question_complexity(question, question_number)
+            
+            position_stage = self._get_position_stage(question_number)
+            position_config = get_positional_config(question_number)
             
             if self.verbose:
-                print(f"질문 분석 - 타입: {question_type}, 도메인: {domain}, 난이도: {difficulty}")
+                print(f"질문 분석 - 번호: {question_number}, 타입: {question_type}, 도메인: {domain}, 난이도: {difficulty}, 위치: {position_stage}")
             
-            # 2단계: 학습된 유사 답변 확인 (더 엄격한 기준)
+            # 2단계: 학습된 유사 답변 확인
             if self.optimization_config.get("pkl_learning_enabled", True):
-                similar_answer = self.learning.get_similar_successful_answer(question, domain, question_type)
+                similar_answer = self.learning.get_similar_successful_answer(question, domain, question_type, question_number)
                 if similar_answer and len(str(similar_answer).strip()) > 20:
-                    if not self.learning.is_answer_duplicate(similar_answer, question_id, domain, threshold=0.85):
+                    if not self.learning.is_answer_duplicate(similar_answer, question_id, domain, question_number, threshold=0.8):
                         self.learning.record_successful_answer(question_id, question, similar_answer, 
-                                                             question_type, domain, "learning_match")
+                                                             question_type, domain, "learning_match", 
+                                                             question_number, complexity)
                         self.successful_processing += 1
-                        self._update_domain_performance(domain, True)
+                        self._update_performance_tracking(domain, position_stage, True)
                         self._update_accuracy_tracking(question_type, True)
                         return similar_answer
 
             # 3단계: 지식베이스 분석
             try:
-                kb_analysis = self.knowledge_base.analyze_question(question)
+                kb_analysis = self.knowledge_base.analyze_question(question, question_number)
             except Exception as e:
                 print(f"지식베이스 분석 실패: {e}")
                 kb_analysis = {}
 
-            # 4단계: 의도 분석 (주관식만)
+            # 4단계: 의도 분석
             intent_analysis = None
             if question_type == "subjective":
                 try:
@@ -366,62 +463,87 @@ class FinancialAIInference:
                     print(f"의도 분석 실패: {e}")
                     intent_analysis = None
 
-            # 5단계: 다단계 답변 생성 시도
-            answer = self._generate_answer_with_multi_stage_approach(
-                question, question_type, max_choice, domain, intent_analysis, kb_analysis, question_id
+            # 5단계: 위치별 적응형 답변 생성
+            answer = self._generate_position_aware_answer(
+                question, question_type, max_choice, domain, intent_analysis, 
+                kb_analysis, question_id, question_number, position_config, complexity
             )
 
             # 6단계: 답변 검증 및 후처리
             if answer and len(str(answer).strip()) > 0:
-                validated_answer = self._validate_and_enhance_answer(answer, question, question_type, max_choice, domain, question_id)
+                validated_answer = self._validate_and_enhance_answer(
+                    answer, question, question_type, max_choice, domain, question_id, question_number
+                )
                 
                 if validated_answer:
-                    if not self.learning.is_answer_duplicate(validated_answer, question_id, domain, threshold=0.80):
+                    if not self.learning.is_answer_duplicate(validated_answer, question_id, domain, question_number, threshold=0.75):
                         self.learning.record_successful_answer(question_id, question, validated_answer, 
-                                                             question_type, domain, "multi_stage_generation")
+                                                             question_type, domain, "adaptive_generation", 
+                                                             question_number, complexity)
                     self.successful_processing += 1
-                    self._update_domain_performance(domain, True)
+                    self._update_performance_tracking(domain, position_stage, True)
                     self._update_accuracy_tracking(question_type, True)
                     return validated_answer
 
             # 7단계: 실패 처리
             self.learning.record_failed_answer(question_id, question, "답변 생성 및 검증 실패", 
-                                             question_type, domain)
+                                             question_type, domain, question_number)
             self.failed_processing += 1
-            self._update_domain_performance(domain, False)
+            self._update_performance_tracking(domain, position_stage, False)
             self._update_accuracy_tracking(question_type, False)
             
-            # 최종 폴백 답변
-            return self._get_enhanced_fallback_answer(question_type, question, max_choice, domain)
+            return self._get_fallback_answer(question_type, question, max_choice, domain, question_number)
 
         except Exception as e:
             return self._handle_processing_error(e, question_id, question, locals())
 
-    def _generate_answer_with_multi_stage_approach(self, question: str, question_type: str, max_choice: int, 
-                                                  domain: str, intent_analysis: Dict, kb_analysis: Dict, question_id: str) -> str:
-        """다단계 접근 방식 답변 생성"""
+    def _get_position_stage(self, question_number: int) -> str:
+        """위치 단계 확인"""
+        if question_number is None or question_number <= 100:
+            return "early"
+        elif question_number <= 300:
+            return "middle"
+        else:
+            return "late"
+
+    def _generate_position_aware_answer(self, question: str, question_type: str, max_choice: int, 
+                                      domain: str, intent_analysis: Dict, kb_analysis: Dict, 
+                                      question_id: str, question_number: int, position_config: Dict, 
+                                      complexity: float) -> str:
+        """위치 인식 답변 생성"""
         try:
-            # 1단계: 검증된 패턴 매칭 (객관식)
+            position_stage = self._get_position_stage(question_number)
+            
+            # 1단계: 위치별 검증된 패턴 매칭
             if question_type == "multiple_choice":
-                verified_mc_answer = self._get_verified_mc_pattern_answer(question, max_choice, domain)
-                if verified_mc_answer and verified_mc_answer != "2":  # 기본값이 아닌 경우
+                verified_mc_answer = self.knowledge_base.get_mc_pattern_answer(question, max_choice, domain, question_number)
+                if verified_mc_answer and verified_mc_answer != "2":
                     return verified_mc_answer
 
-            # 2단계: 검증된 도메인 템플릿 (주관식)
+            # 2단계: 위치별 도메인 템플릿
             if question_type == "subjective":
-                verified_template_answer = self._get_verified_template_answer(question, domain)
-                if verified_template_answer:
-                    return verified_template_answer
+                template_answer = self._get_position_adapted_template_answer(question, domain, position_stage)
+                if template_answer:
+                    return template_answer
 
-            # 3단계: 향상된 LLM 생성
+            # 3단계: 위치별 LLM 생성
             domain_hints = {
                 "domain": domain,
-                "temperature": self.optimization_config.get("temperature", 0.3),
-                "top_p": self.optimization_config.get("top_p", 0.8),
-                "difficulty": self.data_processor.analyze_question_difficulty(question),
+                "temperature": self.optimization_config.get("temperature", 0.25),
+                "top_p": self.optimization_config.get("top_p", 0.75),
+                "difficulty": self.data_processor.analyze_question_difficulty(question, question_number),
                 "context_boost": True,
-                "accuracy_mode": True  # 정확도 우선 모드
+                "position_stage": position_stage,
+                "complexity": complexity,
+                "question_number": question_number,
+                "position_weight": position_config.get("position_weight", 1.0)
             }
+
+            # 위치별 파라미터 조정
+            if position_stage == "late":
+                domain_hints["temperature"] = max(0.2, domain_hints["temperature"] - 0.05)
+                domain_hints["top_p"] = max(0.7, domain_hints["top_p"] - 0.05)
+                domain_hints["accuracy_mode"] = True
 
             answer = self.model_handler.generate_answer(
                 question=question,
@@ -430,55 +552,80 @@ class FinancialAIInference:
                 intent_analysis=intent_analysis,
                 domain_hints=domain_hints,
                 knowledge_base=self.knowledge_base,
-                prompt_enhancer=self.prompt_enhancer
+                prompt_enhancer=self.prompt_enhancer,
+                question_number=question_number
             )
 
             return answer
 
         except Exception as e:
-            print(f"다단계 답변 생성 오류: {e}")
+            print(f"위치 인식 답변 생성 오류: {e}")
             return None
 
-    def _get_verified_mc_pattern_answer(self, question: str, max_choice: int, domain: str) -> str:
-        """검증된 객관식 패턴 답변"""
+    def _get_position_adapted_template_answer(self, question: str, domain: str, position_stage: str) -> str:
+        """위치별 템플릿 답변"""
         try:
-            # model_handler의 검증된 패턴을 활용
-            return self.model_handler.get_verified_mc_answer(question, max_choice, domain)
+            # 기본 템플릿 답변 시도
+            base_template = self.model_handler.get_verified_domain_template_answer(question, domain)
+            
+            if base_template and position_stage == "late":
+                # 후반부 문제는 더 상세한 답변으로 확장
+                if len(base_template) < 200:
+                    enhanced_template = self._enhance_template_for_late_stage(base_template, question, domain)
+                    return enhanced_template
+            
+            return base_template
         except Exception as e:
-            print(f"검증된 MC 패턴 답변 오류: {e}")
+            print(f"위치별 템플릿 답변 오류: {e}")
             return None
 
-    def _get_verified_template_answer(self, question: str, domain: str) -> str:
-        """검증된 템플릿 답변"""
+    def _enhance_template_for_late_stage(self, base_template: str, question: str, domain: str) -> str:
+        """후반부용 템플릿 확장"""
         try:
-            # model_handler의 검증된 템플릿을 활용
-            return self.model_handler.get_verified_domain_template_answer(question, domain)
+            if not base_template:
+                return None
+            
+            # 도메인별 확장 정보
+            enhancements = {
+                "기타": "구체적인 법령 조항과 적용 기준을 명확히 하여 체계적으로 관리해야 합니다.",
+                "개인정보보호": "관련 법령의 세부 조항과 예외 규정도 함께 고려하여 적용해야 합니다.",
+                "전자금융": "해당 규정의 구체적 적용 범위와 절차를 정확히 준수해야 합니다.",
+                "정보보안": "기술적, 관리적, 물리적 보안 조치를 종합적으로 고려해야 합니다."
+            }
+            
+            enhancement = enhancements.get(domain, enhancements["기타"])
+            
+            if not base_template.endswith('.'):
+                base_template += '.'
+            
+            return f"{base_template} {enhancement}"
+            
         except Exception as e:
-            print(f"검증된 템플릿 답변 오류: {e}")
-            return None
+            print(f"후반부 템플릿 확장 오류: {e}")
+            return base_template
 
     def _validate_and_enhance_answer(self, answer: str, question: str, question_type: str, 
-                                   max_choice: int, domain: str, question_id: str) -> str:
-        """답변 검증 및 향상"""
+                                   max_choice: int, domain: str, question_id: str, 
+                                   question_number: int = None) -> str:
+        """답변 검증 및 개선"""
         try:
             if not answer:
                 return None
 
             if question_type == "multiple_choice":
-                return self._validate_enhanced_mc_answer(answer, question, max_choice, domain)
+                return self._validate_mc_answer(answer, question, max_choice, domain, question_number)
             else:
-                return self._validate_enhanced_subjective_answer(answer, question, domain, question_id)
+                return self._validate_subjective_answer(answer, question, domain, question_id, question_number)
 
         except Exception as e:
             print(f"답변 검증 오류: {e}")
             return None
 
-    def _validate_enhanced_mc_answer(self, answer: str, question: str, max_choice: int, domain: str) -> str:
-        """향상된 객관식 답변 검증"""
+    def _validate_mc_answer(self, answer: str, question: str, max_choice: int, domain: str, question_number: int = None) -> str:
+        """객관식 답변 검증"""
         try:
             answer_str = str(answer).strip()
             
-            # 숫자 추출
             numbers = re.findall(r'\b(\d+)\b', answer_str)
             
             for num_str in numbers:
@@ -490,24 +637,30 @@ class FinancialAIInference:
                     continue
             
             # 검증된 패턴으로 폴백
-            return self.model_handler.get_verified_mc_answer(question, max_choice, domain)
+            return self.knowledge_base.get_mc_pattern_answer(question, max_choice, domain, question_number)
             
         except Exception:
             return "2"
 
-    def _validate_enhanced_subjective_answer(self, answer: str, question: str, domain: str, question_id: str) -> str:
-        """향상된 주관식 답변 검증"""
+    def _validate_subjective_answer(self, answer: str, question: str, domain: str, question_id: str, question_number: int = None) -> str:
+        """주관식 답변 검증"""
         try:
             if not answer:
                 return None
 
             answer = str(answer).strip()
             
-            # 1단계: 기본 유효성 검사
-            if len(answer) < 25:
+            # 위치별 검증 기준 조정
+            min_length = 25
+            korean_ratio_threshold = 0.7
+            
+            if question_number is not None and question_number > 300:
+                min_length = 30
+                korean_ratio_threshold = 0.75
+            
+            if len(answer) < min_length:
                 return None
             
-            # 2단계: 한국어 비율 검사
             korean_chars = len(re.findall(r'[가-힣]', answer))
             total_chars = len(re.sub(r'[^\w가-힣]', '', answer))
             
@@ -515,52 +668,51 @@ class FinancialAIInference:
                 return None
                 
             korean_ratio = korean_chars / total_chars
-            if korean_ratio < 0.7:  # 더 엄격한 기준
+            if korean_ratio < korean_ratio_threshold:
                 return None
             
-            # 3단계: 영어 컨텐츠 검사
             if self.data_processor.detect_english_response(answer):
                 return None
             
-            # 4단계: 중복 검사
-            if self.learning.is_answer_duplicate(answer, question_id, domain, threshold=0.75):
+            if self.learning.is_answer_duplicate(answer, question_id, domain, question_number, threshold=0.75):
                 return None
             
-            # 5단계: 의미있는 키워드 검사
-            professional_keywords = [
+            meaningful_keywords = [
                 "법", "규정", "조치", "관리", "보안", "방안", "절차", "기준", "정책", 
                 "체계", "시스템", "통제", "특징", "지표", "탐지", "대응", "기관", 
                 "위원회", "업무", "담당", "권한", "의무", "원칙", "비율", "퍼센트"
             ]
             
-            keyword_count = sum(1 for keyword in professional_keywords if keyword in answer)
-            if keyword_count < 3:
+            keyword_count = sum(1 for keyword in meaningful_keywords if keyword in answer)
+            min_keywords = 3 if question_number and question_number > 300 else 2
+            
+            if keyword_count < min_keywords:
                 return None
             
-            # 6단계: 문장 정리 및 마무리
-            return self._finalize_subjective_answer(answer, question, domain)
+            return self._finalize_answer(answer, question, domain, question_number)
             
         except Exception as e:
             print(f"주관식 답변 검증 오류: {e}")
             return None
 
-    def _finalize_subjective_answer(self, answer: str, question: str, domain: str) -> str:
-        """주관식 답변 최종 정리"""
+    def _finalize_answer(self, answer: str, question: str, domain: str, question_number: int = None) -> str:
+        """답변 최종 처리"""
         try:
             if not answer:
                 return None
 
             answer = answer.strip()
             
-            # 길이 제한 (도메인별)
+            # 위치별 길이 제한
             max_lengths = {
-                "사이버보안": 600,
-                "전자금융": 550,
-                "개인정보보호": 550,
-                "정보보안": 500,
-                "위험관리": 450,
-                "금융투자": 400,
-                "정보통신": 400
+                "사이버보안": 650 if question_number and question_number > 300 else 600,
+                "전자금융": 600 if question_number and question_number > 300 else 550,
+                "개인정보보호": 600 if question_number and question_number > 300 else 550,
+                "정보보안": 550 if question_number and question_number > 300 else 500,
+                "위험관리": 500 if question_number and question_number > 300 else 450,
+                "금융투자": 450 if question_number and question_number > 300 else 400,
+                "정보통신": 450 if question_number and question_number > 300 else 400,
+                "기타": 600 if question_number and question_number > 300 else 500
             }
             
             max_length = max_lengths.get(domain, 500)
@@ -584,8 +736,7 @@ class FinancialAIInference:
                         answer += "."
                 else:
                     answer = answer[:max_length-3] + "..."
-            
-            # 문장 마무리 확인 및 수정
+
             if answer and not answer.endswith((".", "다", "요", "함", "니다", "습니다")):
                 if answer.endswith("니"):
                     answer += "다."
@@ -599,19 +750,19 @@ class FinancialAIInference:
             return answer
             
         except Exception as e:
-            print(f"주관식 답변 정리 오류: {e}")
+            print(f"답변 최종 처리 오류: {e}")
             return answer
 
-    def _get_enhanced_fallback_answer(self, question_type: str, question: str, max_choice: int, domain: str) -> str:
-        """향상된 폴백 답변"""
+    def _get_fallback_answer(self, question_type: str, question: str, max_choice: int, domain: str, question_number: int = None) -> str:
+        """폴백 답변"""
         try:
+            position_stage = self._get_position_stage(question_number)
+            
             if question_type == "multiple_choice":
-                # 검증된 패턴 매칭 시도
-                verified_answer = self.model_handler.get_verified_mc_answer(question, max_choice, domain)
+                verified_answer = self.knowledge_base.get_mc_pattern_answer(question, max_choice, domain, question_number)
                 if verified_answer:
                     return verified_answer
                     
-                # 도메인별 통계 기반 답변
                 domain_defaults = {
                     "금융투자": "1",
                     "위험관리": "2",
@@ -619,28 +770,51 @@ class FinancialAIInference:
                     "전자금융": "4",
                     "정보통신": "2",
                     "정보보안": "2",
-                    "사이버보안": "5"
+                    "사이버보안": "5",
+                    "기타": "2"
                 }
                 return domain_defaults.get(domain, "2")
             else:
-                # 도메인별 전문 답변
-                domain_answers = {
-                    "사이버보안": "사이버보안 위협에 대응하기 위해서는 다층 방어체계를 구축하고 실시간 모니터링 시스템을 운영하며, 침입탐지 및 방지 시스템을 통해 종합적인 보안 관리를 수행해야 합니다. 정기적인 보안교육과 취약점 점검을 통해 지속적인 보안 수준 향상을 도모하는 것이 중요합니다.",
-                    "전자금융": "전자금융거래법에 따라 전자금융업자는 이용자의 거래 안전성 확보를 위한 보안조치를 시행하고, 접근매체의 안전한 관리를 통해 안전한 전자금융서비스를 제공해야 합니다. 분쟁 발생 시에는 전자금융분쟁조정위원회를 통해 공정하고 신속한 해결을 도모해야 합니다.",
-                    "개인정보보호": "개인정보보호법에 따라 개인정보 처리 시 수집 최소화, 목적 제한, 정보주체 권리 보장의 원칙을 준수해야 하며, 개인정보보호 관리체계를 구축하여 체계적이고 안전한 개인정보 처리를 수행해야 합니다. 특히 만 14세 미만 아동의 개인정보 처리에는 법정대리인의 동의가 필요합니다.",
-                    "정보보안": "정보보안관리체계(ISMS)를 구축하여 보안정책 수립, 위험분석, 보안대책 구현, 사후관리의 절차를 체계적으로 운영해야 합니다. 정보보호의 3대 요소인 기밀성, 무결성, 가용성을 보장하기 위한 기술적, 관리적, 물리적 보안대책을 통합적으로 적용해야 합니다.",
-                    "정보통신": "정보통신기반 보호법에 따라 집적된 정보통신시설의 보호를 위한 체계적인 관리 방안을 수립하고 지속적으로 운영해야 합니다. 정보통신서비스 중단 발생 시에는 관련 기관에 신속하게 보고하고 응급조치를 취해야 합니다.",
-                    "위험관리": "위험관리 체계를 구축하여 위험 식별, 평가, 대응, 모니터링의 단계별 절차를 체계적으로 수행해야 합니다. 위험을 단순히 수용하기보다는 위험 회피, 감소, 전가 등의 적극적인 대응 전략을 수립하는 것이 중요합니다.",
-                    "금융투자": "자본시장법에 따라 금융투자업의 구분과 투자자 보호를 위한 적합성 원칙을 준수해야 하며, 투자자의 투자경험과 재산상황에 적합한 금융상품을 권유하는 체계적인 업무 수행이 필요합니다."
+                # 위치별 도메인 답변
+                base_answers = {
+                    "사이버보안": "사이버보안 위협에 대응하기 위해서는 다층 방어체계를 구축하고 실시간 모니터링 시스템을 운영하며, 침입탐지 및 방지 시스템을 통해 종합적인 보안 관리를 수행해야 합니다.",
+                    "전자금융": "전자금융거래법에 따라 전자금융업자는 이용자의 거래 안전성 확보를 위한 보안조치를 시행하고, 접근매체의 안전한 관리를 통해 안전한 전자금융서비스를 제공해야 합니다.",
+                    "개인정보보호": "개인정보보호법에 따라 개인정보 처리 시 수집 최소화, 목적 제한, 정보주체 권리 보장의 원칙을 준수하고 개인정보보호 관리체계를 구축하여 체계적이고 안전한 개인정보 처리를 수행해야 합니다.",
+                    "정보보안": "정보보안관리체계를 구축하여 보안정책 수립, 위험분석, 보안대책 구현, 사후관리의 절차를 체계적으로 운영하고 지속적인 보안수준 향상을 위한 관리활동을 수행해야 합니다.",
+                    "정보통신": "정보통신기반 보호법에 따라 체계적이고 전문적인 관리 방안을 수립하여 지속적으로 운영해야 합니다.",
+                    "기타": "관련 법령과 규정에 따라 체계적인 관리 방안을 수립하고 구체적인 절차와 기준을 준수하여 적절한 업무 수행을 해야 합니다."
                 }
-                return domain_answers.get(domain, "관련 법령과 규정에 따라 체계적이고 전문적인 관리 방안을 수립하여 지속적으로 운영해야 합니다.")
+                
+                base_answer = base_answers.get(domain, base_answers["기타"])
+                
+                # 후반부 문제는 답변 확장
+                if position_stage == "late" and domain == "기타":
+                    base_answer += " 특히 해당 법령의 구체적 조항과 세부 기준을 정확히 확인하여 적용해야 합니다."
+                
+                return base_answer
                 
         except Exception as e:
-            print(f"향상된 폴백 답변 생성 오류: {e}")
+            print(f"폴백 답변 생성 오류: {e}")
             if question_type == "multiple_choice":
                 return "2"
             else:
                 return "관련 법령과 규정에 따라 체계적인 관리가 필요합니다."
+
+    def _update_performance_tracking(self, domain: str, position_stage: str, success: bool):
+        """성과 추적 업데이트"""
+        # 도메인 성과
+        if domain not in self.domain_performance:
+            self.domain_performance[domain] = {"total": 0, "success": 0}
+        
+        self.domain_performance[domain]["total"] += 1
+        if success:
+            self.domain_performance[domain]["success"] += 1
+        
+        # 위치별 성과
+        if position_stage in self.positional_performance:
+            self.positional_performance[position_stage]["total"] += 1
+            if success:
+                self.positional_performance[position_stage]["success"] += 1
 
     def _update_accuracy_tracking(self, question_type: str, success: bool):
         """정확도 추적 업데이트"""
@@ -656,30 +830,23 @@ class FinancialAIInference:
         except Exception as e:
             print(f"정확도 추적 업데이트 오류: {e}")
 
-    def _update_domain_performance(self, domain: str, success: bool):
-        """도메인 성능 업데이트"""
-        if domain not in self.domain_performance:
-            self.domain_performance[domain] = {"total": 0, "success": 0}
-        
-        self.domain_performance[domain]["total"] += 1
-        if success:
-            self.domain_performance[domain]["success"] += 1
-
     def _handle_processing_error(self, error: Exception, question_id: str, question: str, context: dict) -> str:
         """처리 오류 핸들링"""
         try:
             domain = context.get('domain', 'unknown')
             question_type = context.get('question_type', 'unknown')
             max_choice = context.get('max_choice', 5)
+            question_number = context.get('question_number', 0)
             
             error_msg = str(error)
             print(f"질문 처리 오류 ({question_id}): {error_msg}")
             
             self.failed_processing += 1
-            self._update_domain_performance(domain, False)
+            position_stage = self._get_position_stage(question_number)
+            self._update_performance_tracking(domain, position_stage, False)
             self._update_accuracy_tracking(question_type, False)
             
-            return self._get_enhanced_fallback_answer(question_type, question, max_choice, domain)
+            return self._get_fallback_answer(question_type, question, max_choice, domain, question_number)
         except Exception:
             return "시스템 오류로 인해 답변을 생성할 수 없습니다."
 
@@ -718,8 +885,13 @@ class FinancialAIInference:
                 for question_idx, (original_idx, row) in enumerate(test_df.iterrows()):
                     question = row["Question"]
                     question_id = row["ID"]
+                    
+                    try:
+                        question_number = int(question_id.replace('TEST_', ''))
+                    except:
+                        question_number = question_idx
 
-                    answer = self.process_single_question(question, question_id)
+                    answer = self.process_single_question(question, question_id, question_number)
                     answers.append(answer)
                     
                     pbar.update(1)
@@ -765,6 +937,13 @@ class FinancialAIInference:
             print(f"객관식 정확도: {mc_accuracy:.1f}% ({self.accuracy_tracking['mc_correct']}/{self.accuracy_tracking['mc_total']})")
             print(f"주관식 유효율: {subj_valid_rate:.1f}% ({self.accuracy_tracking['subjective_valid']}/{self.accuracy_tracking['subjective_total']})")
             
+            # 위치별 성과
+            print(f"\n=== 위치별 성과 ===")
+            for stage, perf in self.positional_performance.items():
+                if perf["total"] > 0:
+                    stage_rate = (perf["success"] / perf["total"]) * 100
+                    print(f"{stage}: {stage_rate:.1f}% ({perf['success']}/{perf['total']})")
+            
             # 목표 달성 여부
             target_rate = 70.0
             if success_rate >= target_rate:
@@ -782,11 +961,13 @@ class FinancialAIInference:
                 "mc_accuracy": mc_accuracy,
                 "subjective_valid_rate": subj_valid_rate,
                 "domain_performance": self.domain_performance,
+                "positional_performance": self.positional_performance,
                 "accuracy_tracking": self.accuracy_tracking,
                 "learning_data": {
                     "successful_answers": len(self.learning.successful_answers),
                     "failed_answers": len(self.learning.failed_answers),
-                    "domain_accuracy": self.learning.domain_accuracy
+                    "domain_accuracy": self.learning.domain_accuracy,
+                    "positional_patterns": self.learning.positional_patterns
                 }
             }
             
@@ -835,7 +1016,7 @@ def main():
     """메인 함수"""
     engine = None
     try:
-        print("=== 금융보안 AI 추론 시스템 (정확도 최적화 버전) ===")
+        print("=== 금융보안 AI 추론 시스템 (위치 인식 처리 버전) ===")
         engine = FinancialAIInference(verbose=False)
 
         results = engine.execute_inference()
