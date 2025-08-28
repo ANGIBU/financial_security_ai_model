@@ -42,7 +42,7 @@ class ModelHandler:
                 self.model_name,
                 trust_remote_code=MODEL_CONFIG["trust_remote_code"],
                 use_fast=MODEL_CONFIG["use_fast_tokenizer"],
-                local_files_only=MODEL_CONFIG.get("local_files_only", False),
+                local_files_only=MODEL_CONFIG.get("local_files_only", True),
             )
         except Exception as e:
             print(f"토크나이저 로드 실패: {e}")
@@ -59,7 +59,7 @@ class ModelHandler:
                 torch_dtype=getattr(torch, MODEL_CONFIG["torch_dtype"]),
                 device_map=MODEL_CONFIG["device_map"],
                 trust_remote_code=MODEL_CONFIG["trust_remote_code"],
-                local_files_only=MODEL_CONFIG.get("local_files_only", False),
+                local_files_only=MODEL_CONFIG.get("local_files_only", True),
             )
         except Exception as e:
             print(f"모델 로드 실패: {e}")
@@ -306,7 +306,7 @@ class ModelHandler:
                     if correct_answer and correct_answer != "2":
                         return str(correct_answer)
             
-            # 도메인별 특화 패턴 매칭 - 위치별 조정
+            # 도메인별 특화 패턴 매칭
             domain_patterns = self._get_position_adjusted_domain_patterns(domain, question_number)
             
             for pattern_key, pattern_info in domain_patterns.items():
@@ -391,8 +391,7 @@ class ModelHandler:
         
         # 후반부 기타 도메인은 더 다양한 답변
         if question_number is not None and question_number > 300 and domain == "기타":
-            # 후반부 기타 도메인에서 더 정확한 분석을 위한 추가 로직
-            return {"기타": "3"}  # 후반부에서는 3번 답이 많음
+            return {"기타": "3"}
         
         return base_defaults
 

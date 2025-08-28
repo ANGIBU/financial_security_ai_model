@@ -218,7 +218,7 @@ class FineTuningDataGenerator:
                 # 입력 프롬프트 생성
                 input_prompt = self._create_input_prompt(question, question_type, domain, question_number)
                 
-                # 타겟 답변 생성 (객관식은 패턴 기반, 주관식은 템플릿 기반)
+                # 타겟 답변 생성
                 target_answer = self._generate_target_answer(question, question_type, max_choice, domain, question_number)
                 
                 if target_answer:
@@ -334,7 +334,7 @@ class FineTuner:
                 self.model_name,
                 trust_remote_code=True,
                 use_fast=True,
-                local_files_only=False
+                local_files_only=True
             )
             
             # 패딩 토큰 설정
@@ -352,7 +352,7 @@ class FineTuner:
                 torch_dtype=torch.bfloat16,
                 device_map="auto",
                 trust_remote_code=True,
-                local_files_only=False,
+                local_files_only=True,
                 low_cpu_mem_usage=True
             )
             
